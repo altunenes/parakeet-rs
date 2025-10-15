@@ -80,3 +80,8 @@ let results = parakeet.transcribe_batch(&files)?;
 - English only
 - No timestamps (CTC limitation), use with pyannote for diarization (see example)
 
+#### License
+
+This Rust codebase: **MIT OR Apache-2.0**
+
+FYI: The Parakeet ONNX models (downloaded separately from HuggingFace) are licensed under **CC-BY-4.0** by NVIDIA. This library does not distribute the models. 

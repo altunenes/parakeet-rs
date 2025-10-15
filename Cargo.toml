@@ -3,8 +3,9 @@ name = "parakeet-rs"
 version = "0.1.0"
 edition = "2021"
 authors = ["altunenes"]
-description = "Rust bindings for NVIDIA Parakeet speech recognition model using ONNX Runtime"
+description = "Fast English ASR with NVIDIA Parakeet via ONNX"
 repository = "https://github.com/altunenes/parakeet-rs"
+license = "MIT OR Apache-2.0"
 keywords = ["speech-recognition", "asr", "parakeet", "onnx", "nvidia"]
 categories = ["multimedia::audio", "science"]
 
