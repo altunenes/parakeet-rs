@@ -1,0 +1,10 @@
+/target
+DS_Store
+*.DS_Store
+.idea
+.vscode
+*.log
+*.onnx
+*.json
+*.onnx_data
+*.wav
