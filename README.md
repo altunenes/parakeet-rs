@@ -2,21 +2,15 @@
 
 Rust bindings for NVIDIA's Parakeet ASR model via ONNX Runtime.
 
-## Install
-
-```toml
-[dependencies]
-parakeet-rs = "0.1"
-```
 
 GPU support (optional):
 ```toml
 parakeet-rs = { version = "0.1", features = ["cuda"] }
 ```
 
-Note: CoreML often doesn't work with this model - stick w/ CPU or CUDA. But its incredible fast in my Mac M3 16gb compared to Whisper :-)
+Note: CoreML often doesn't work with this model - stick w/ CPU or CUDA. But its incredible fast in my Mac M3 16gb compared to Whisper metal :-)
 
-## Usage
+### Usage
 
 ```rust
 use parakeet_rs::Parakeet;
@@ -36,7 +30,7 @@ let config = ExecutionConfig::new()
 let mut parakeet = Parakeet::from_pretrained_with_config(".", config)?;
 ```
 
-## Model Files
+### Model Files
 
 Put these in your working directory:
 - `model.onnx` / `model.onnx_data`
@@ -47,12 +41,12 @@ Put these in your working directory:
 
 Get the model from HuggingFace [here](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx). 
 
-## Audio Format
+### Audio Format
 
-- WAV files, 16kHz, mono (stereo gets converted)
+- WAV files, 16kHz, mono
 - 16-bit PCM or 32-bit float
 
-## Examples
+### Examples
 
 Basic:
 ```bash
@@ -64,7 +58,7 @@ w/ speaker diarization (needs pyannote models):
 cargo run --example pyannote audio.wav
 ```
 
-## API
+### API
 
 ```rust
 // Load model
@@ -78,7 +72,7 @@ let files = vec!["audio1.wav", "audio2.wav"];
 let results = parakeet.transcribe_batch(&files)?;
 ```
 
-## What it does
+### What it does
 
 - Transcribes speech to text w/ punctuation & capitalization
 
