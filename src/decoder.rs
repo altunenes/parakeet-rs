@@ -11,7 +11,6 @@ pub struct TimedToken {
     pub end: f32,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct TranscriptionResult {
     pub text: String,

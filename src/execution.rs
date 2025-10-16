@@ -63,7 +63,10 @@ impl ModelConfig {
         self
     }
 
-    pub(crate) fn apply_to_session_builder(&self, builder: SessionBuilder) -> Result<SessionBuilder> {
+    pub(crate) fn apply_to_session_builder(
+        &self,
+        builder: SessionBuilder,
+    ) -> Result<SessionBuilder> {
         use ort::session::builder::GraphOptimizationLevel;
 
         let mut builder = builder
@@ -75,34 +78,34 @@ impl ModelConfig {
             ExecutionProvider::Cpu => builder,
 
             #[cfg(feature = "cuda")]
-            ExecutionProvider::Cuda => {
-                builder.with_execution_providers([ort::execution_providers::CUDAExecutionProvider::default().build()])?
-            }
+            ExecutionProvider::Cuda => builder.with_execution_providers([
+                ort::execution_providers::CUDAExecutionProvider::default().build(),
+            ])?,
 
             #[cfg(feature = "tensorrt")]
-            ExecutionProvider::TensorRT => {
-                builder.with_execution_providers([ort::execution_providers::TensorRTExecutionProvider::default().build()])?
-            }
+            ExecutionProvider::TensorRT => builder.with_execution_providers([
+                ort::execution_providers::TensorRTExecutionProvider::default().build(),
+            ])?,
 
             #[cfg(feature = "coreml")]
-            ExecutionProvider::CoreML => {
-                builder.with_execution_providers([ort::execution_providers::CoreMLExecutionProvider::default().build()])?
-            }
+            ExecutionProvider::CoreML => builder.with_execution_providers([
+                ort::execution_providers::CoreMLExecutionProvider::default().build(),
+            ])?,
 
             #[cfg(feature = "directml")]
-            ExecutionProvider::DirectML => {
-                builder.with_execution_providers([ort::execution_providers::DirectMLExecutionProvider::default().build()])?
-            }
+            ExecutionProvider::DirectML => builder.with_execution_providers([
+                ort::execution_providers::DirectMLExecutionProvider::default().build(),
+            ])?,
 
             #[cfg(feature = "rocm")]
-            ExecutionProvider::ROCm => {
-                builder.with_execution_providers([ort::execution_providers::ROCMExecutionProvider::default().build()])?
-            }
+            ExecutionProvider::ROCm => builder.with_execution_providers([
+                ort::execution_providers::ROCMExecutionProvider::default().build(),
+            ])?,
 
             #[cfg(feature = "openvino")]
-            ExecutionProvider::OpenVINO => {
-                builder.with_execution_providers([ort::execution_providers::OpenVINOExecutionProvider::default().build()])?
-            }
+            ExecutionProvider::OpenVINO => builder.with_execution_providers([
+                ort::execution_providers::OpenVINOExecutionProvider::default().build(),
+            ])?,
         };
 
         Ok(builder)

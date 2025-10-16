@@ -53,7 +53,8 @@ impl ParakeetModel {
         ))?;
 
         let logits_value = &outputs["logits"];
-        let (shape, data) = logits_value.try_extract_tensor::<f32>()
+        let (shape, data) = logits_value
+            .try_extract_tensor::<f32>()
             .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
 
         let shape_dims = shape.as_ref();
@@ -73,11 +74,8 @@ impl ParakeetModel {
             )));
         }
 
-        let logits_2d = Array2::from_shape_vec(
-            (time_steps_out, vocab_size),
-            data.to_vec()
-        )
-        .map_err(|e| Error::Model(format!("Failed to create array: {e}")))?;
+        let logits_2d = Array2::from_shape_vec((time_steps_out, vocab_size), data.to_vec())
+            .map_err(|e| Error::Model(format!("Failed to create array: {e}")))?;
 
         Ok(logits_2d)
     }

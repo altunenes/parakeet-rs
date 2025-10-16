@@ -1,6 +1,6 @@
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use crate::error::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreprocessorConfig {

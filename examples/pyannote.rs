@@ -17,7 +17,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read audio file
     println!("Reading audio file: {audio_path}");
     let (samples, sample_rate) = pyannote_rs::read_wav(&audio_path)?;
-    println!("Sample rate: {}Hz, Samples: {}\n", sample_rate, samples.len());
+    println!(
+        "Sample rate: {}Hz, Samples: {}\n",
+        sample_rate,
+        samples.len()
+    );
 
     // Configuration
     let max_speakers = 6;
@@ -36,7 +40,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get speaker segments
     println!("Performing speaker diarization...");
-    let segments: Vec<_> = pyannote_rs::get_segments(&samples, sample_rate, "segmentation-3.0.onnx")?.collect();
+    let segments: Vec<_> =
+        pyannote_rs::get_segments(&samples, sample_rate, "segmentation-3.0.onnx")?.collect();
     println!("✓ Found {} segments\n", segments.len());
 
     println!("Transcribing segments...");
@@ -62,11 +67,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Identify speaker
             let speaker = if let Ok(embedding) = extractor.compute(&segment.samples) {
                 if manager.get_all_speakers().len() == max_speakers {
-                    manager.get_best_speaker_match(embedding.collect())
+                    manager
+                        .get_best_speaker_match(embedding.collect())
                         .map(|s| s.to_string())
                         .unwrap_or("UNKNOWN".to_string())
                 } else {
-                    manager.search_speaker(embedding.collect(), speaker_threshold)
+                    manager
+                        .search_speaker(embedding.collect(), speaker_threshold)
                         .map(|s| s.to_string())
                         .unwrap_or("UNKNOWN".to_string())
                 }

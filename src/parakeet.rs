@@ -69,7 +69,10 @@ impl Parakeet {
         Ok(result)
     }
 
-    pub fn transcribe_batch<P: AsRef<Path>>(&mut self, audio_paths: &[P]) -> Result<Vec<TranscriptionResult>> {
+    pub fn transcribe_batch<P: AsRef<Path>>(
+        &mut self,
+        audio_paths: &[P],
+    ) -> Result<Vec<TranscriptionResult>> {
         let mut results = Vec::with_capacity(audio_paths.len());
         for path in audio_paths {
             let result = self.transcribe(path)?;

@@ -32,7 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n\nToken-level Timestamps (first 10):");
     println!("-----------------------------------");
     for token in result.tokens.iter().take(10) {
-        println!("[{:.3}s - {:.3}s] \"{}\"", token.start, token.end, token.text);
+        println!(
+            "[{:.3}s - {:.3}s] \"{}\"",
+            token.start, token.end, token.text
+        );
     }
 
     if result.tokens.len() > 10 {

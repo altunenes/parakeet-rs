@@ -45,13 +45,8 @@ fn hann_window(window_length: usize) -> Vec<f32> {
 // on correctly computed spectrograms. Naive DFT produces wrong frequency bins
 // and the model outputs all blank tokens. RustFFT gives us O(n log n) performance
 // and numerically correct results that match what the model expects.
-pub fn stft(
-    audio: &[f32],
-    n_fft: usize,
-    hop_length: usize,
-    win_length: usize,
-) -> Array2<f32> {
-    use rustfft::{FftPlanner, num_complex::Complex};
+pub fn stft(audio: &[f32], n_fft: usize, hop_length: usize, win_length: usize) -> Array2<f32> {
+    use rustfft::{num_complex::Complex, FftPlanner};
 
     let window = hann_window(win_length);
     let num_frames = (audio.len() - win_length) / hop_length + 1;
@@ -120,10 +115,7 @@ fn create_mel_filterbank(n_fft: usize, n_mels: usize, sample_rate: usize) -> Arr
     filterbank
 }
 
-pub fn extract_features(
-    audio_path: &Path,
-    config: &PreprocessorConfig,
-) -> Result<Array2<f32>> {
+pub fn extract_features(audio_path: &Path, config: &PreprocessorConfig) -> Result<Array2<f32>> {
     let (mut audio, spec) = load_audio(audio_path)?;
 
     if spec.sample_rate != config.sampling_rate as u32 {
@@ -145,7 +137,8 @@ pub fn extract_features(
 
     let spectrogram = stft(&audio, config.n_fft, config.hop_length, config.win_length);
 
-    let mel_filterbank = create_mel_filterbank(config.n_fft, config.feature_size, config.sampling_rate);
+    let mel_filterbank =
+        create_mel_filterbank(config.n_fft, config.feature_size, config.sampling_rate);
     let mel_spectrogram = mel_filterbank.dot(&spectrogram);
     let mel_spectrogram = mel_spectrogram.mapv(|x| (x.max(1e-10)).ln());
 
@@ -158,7 +151,8 @@ pub fn extract_features(
     for feat_idx in 0..num_features {
         let mut column = mel_spectrogram.column_mut(feat_idx);
         let mean: f32 = column.iter().sum::<f32>() / num_frames as f32;
-        let variance: f32 = column.iter().map(|&x| (x - mean).powi(2)).sum::<f32>() / num_frames as f32;
+        let variance: f32 =
+            column.iter().map(|&x| (x - mean).powi(2)).sum::<f32>() / num_frames as f32;
         let std = variance.sqrt().max(1e-10);
 
         for val in column.iter_mut() {
