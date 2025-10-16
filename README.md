@@ -19,8 +19,13 @@ Note: CoreML often doesn't work with this model - stick w/ CPU or CUDA. But its 
 use parakeet_rs::Parakeet;
 
 let mut parakeet = Parakeet::from_pretrained(".")?;
-let text = parakeet.transcribe("audio.wav")?;
-println!("{text}");
+let result = parakeet.transcribe("audio.wav")?;
+println!("{}", result.text);
+
+// Access token-level timestamps
+for token in result.tokens {
+    println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
+}
 ```
 
 GPU:
@@ -67,12 +72,20 @@ cargo run --example pyannote audio.wav
 // Load model
 let mut parakeet = Parakeet::from_pretrained(".")?;
 
-// Single file
-let text = parakeet.transcribe("audio.wav")?;
+// Transcribe (returns text + token timestamps)
+let result = parakeet.transcribe("audio.wav")?;
+println!("{}", result.text);
+
+// Access timestamps
+for token in &result.tokens {
+    println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
+}
 
 // Batch
-let files = vec!["audio1.wav", "audio2.wav"];
-let results = parakeet.transcribe_batch(&files)?;
+let results = parakeet.transcribe_batch(&["audio1.wav", "audio2.wav"])?;
+for result in results {
+    println!("{}", result.text);
+}
 ```
 
 ### What it does
@@ -81,7 +94,8 @@ let results = parakeet.transcribe_batch(&files)?;
 
 **Note**: This uses the CTC-based Parakeet model (`nvidia/parakeet-ctc-0.6b`):
 - English only
-- No timestamps (CTC limitation), use with pyannote for diarization (see example)
+- Token-level timestamps supported (CTC frame-level output)
+- For word-level timestamps & speaker diarization, use with pyannote (see example)
 
 #### License
 
