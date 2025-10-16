@@ -58,4 +58,4 @@ pub use parakeet::Parakeet;
 pub use config::{ModelConfig as ModelConfigJson, PreprocessorConfig};
 
 pub use model::ParakeetModel;
-pub use decoder::ParakeetDecoder;
+pub use decoder::{ParakeetDecoder, TimedToken, TranscriptionResult};
