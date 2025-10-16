@@ -82,8 +82,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Transcribe
-            let text = match parakeet.transcribe(&temp_path) {
-                Ok(t) => t,
+            let result = match parakeet.transcribe(&temp_path) {
+                Ok(r) => r,
                 Err(e) => {
                     eprintln!("Warning: Failed to transcribe segment {idx}: {e}");
                     let _ = std::fs::remove_file(&temp_path);
@@ -94,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = std::fs::remove_file(&temp_path);
 
             // Only print if we got actual text
-            let text = text.trim();
+            let text = result.text.trim();
             if !text.is_empty() {
                 println!(
                     "\n[{:.2}s - {:.2}s] Speaker {speaker}:",

@@ -1,5 +1,5 @@
 /*
-transcribes entire audio, no diarization, no timestamps.
+transcribes entire audio, no diarization
 wget https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav
 cargo run --example transcribe 6_speakers.wav
 */
@@ -21,11 +21,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Transcribing audio file: {audio_path}");
     println!("Please wait, this may take a moment...\n");
 
-    let text = parakeet.transcribe(audio_path)?;
+    let result = parakeet.transcribe(audio_path)?;
 
+    // just get the transcribed text
     println!("Transcription Result:");
     println!("---------------------");
-    println!("{text}");
+    println!("{}", result.text);
+
+    //  access token-level timestamps
+    println!("\n\nToken-level Timestamps (first 10):");
+    println!("-----------------------------------");
+    for token in result.tokens.iter().take(10) {
+        println!("[{:.3}s - {:.3}s] \"{}\"", token.start, token.end, token.text);
+    }
+
+    if result.tokens.len() > 10 {
+        println!("... ({} more tokens)", result.tokens.len() - 10);
+    }
+
     println!("\nTranscription completed successfully!");
 
     Ok(())
