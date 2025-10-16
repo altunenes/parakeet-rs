@@ -1,5 +1,5 @@
 # parakeet-rs
-
+[![Rust](https://github.com/altunenes/parakeet-rs/actions/workflows/rust.yml/badge.svg)](https://github.com/altunenes/parakeet-rs/actions/workflows/rust.yml)
 [![crates.io](https://img.shields.io/crates/v/parakeet-rs.svg)](https://crates.io/crates/parakeet-rs)
 
 Rust bindings for NVIDIA's Parakeet ASR model via ONNX Runtime.
