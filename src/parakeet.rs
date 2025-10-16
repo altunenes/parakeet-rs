@@ -1,6 +1,6 @@
 use crate::audio;
 use crate::config::PreprocessorConfig;
-use crate::decoder::ParakeetDecoder;
+use crate::decoder::{ParakeetDecoder, TranscriptionResult};
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model::ParakeetModel;
@@ -55,19 +55,25 @@ impl Parakeet {
         })
     }
 
-    pub fn transcribe<P: AsRef<Path>>(&mut self, audio_path: P) -> Result<String> {
+    pub fn transcribe<P: AsRef<Path>>(&mut self, audio_path: P) -> Result<TranscriptionResult> {
         let audio_path = audio_path.as_ref();
         let features = audio::extract_features(audio_path, &self.preprocessor_config)?;
         let logits = self.model.forward(features)?;
-        let text = self.decoder.decode(&logits)?;
-        Ok(text)
+
+        let result = self.decoder.decode_with_timestamps(
+            &logits,
+            self.preprocessor_config.hop_length,
+            self.preprocessor_config.sampling_rate,
+        )?;
+
+        Ok(result)
     }
 
-    pub fn transcribe_batch<P: AsRef<Path>>(&mut self, audio_paths: &[P]) -> Result<Vec<String>> {
+    pub fn transcribe_batch<P: AsRef<Path>>(&mut self, audio_paths: &[P]) -> Result<Vec<TranscriptionResult>> {
         let mut results = Vec::with_capacity(audio_paths.len());
         for path in audio_paths {
-            let text = self.transcribe(path)?;
-            results.push(text);
+            let result = self.transcribe(path)?;
+            results.push(result);
         }
         Ok(results)
     }
