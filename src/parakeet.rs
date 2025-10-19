@@ -14,45 +14,87 @@ pub struct Parakeet {
 }
 
 impl Parakeet {
-    pub fn from_pretrained<P: AsRef<Path>>(model_dir: P) -> Result<Self> {
-        Self::from_pretrained_with_config(model_dir, ExecutionConfig::default())
+    pub fn from_pretrained<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::from_pretrained_with_config(path, ExecutionConfig::default())
     }
 
     pub fn from_pretrained_with_config<P: AsRef<Path>>(
-        model_dir: P,
+        path: P,
         exec_config: ExecutionConfig,
     ) -> Result<Self> {
-        let model_dir = model_dir.as_ref();
+        let path = path.as_ref();
 
-        let required_files = [
-            "model.onnx",
-            "config.json",
-            "preprocessor_config.json",
-            "tokenizer.json",
-            "tokenizer_config.json",
-        ];
+        // Determine if path is a directory or file
+        let (model_path, tokenizer_path, model_dir) = if path.is_dir() {
+            // Directory mode: auto-detect model file
+            let model_path = Self::find_model_file(path)?;
+            let tokenizer_path = path.join("tokenizer.json");
+            (model_path, tokenizer_path, path.to_path_buf())
+        } else if path.is_file() {
+            // File mode: path points directly to model file
+            let model_dir = path
+                .parent()
+                .ok_or_else(|| Error::Config("Invalid model path".to_string()))?;
+            let tokenizer_path = model_dir.join("tokenizer.json");
+            (path.to_path_buf(), tokenizer_path, model_dir.to_path_buf())
+        } else {
+            return Err(Error::Config(format!(
+                "Path does not exist: {}",
+                path.display()
+            )));
+        };
 
-        for file in &required_files {
-            let file_path = model_dir.join(file);
-            if !file_path.exists() {
-                return Err(Error::Config(format!(
-                    "Required file '{file}' not found in model directory"
-                )));
-            }
+        // Check tokenizer exists
+        if !tokenizer_path.exists() {
+            return Err(Error::Config(format!(
+                "Required file 'tokenizer.json' not found in {}",
+                model_dir.display()
+            )));
         }
 
-        let preprocessor_config =
-            PreprocessorConfig::from_file(model_dir.join("preprocessor_config.json"))?;
+        let preprocessor_config = PreprocessorConfig::default();
 
-        let model = ParakeetModel::from_pretrained_with_config(model_dir, exec_config)?;
-        let decoder = ParakeetDecoder::from_pretrained(model_dir)?;
+        let model = ParakeetModel::from_pretrained_with_config(&model_path, exec_config)?;
+        let decoder = ParakeetDecoder::from_pretrained(&tokenizer_path)?;
 
         Ok(Self {
             model,
             decoder,
             preprocessor_config,
-            model_dir: model_dir.to_path_buf(),
+            model_dir,
         })
+    }
+
+    fn find_model_file(dir: &Path) -> Result<PathBuf> {
+        // Priority order: model.onnx > model_fp16.onnx > model_int8.onnx > model_q4.onnx
+        let candidates = [
+            "model.onnx",
+            "model_fp16.onnx",
+            "model_int8.onnx",
+            "model_q4.onnx",
+        ];
+
+        for candidate in &candidates {
+            let path = dir.join(candidate);
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+
+        // If none of the standard names found, search for any .onnx file
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("onnx") {
+                    return Ok(path);
+                }
+            }
+        }
+
+        Err(Error::Config(format!(
+            "No model file (*.onnx) found in directory: {}",
+            dir.display()
+        )))
     }
 
     pub fn transcribe<P: AsRef<Path>>(&mut self, audio_path: P) -> Result<TranscriptionResult> {
