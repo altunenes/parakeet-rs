@@ -13,36 +13,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         "6_speakers.wav"
     };
-    println!("==========================================\n");
-    println!("Loading Parakeet model from current directory...");
+    // Load model from current directory (auto-detects with priority: model.onnx > model_fp16.onnx > model_int8.onnx > model_q4.onnx)
+    // Or specify exact model: Parakeet::from_pretrained("model_q4.onnx")
     let mut parakeet = Parakeet::from_pretrained(".")?;
-    println!("Model loaded successfully!\n");
-
-    println!("Transcribing audio file: {audio_path}");
-    println!("Please wait, this may take a moment...\n");
 
     let result = parakeet.transcribe(audio_path)?;
 
-    // just get the transcribed text
-    println!("Transcription Result:");
-    println!("---------------------");
+    // Print transcription
     println!("{}", result.text);
 
-    //  access token-level timestamps
-    println!("\n\nToken-level Timestamps (first 10):");
-    println!("-----------------------------------");
+    // Access token-level timestamps
+    println!("\nFirst 10 tokens:");
     for token in result.tokens.iter().take(10) {
-        println!(
-            "[{:.3}s - {:.3}s] \"{}\"",
-            token.start, token.end, token.text
-        );
+        println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
     }
-
-    if result.tokens.len() > 10 {
-        println!("... ({} more tokens)", result.tokens.len() - 10);
-    }
-
-    println!("\nTranscription completed successfully!");
 
     Ok(())
 }

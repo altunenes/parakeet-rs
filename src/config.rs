@@ -1,6 +1,4 @@
-use crate::error::Result;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreprocessorConfig {
@@ -24,18 +22,30 @@ pub struct ModelConfig {
     pub pad_token_id: usize,
 }
 
-impl PreprocessorConfig {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        let config: PreprocessorConfig = serde_json::from_str(&content)?;
-        Ok(config)
+impl Default for PreprocessorConfig {
+    fn default() -> Self {
+        Self {
+            feature_extractor_type: "ParakeetFeatureExtractor".to_string(),
+            feature_size: 80,
+            hop_length: 160,
+            n_fft: 512,
+            padding_side: "right".to_string(),
+            padding_value: 0.0,
+            preemphasis: 0.97,
+            processor_class: "ParakeetProcessor".to_string(),
+            return_attention_mask: true,
+            sampling_rate: 16000,
+            win_length: 400,
+        }
     }
 }
 
-impl ModelConfig {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        let config: ModelConfig = serde_json::from_str(&content)?;
-        Ok(config)
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            architectures: vec!["ParakeetForCTC".to_string()],
+            vocab_size: 1025,
+            pad_token_id: 1024,
+        }
     }
 }

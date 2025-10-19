@@ -2,17 +2,9 @@
 [![Rust](https://github.com/altunenes/parakeet-rs/actions/workflows/rust.yml/badge.svg)](https://github.com/altunenes/parakeet-rs/actions/workflows/rust.yml)
 [![crates.io](https://img.shields.io/crates/v/parakeet-rs.svg)](https://crates.io/crates/parakeet-rs)
 
-Rust bindings for NVIDIA's Parakeet ASR model via ONNX Runtime.
+Fast English speech recognition with NVIDIA's Parakeet model via ONNX Runtime.
+Note: CoreML doesn't work with this model - stick w/ CPU or CUDA. But its incredible fast in my Mac M3 16gb compared to Whisper metal :-)
 
-
-GPU support (optional):
-```toml
-parakeet-rs = { version = "0.1", features = ["cuda"] }
-```
-
-Note: CoreML often doesn't work with this model - stick w/ CPU or CUDA. But its incredible fast in my Mac M3 16gb compared to Whisper metal :-)
-
-### Usage
 
 ```rust
 use parakeet_rs::Parakeet;
@@ -21,83 +13,43 @@ let mut parakeet = Parakeet::from_pretrained(".")?;
 let result = parakeet.transcribe("audio.wav")?;
 println!("{}", result.text);
 
-// Access token-level timestamps
+// Token-level timestamps
 for token in result.tokens {
     println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
 }
 ```
 
-GPU:
+## Setup
+
+Download from [HuggingFace](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx): `model.onnx`, `model.onnx_data`, `tokenizer.json`
+
+Quantized versions also available (fp16, int8, q4). All 3 files must be in the same directory.
+
+GPU support:
+```toml
+parakeet-rs = { version = "0.x", features = ["cuda"] }
+```
+
 ```rust
-use parakeet_rs::{Parakeet, ExecutionProvider, ExecutionConfig};
+use parakeet_rs::{ExecutionConfig, ExecutionProvider};
 
-let config = ExecutionConfig::new()
-    .with_execution_provider(ExecutionProvider::Cuda);
-
+let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::Cuda);
 let mut parakeet = Parakeet::from_pretrained_with_config(".", config)?;
 ```
 
-### Model Files
+## Features
 
-Put these in your working directory:
-- `model.onnx` / `model.onnx_data`
-- `config.json`
-- `preprocessor_config.json`
-- `tokenizer.json` / `tokenizer_config.json`
-- `special_tokens_map.json`
+- English transcription with punctuation & capitalization
+- Token-level timestamps from CTC output
+- Batch processing: `transcribe_batch(&["a.wav", "b.wav"])` etc
+- See `examples/pyannote.rs` for speaker diarization + transcription.
 
-Get the model from HuggingFace [here](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx). 
+## Notes
 
-### Audio Format
+- Audio: 16kHz mono WAV (16-bit PCM or 32-bit float)
 
-- WAV files, 16kHz, mono
-- 16-bit PCM or 32-bit float
+## License
 
-### Examples
+Code: MIT OR Apache-2.0
 
-Basic:
-```bash
-cargo run --example transcribe audio.wav
-```
-
-w/ speaker diarization (needs pyannote models):
-```bash
-cargo run --example pyannote audio.wav
-```
-
-### API
-
-```rust
-// Load model
-let mut parakeet = Parakeet::from_pretrained(".")?;
-
-// Transcribe (returns text + token timestamps)
-let result = parakeet.transcribe("audio.wav")?;
-println!("{}", result.text);
-
-// Access timestamps
-for token in &result.tokens {
-    println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
-}
-
-// Batch
-let results = parakeet.transcribe_batch(&["audio1.wav", "audio2.wav"])?;
-for result in results {
-    println!("{}", result.text);
-}
-```
-
-### What it does
-
-- Transcribes speech to text w/ punctuation & capitalization
-
-**Note**: This uses the CTC-based Parakeet model (`nvidia/parakeet-ctc-0.6b`):
-- English only
-- Token-level timestamps supported (CTC frame-level output)
-- For word-level timestamps & speaker diarization, use with pyannote (see example)
-
-#### License
-
-This Rust codebase: **MIT OR Apache-2.0**
-
-FYI: The Parakeet ONNX models (downloaded separately from HuggingFace) are licensed under **CC-BY-4.0** by NVIDIA. This library does not distribute the models. 
+FYI: The Parakeet ONNX models (downloaded separately from HuggingFace) are licensed under **CC-BY-4.0** by NVIDIA. This library does not distribute the models.

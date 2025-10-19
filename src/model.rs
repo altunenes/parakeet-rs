@@ -11,23 +11,22 @@ pub struct ParakeetModel {
 }
 
 impl ParakeetModel {
-    pub fn from_pretrained<P: AsRef<Path>>(model_dir: P) -> Result<Self> {
-        Self::from_pretrained_with_config(model_dir, ExecutionConfig::default())
+    pub fn from_pretrained<P: AsRef<Path>>(model_path: P) -> Result<Self> {
+        Self::from_pretrained_with_config(model_path, ExecutionConfig::default())
     }
 
     pub fn from_pretrained_with_config<P: AsRef<Path>>(
-        model_dir: P,
+        model_path: P,
         exec_config: ExecutionConfig,
     ) -> Result<Self> {
-        let model_dir = model_dir.as_ref();
-        let model_path = model_dir.join("model.onnx");
-        let config_path = model_dir.join("config.json");
+        let model_path = model_path.as_ref();
 
-        let config = ModelConfig::from_file(config_path)?;
+        // Use default config (hardcoded constants for Parakeet-CTC-0.6b: please see: json files https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main)
+        let config = ModelConfig::default();
 
         let builder = Session::builder()?;
         let builder = exec_config.apply_to_session_builder(builder)?;
-        let session = builder.commit_from_file(&model_path)?;
+        let session = builder.commit_from_file(model_path)?;
 
         Ok(Self { session, config })
     }

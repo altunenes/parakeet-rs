@@ -24,30 +24,14 @@ pub struct ParakeetDecoder {
 }
 
 impl ParakeetDecoder {
-    pub fn from_pretrained<P: AsRef<Path>>(model_dir: P) -> Result<Self> {
-        let model_dir = model_dir.as_ref();
-        let tokenizer_path = model_dir.join("tokenizer.json");
-        let config_path = model_dir.join("tokenizer_config.json");
+    pub fn from_pretrained<P: AsRef<Path>>(tokenizer_path: P) -> Result<Self> {
+        let tokenizer_path = tokenizer_path.as_ref();
 
-        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
+        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
             .map_err(|e| Error::Tokenizer(format!("Failed to load tokenizer: {e}")))?;
 
-        let config_content = std::fs::read_to_string(config_path)?;
-        let config: serde_json::Value = serde_json::from_str(&config_content)?;
-
-        let pad_token_id = config
-            .get("added_tokens_decoder")
-            .and_then(|tokens| tokens.as_object())
-            .and_then(|tokens| {
-                tokens.iter().find_map(|(id, token)| {
-                    if token.get("content")?.as_str()? == "<pad>" {
-                        id.parse::<usize>().ok()
-                    } else {
-                        None
-                    }
-                })
-            })
-            .unwrap_or(1024);
+        // Hardcoded pad_token_id for Parakeet-CTC-0.6b (constant across all models: please see def configs jsons: https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main)
+        let pad_token_id = 1024;
 
         Ok(Self {
             tokenizer,
