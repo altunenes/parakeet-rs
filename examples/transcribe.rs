@@ -2,9 +2,15 @@
 transcribes entire audio, no diarization
 wget https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav
 cargo run --example transcribe 6_speakers.wav
+
+Note: The coreml feature flag is only for reproducing a known ONNX Runtime bug.
+Just ignore it :). See: https://github.com/microsoft/onnxruntime/issues/26355
 */
 use parakeet_rs::Parakeet;
 use std::env;
+
+#[cfg(feature = "coreml")]
+use parakeet_rs::{ExecutionConfig, ExecutionProvider};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -13,9 +19,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         "6_speakers.wav"
     };
-    // Load model from current directory (auto-detects with priority: model.onnx > model_fp16.onnx > model_int8.onnx > model_q4.onnx)
-    // Or specify exact model: Parakeet::from_pretrained("model_q4.onnx")
-    let mut parakeet = Parakeet::from_pretrained(".")?;
+
+    // CoreML execution provider is only enabled for bug reproduction purposes
+    // It will fail
+    #[cfg(feature = "coreml")]
+    let mut parakeet = {
+        let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::CoreML);
+        Parakeet::from_pretrained_with_config(".", config)?
+    };
+
+    // Default: CPU execution provider (works correctly)
+    #[cfg(not(feature = "coreml"))]
+    let mut parakeet = {
+        // Load model from current directory (auto-detects with priority: model.onnx > model_fp16.onnx > model_int8.onnx > model_q4.onnx)
+        // Or specify exact model: Parakeet::from_pretrained("model_q4.onnx")
+        Parakeet::from_pretrained(".")?
+    };
 
     let result = parakeet.transcribe(audio_path)?;
 
