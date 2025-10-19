@@ -13,38 +13,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let audio_path = env::args()
         .nth(1)
         .expect("Please specify audio file: cargo run --example pyannote <audio.wav>");
-    println!("================================\n");
-    // Read audio file
-    println!("Reading audio file: {audio_path}");
-    let (samples, sample_rate) = pyannote_rs::read_wav(&audio_path)?;
-    println!(
-        "Sample rate: {}Hz, Samples: {}\n",
-        sample_rate,
-        samples.len()
-    );
 
-    // Configuration
+    let (samples, sample_rate) = pyannote_rs::read_wav(&audio_path)?;
+
     let max_speakers = 6;
     let speaker_threshold = 0.5;
 
-    // Load Parakeet ASR model
-    println!("Loading Parakeet ASR model...");
+    // Load model from current directory (auto-detects with priority: model.onnx > model_fp16.onnx > model_int8.onnx > model_q4.onnx)
+    // Or specify exact model: Parakeet::from_pretrained("model_q4.onnx")
     let mut parakeet = Parakeet::from_pretrained(".")?;
-    println!("✓ Parakeet loaded\n");
 
-    // Load Pyannote models
-    println!("Loading Pyannote diarization models...");
     let mut extractor = EmbeddingExtractor::new("wespeaker_en_voxceleb_CAM++.onnx")?;
     let mut manager = EmbeddingManager::new(max_speakers);
-    println!("✓ Pyannote loaded\n");
 
-    // Get speaker segments
-    println!("Performing speaker diarization...");
     let segments: Vec<_> =
         pyannote_rs::get_segments(&samples, sample_rate, "segmentation-3.0.onnx")?.collect();
-    println!("✓ Found {} segments\n", segments.len());
 
-    println!("Transcribing segments...");
     println!("{}", "=".repeat(80));
 
     // Process each segment
