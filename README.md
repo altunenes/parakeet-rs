@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/parakeet-rs.svg)](https://crates.io/crates/parakeet-rs)
 
 Fast English speech recognition with NVIDIA's Parakeet model via ONNX Runtime.
-Note: CoreML doesn't work with this model - stick w/ CPU or CUDA. But its incredible fast in my Mac M3 16gb compared to Whisper metal :-)
+Note: CoreML doesn't work with this model - stick w/ CPU (or other GPU EP like CUDA). But its incredible fast in my Mac M3 16gb' CPU compared to Whisper metal! :-)
 
 
 ```rust
