@@ -24,15 +24,16 @@ impl Parakeet {
     /// ```no_run
     /// use parakeet_rs::Parakeet;
     ///
-    /// // Simple: load from directory with CPU
+    /// // Load from directory with CPU (default)
     /// let parakeet = Parakeet::from_pretrained(".", None)?;
     ///
-    /// // With GPU: specify execution provider
-    /// use parakeet_rs::{ExecutionConfig, ExecutionProvider};
-    /// let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::Cuda);
-    /// let parakeet = Parakeet::from_pretrained(".", Some(config))?;
+    /// // Or load from specific model file
+    /// let parakeet = Parakeet::from_pretrained("model_q4.onnx", None)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    ///
+    /// For GPU acceleration, enable the corresponding feature (cuda, tensorrt, webgpu, etc.)
+    /// and pass an `ExecutionConfig` with the desired execution provider.
     pub fn from_pretrained<P: AsRef<Path>>(
         path: P,
         config: Option<ExecutionConfig>,
