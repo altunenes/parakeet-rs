@@ -21,20 +21,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // CoreML execution provider is only enabled for bug reproduction purposes
-    // It will fail
     #[cfg(feature = "coreml")]
     let mut parakeet = {
         let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::CoreML);
-        Parakeet::from_pretrained_with_config(".", config)?
+        Parakeet::from_pretrained(".", Some(config))?
     };
 
     // Default: CPU execution provider (works correctly)
+    // Auto-detects model with priority: model.onnx > model_fp16.onnx > model_int8.onnx > model_q4.onnx
+    // Or specify exact model: Parakeet::from_pretrained("model_q4.onnx", None)?
     #[cfg(not(feature = "coreml"))]
-    let mut parakeet = {
-        // Load model from current directory (auto-detects with priority: model.onnx > model_fp16.onnx > model_int8.onnx > model_q4.onnx)
-        // Or specify exact model: Parakeet::from_pretrained("model_q4.onnx")
-        Parakeet::from_pretrained(".")?
-    };
+    let mut parakeet = Parakeet::from_pretrained(".", None)?;
 
     let result = parakeet.transcribe(audio_path)?;
 

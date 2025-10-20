@@ -9,7 +9,8 @@ Note: CoreML doesn't work with this model - stick w/ CPU (or other GPU EP like C
 ```rust
 use parakeet_rs::Parakeet;
 
-let mut parakeet = Parakeet::from_pretrained(".")?;
+//CPU (default)
+let mut parakeet = Parakeet::from_pretrained(".", None)?;
 let result = parakeet.transcribe("audio.wav")?;
 println!("{}", result.text);
 
@@ -25,16 +26,16 @@ Download from [HuggingFace](https://huggingface.co/onnx-community/parakeet-ctc-0
 
 Quantized versions also available (fp16, int8, q4). All 3 files must be in the same directory.
 
-GPU support:
+GPU support (auto-falls back to CPU if fails):
 ```toml
-parakeet-rs = { version = "0.x", features = ["cuda"] }
+parakeet-rs = { version = "0.1", features = ["cuda"] }  # or tensorrt, webgpu, directml, rocm
 ```
 
 ```rust
-use parakeet_rs::{ExecutionConfig, ExecutionProvider};
+use parakeet_rs::{Parakeet, ExecutionConfig, ExecutionProvider};
 
 let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::Cuda);
-let mut parakeet = Parakeet::from_pretrained_with_config(".", config)?;
+let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 ```
 
 ## Features

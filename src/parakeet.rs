@@ -14,13 +14,28 @@ pub struct Parakeet {
 }
 
 impl Parakeet {
-    pub fn from_pretrained<P: AsRef<Path>>(path: P) -> Result<Self> {
-        Self::from_pretrained_with_config(path, ExecutionConfig::default())
-    }
-
-    pub fn from_pretrained_with_config<P: AsRef<Path>>(
+    /// Load Parakeet model from path with optional configuration.
+    ///
+    /// # Arguments
+    /// * `path` - Directory containing model files, or path to specific model file
+    /// * `config` - Optional execution configuration (defaults to CPU if None)
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use parakeet_rs::Parakeet;
+    ///
+    /// // Simple: load from directory with CPU
+    /// let parakeet = Parakeet::from_pretrained(".", None)?;
+    ///
+    /// // With GPU: specify execution provider
+    /// use parakeet_rs::{ExecutionConfig, ExecutionProvider};
+    /// let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::Cuda);
+    /// let parakeet = Parakeet::from_pretrained(".", Some(config))?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn from_pretrained<P: AsRef<Path>>(
         path: P,
-        exec_config: ExecutionConfig,
+        config: Option<ExecutionConfig>,
     ) -> Result<Self> {
         let path = path.as_ref();
 
@@ -53,6 +68,7 @@ impl Parakeet {
         }
 
         let preprocessor_config = PreprocessorConfig::default();
+        let exec_config = config.unwrap_or_default();
 
         let model = ParakeetModel::from_pretrained_with_config(&model_path, exec_config)?;
         let decoder = ParakeetDecoder::from_pretrained(&tokenizer_path)?;

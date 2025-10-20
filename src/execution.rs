@@ -3,11 +3,10 @@ use ort::session::builder::SessionBuilder;
 
 // Hardware acceleration options. CPU is default and most reliable.
 // GPU providers (CUDA, TensorRT, ROCm) offer 5-10x speedup but require specific hardware.
+// All GPU providers automatically fall back to CPU if they fail.
 //
-// CoreML (macOS) currently fails with this model:
-// Error: "Unable to compute the prediction using a neural network model...broken/unsupported model"
-// The Parakeet ONNX contains operations CoreML doesn't support (likely the attention mechanism).
-// This needs to be fixed in a future version - for now just use CPU or CUDA.
+// Note: CoreML currently fails with this model due to unsupported operations.
+// WebGPU is experimental and may produce incorrect results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExecutionProvider {
     #[default]
@@ -24,6 +23,8 @@ pub enum ExecutionProvider {
     ROCm,
     #[cfg(feature = "openvino")]
     OpenVINO,
+    #[cfg(feature = "webgpu")]
+    WebGPU,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +69,16 @@ impl ModelConfig {
         builder: SessionBuilder,
     ) -> Result<SessionBuilder> {
         use ort::session::builder::GraphOptimizationLevel;
+        #[cfg(any(
+            feature = "cuda",
+            feature = "tensorrt",
+            feature = "coreml",
+            feature = "directml",
+            feature = "rocm",
+            feature = "openvino",
+            feature = "webgpu"
+        ))]
+        use ort::execution_providers::CPUExecutionProvider;
 
         let mut builder = builder
             .with_optimization_level(GraphOptimizationLevel::Level3)?
@@ -80,31 +91,48 @@ impl ModelConfig {
             #[cfg(feature = "cuda")]
             ExecutionProvider::Cuda => builder.with_execution_providers([
                 ort::execution_providers::CUDAExecutionProvider::default().build(),
+                CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "tensorrt")]
             ExecutionProvider::TensorRT => builder.with_execution_providers([
                 ort::execution_providers::TensorRTExecutionProvider::default().build(),
+                CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "coreml")]
-            ExecutionProvider::CoreML => builder.with_execution_providers([
-                ort::execution_providers::CoreMLExecutionProvider::default().build(),
-            ])?,
+            ExecutionProvider::CoreML => {
+                use ort::execution_providers::coreml::{CoreMLComputeUnits, CoreMLExecutionProvider};
+                builder.with_execution_providers([
+                    CoreMLExecutionProvider::default()
+                        .with_compute_units(CoreMLComputeUnits::CPUAndGPU)
+                        .build(),
+                    CPUExecutionProvider::default().build().error_on_failure(),
+                ])?
+            }
 
             #[cfg(feature = "directml")]
             ExecutionProvider::DirectML => builder.with_execution_providers([
                 ort::execution_providers::DirectMLExecutionProvider::default().build(),
+                CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "rocm")]
             ExecutionProvider::ROCm => builder.with_execution_providers([
                 ort::execution_providers::ROCMExecutionProvider::default().build(),
+                CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "openvino")]
             ExecutionProvider::OpenVINO => builder.with_execution_providers([
                 ort::execution_providers::OpenVINOExecutionProvider::default().build(),
+                CPUExecutionProvider::default().build().error_on_failure(),
+            ])?,
+
+            #[cfg(feature = "webgpu")]
+            ExecutionProvider::WebGPU => builder.with_execution_providers([
+                ort::execution_providers::WebGPUExecutionProvider::default().build(),
+                CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
         };
 
