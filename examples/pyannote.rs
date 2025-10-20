@@ -20,8 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let speaker_threshold = 0.5;
 
     // Load model from current directory (auto-detects with priority: model.onnx > model_fp16.onnx > model_int8.onnx > model_q4.onnx)
-    // Or specify exact model: Parakeet::from_pretrained("model_q4.onnx")
-    let mut parakeet = Parakeet::from_pretrained(".")?;
+    // Or specify exact model: Parakeet::from_pretrained("model_q4.onnx", None)?
+    let mut parakeet = Parakeet::from_pretrained(".", None)?;
 
     let mut extractor = EmbeddingExtractor::new("wespeaker_en_voxceleb_CAM++.onnx")?;
     let mut manager = EmbeddingManager::new(max_speakers);
