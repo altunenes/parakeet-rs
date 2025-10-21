@@ -46,14 +46,19 @@
 mod audio;
 mod config;
 mod decoder;
+mod decoder_tdt;
 mod error;
 mod execution;
 mod model;
+mod model_tdt;
 mod parakeet;
+mod parakeet_tdt;
+mod vocab;
 
 pub use error::{Error, Result};
 pub use execution::{ExecutionProvider, ModelConfig as ExecutionConfig};
 pub use parakeet::Parakeet;
+pub use parakeet_tdt::ParakeetTDT;
 
 pub use config::{ModelConfig as ModelConfigJson, PreprocessorConfig};
 
