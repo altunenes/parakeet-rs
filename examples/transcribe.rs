@@ -14,11 +14,13 @@ Just ignore it :). See: https://github.com/microsoft/onnxruntime/issues/26355
 */
 use parakeet_rs::Parakeet;
 use std::env;
+use std::time::Instant;
 
 #[cfg(feature = "coreml")]
 use parakeet_rs::{ExecutionConfig, ExecutionProvider};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let start_time = Instant::now();
     let args: Vec<String> = env::args().collect();
     let audio_path = if args.len() > 1 {
         &args[1]
@@ -36,10 +38,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut parakeet = parakeet_rs::ParakeetTDT::from_pretrained("./tdt", Some(config))?;
             let result = parakeet.transcribe(audio_path)?;
             println!("{}", result.text);
+
             println!("\nFirst 10 tokens:");
             for token in result.tokens.iter().take(10) {
                 println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
             }
+
+            let elapsed = start_time.elapsed();
+            println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
             return Ok(());
         }
 
@@ -48,10 +54,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut parakeet = parakeet_rs::ParakeetTDT::from_pretrained("./tdt", None)?;
             let result = parakeet.transcribe(audio_path)?;
             println!("{}", result.text);
+
             println!("\nFirst 10 tokens:");
             for token in result.tokens.iter().take(10) {
                 println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
             }
+
+            let elapsed = start_time.elapsed();
+            println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
             return Ok(());
         }
     }
@@ -79,6 +89,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for token in result.tokens.iter().take(10) {
         println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
     }
+
+    let elapsed = start_time.elapsed();
+    println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
 
     Ok(())
 }

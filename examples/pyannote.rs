@@ -8,43 +8,28 @@ cargo run --example pyannote 6_speakers.wav
 
 TDT (Multilingual):
 cargo run --example pyannote 6_speakers.wav tdt
+
+
 */
 
 use pyannote_rs::{EmbeddingExtractor, EmbeddingManager};
 use std::env;
-
-enum TranscribeModel {
-    CTC(parakeet_rs::Parakeet),
-    TDT(parakeet_rs::ParakeetTDT),
-}
-
-impl TranscribeModel {
-    fn transcribe(&mut self, path: &str) -> parakeet_rs::Result<parakeet_rs::TranscriptionResult> {
-        match self {
-            TranscribeModel::CTC(parakeet) => parakeet.transcribe(path),
-            TranscribeModel::TDT(parakeet) => parakeet.transcribe(path),
-        }
-    }
-}
+use std::time::Instant;
+use hound;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let start_time = Instant::now();
     let args: Vec<String> = env::args().collect();
     let audio_path = args.get(1)
         .expect("Please specify audio file: cargo run --example pyannote <audio.wav> [tdt]");
 
     let use_tdt = args.get(2).map(|s| s.as_str()) == Some("tdt");
 
-    let (samples, sample_rate) = pyannote_rs::read_wav(audio_path)?;
-
     let max_speakers = 6;
     let speaker_threshold = 0.5;
 
-    // Load ASR model - CTC or TDT 
-    let mut parakeet = if use_tdt {
-        TranscribeModel::TDT(parakeet_rs::ParakeetTDT::from_pretrained("./tdt", None)?)
-    } else {
-        TranscribeModel::CTC(parakeet_rs::Parakeet::from_pretrained(".", None)?)
-    };
+   
+    let (samples, sample_rate) = pyannote_rs::read_wav(audio_path)?;
 
     let mut extractor = EmbeddingExtractor::new("wespeaker_en_voxceleb_CAM++.onnx")?;
     let mut manager = EmbeddingManager::new(max_speakers);
@@ -52,26 +37,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let segments: Vec<_> =
         pyannote_rs::get_segments(&samples, sample_rate, "segmentation-3.0.onnx")?.collect();
 
-    println!("{}", "=".repeat(80));
-
-    // Process each segment
-    for (idx, segment_result) in segments.into_iter().enumerate() {
+    // Build speaker map: segment_index -> speaker_label
+    let mut segment_speakers = Vec::new();
+    for segment_result in segments {
         if let Ok(segment) = segment_result {
             let duration = segment.end - segment.start;
-
-            // Skip very short segments (< 0.5s)
             if duration < 0.5 {
                 continue;
             }
 
-            // Check if segment is too long (> 30s recommended for ASR models)
-            let max_duration_secs = 30.0;
-            if duration > max_duration_secs {
-                eprintln!("Warning: Segment {idx} too long ({duration:.1}s), skipping");
-                continue;
-            }
-
-            // Identify speaker
             let speaker = if let Ok(embedding) = extractor.compute(&segment.samples) {
                 if manager.get_all_speakers().len() == max_speakers {
                     manager
@@ -88,93 +62,98 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "UNKNOWN".to_string()
             };
 
-            // Save segment to temporary WAV file
-            let temp_path = format!("/tmp/segment_{idx}.wav");
-            if let Err(e) = save_segment_as_wav(&temp_path, &segment.samples, sample_rate) {
-                eprintln!("Warning: Failed to save segment {idx}: {e}");
+            segment_speakers.push((segment.start, segment.end, speaker));
+        }
+    }
+
+    //Transcribe each speaker segment
+    println!("{}", "=".repeat(80));
+
+    if use_tdt {
+        // TDT: Transcribe each speaker segment
+        let mut parakeet = parakeet_rs::ParakeetTDT::from_pretrained("./tdt", None)?;
+
+        for (seg_start, seg_end, speaker) in &segment_speakers {
+            // Extract segment audio samples
+            let start_sample = (*seg_start * sample_rate as f64) as usize;
+            let end_sample = (*seg_end * sample_rate as f64) as usize;
+
+            if start_sample >= samples.len() || end_sample > samples.len() {
                 continue;
             }
 
-            // Transcribe
-            let result = match parakeet.transcribe(&temp_path) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("Warning: Failed to transcribe segment {idx}: {e}");
-                    let _ = std::fs::remove_file(&temp_path);
-                    continue;
-                }
+            let segment_samples = &samples[start_sample..end_sample];
+
+            // Write segment to temporary file
+            let temp_path = format!("/tmp/segment_{}_{}.wav", seg_start, seg_end);
+            let spec = hound::WavSpec {
+                channels: 1,
+                sample_rate: sample_rate as u32,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
             };
-
-            let _ = std::fs::remove_file(&temp_path);
-
-            // Only print if we got actual text
-            let text = result.text.trim();
-            if !text.is_empty() {
-                println!(
-                    "\n[{:.2}s - {:.2}s] Speaker {speaker}:",
-                    segment.start, segment.end
-                );
-                println!("  {text}");
+            let mut writer = hound::WavWriter::create(&temp_path, spec)?;
+            for &sample in segment_samples {
+                writer.write_sample(sample)?;
             }
+            writer.finalize()?;
+
+            // Transcribe segment
+            if let Ok(result) = parakeet.transcribe(&temp_path) {
+                if !result.text.trim().is_empty() {
+                    println!("\n[{:.2}s - {:.2}s] Speaker {}:", seg_start, seg_end, speaker);
+                    println!("  {}", result.text.trim());
+                }
+            }
+
+            // Clean up temp file
+            let _ = std::fs::remove_file(&temp_path);
+        }
+    } else {
+        // CTC: Transcribe each speaker segment individually
+        let mut parakeet = parakeet_rs::Parakeet::from_pretrained(".", None)?;
+
+        for (seg_start, seg_end, speaker) in &segment_speakers {
+            // Extract segment audio samples
+            let start_sample = (*seg_start * sample_rate as f64) as usize;
+            let end_sample = (*seg_end * sample_rate as f64) as usize;
+
+            if start_sample >= samples.len() || end_sample > samples.len() {
+                continue;
+            }
+
+            let segment_samples = &samples[start_sample..end_sample];
+
+            // Write segment to temporary file
+            let temp_path = format!("/tmp/segment_{}_{}.wav", seg_start, seg_end);
+            let spec = hound::WavSpec {
+                channels: 1,
+                sample_rate: sample_rate as u32,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
+            let mut writer = hound::WavWriter::create(&temp_path, spec)?;
+            for &sample in segment_samples {
+                writer.write_sample(sample)?;
+            }
+            writer.finalize()?;
+
+            // Transcribe segment
+            if let Ok(result) = parakeet.transcribe(&temp_path) {
+                if !result.text.trim().is_empty() {
+                    println!("\n[{:.2}s - {:.2}s] Speaker {}:", seg_start, seg_end, speaker);
+                    println!("  {}", result.text.trim());
+                }
+            }
+
+            // Clean up temp file
+            let _ = std::fs::remove_file(&temp_path);
         }
     }
 
     println!("\n{}", "=".repeat(80));
-    println!("\n✓ Transcription completed!");
+    let elapsed = start_time.elapsed();
+    println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
 
-    Ok(())
-}
-
-/// Save audio segment as WAV file, resampling to 16kHz if needed
-fn save_segment_as_wav(
-    path: &str,
-    samples: &[i16],
-    sample_rate: u32,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use hound::{WavSpec, WavWriter};
-
-    let target_rate = 16000;
-
-    // Check for reasonable segment length (30s max)
-    let max_samples = 16000 * 30;
-    if samples.len() > max_samples * 2 {
-        return Err("Segment too long".into());
-    }
-
-    // Resample if needed
-    let output_samples: Vec<i16> = if sample_rate != target_rate {
-        let ratio = sample_rate as f64 / target_rate as f64;
-        let output_len = (samples.len() as f64 / ratio) as usize;
-
-        if output_len > max_samples {
-            return Err("Resampled segment too long".into());
-        }
-
-        (0..output_len)
-            .map(|i| {
-                let src_idx = (i as f64 * ratio) as usize;
-                samples.get(src_idx).copied().unwrap_or(0)
-            })
-            .collect()
-    } else {
-        if samples.len() > max_samples {
-            return Err("Segment too long".into());
-        }
-        samples.to_vec()
-    };
-
-    let spec = WavSpec {
-        channels: 1,
-        sample_rate: target_rate,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-
-    let mut writer = WavWriter::create(path, spec)?;
-    for &sample in &output_samples {
-        writer.write_sample(sample)?;
-    }
-
-    writer.finalize()?;
     Ok(())
 }
