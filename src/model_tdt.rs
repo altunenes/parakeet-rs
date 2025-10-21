@@ -88,15 +88,15 @@ impl ParakeetTDTModel {
         )))
     }
 
-    /// Run greedy decoding
-    pub fn forward(&mut self, features: Array2<f32>) -> Result<Array2<f32>> {
+    /// Run greedy decoding - returns (token_ids, frame_indices, durations)
+    pub fn forward(&mut self, features: Array2<f32>) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>)> {
         // Run encoder
         let (encoder_out, encoder_len) = self.run_encoder(&features)?;
 
         // Run greedy decoding with decoder_joint
-        let logits = self.greedy_decode(&encoder_out, encoder_len)?;
+        let (tokens, frame_indices, durations) = self.greedy_decode(&encoder_out, encoder_len)?;
 
-        Ok(logits)
+        Ok((tokens, frame_indices, durations))
     }
 
     fn run_encoder(&mut self, features: &Array2<f32>) -> Result<(Array3<f32>, i64)> {
@@ -150,23 +150,25 @@ impl ParakeetTDTModel {
         Ok((encoder_array, lens_data[0]))
     }
 
-    fn greedy_decode(&mut self, encoder_out: &Array3<f32>, _encoder_len: i64) -> Result<Array2<f32>> {
+    fn greedy_decode(&mut self, encoder_out: &Array3<f32>, _encoder_len: i64) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>)> {
         // encoder_out shape: [batch, encoder_dim, time]
         let encoder_dim = encoder_out.shape()[1];
         let time_steps = encoder_out.shape()[2];
         let vocab_size = self.config.vocab_size;
         let max_tokens_per_step = 10;
+        let blank_id = vocab_size - 1;
 
         // States: (num_layers=2, batch=1, hidden_dim=640)
         let mut state_h = Array3::<f32>::zeros((2, 1, 640));
         let mut state_c = Array3::<f32>::zeros((2, 1, 640));
 
         let mut tokens = Vec::new();
-        let mut timestamps = Vec::new();
-        let mut all_logits = Vec::new();
+        let mut frame_indices = Vec::new();
+        let mut durations = Vec::new();
 
         let mut t = 0;
         let mut emitted_tokens = 0;
+        let mut last_emitted_token = blank_id as i32;
 
         // Frame-by-frame RNN-T/TDT greedy decoding
         while t < time_steps {
@@ -177,14 +179,8 @@ impl ParakeetTDTModel {
                 .map_err(|e| Error::Model(format!("Failed to reshape frame: {e}")))?
                 .to_owned();
 
-            // Current token (or blank if no tokens yet)
-            let current_token = if tokens.is_empty() {
-                self.config.vocab_size as i32 - 1  // blank token
-            } else {
-                *tokens.last().unwrap()
-            };
-
-            let targets = Array2::from_shape_vec((1, 1), vec![current_token])
+            // Current token for prediction network
+            let targets = Array2::from_shape_vec((1, 1), vec![last_emitted_token])
                 .map_err(|e| Error::Model(format!("Failed to create targets: {e}")))?;
 
             // Run decoder_joint
@@ -210,7 +206,7 @@ impl ParakeetTDTModel {
                 .enumerate()
                 .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                 .map(|(idx, _)| idx)
-                .unwrap_or(vocab_size - 1);
+                .unwrap_or(blank_id);
 
             let duration_step = if !duration_logits.is_empty() {
                 duration_logits
@@ -223,13 +219,9 @@ impl ParakeetTDTModel {
                 0
             };
 
-            // Store logits for this frame
-            all_logits.push(vocab_logits);
-
             // Check if blank token
-            let blank_id = vocab_size - 1;
             if token_id != blank_id {
-                // Update states
+                // Update states when we emit a token
                 if let Ok((h_shape, h_data)) = outputs["output_states_1"].try_extract_tensor::<f32>() {
                     let dims = h_shape.as_ref();
                     state_h = Array3::from_shape_vec((dims[0] as usize, dims[1] as usize, dims[2] as usize), h_data.to_vec())
@@ -241,25 +233,31 @@ impl ParakeetTDTModel {
                         .map_err(|e| Error::Model(format!("Failed to update state_c: {e}")))?;
                 }
 
-                tokens.push(token_id as i32);
-                timestamps.push(t as i32);
+                tokens.push(token_id);
+                frame_indices.push(t);
+                durations.push(duration_step);
+                last_emitted_token = token_id as i32;
                 emitted_tokens += 1;
+
+                // Don't advance yet - try to emit more tokens from the same frame
+            } else {
+                // Blank token - advance frame pointer
+                // Duration prediction applies when we finally move to next frame after emitting tokens
+                if duration_step > 0 && emitted_tokens > 0 {
+                    t += duration_step;
+                } else {
+                    t += 1;
+                }
+                emitted_tokens = 0;
             }
 
-            // Advance frame pointer
-            if duration_step > 0 {
-                t += duration_step;
-                emitted_tokens = 0;
-            } else if token_id == blank_id || emitted_tokens >= max_tokens_per_step {
+            // Safety check: if we've emitted too many tokens from the same frame, advance
+            if emitted_tokens >= max_tokens_per_step {
                 t += 1;
                 emitted_tokens = 0;
             }
         }
 
-        // Convert to 2D logits array (time_steps x vocab_size)
-        let logits = Array2::from_shape_vec((all_logits.len(), vocab_size), all_logits.concat())
-            .map_err(|e| Error::Model(format!("Failed to create logits array: {e}")))?;
-
-        Ok(logits)
+        Ok((tokens, frame_indices, durations))
     }
 }
