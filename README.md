@@ -57,8 +57,8 @@ let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 
 ## Features
 
-- CTC: English with punctuation & capitalization
-- TDT: 25 languages (bg, hr, cs, da, nl, en, et, fi, fr, de, el, hu, it, lv, lt, mt, pl, pt, ro, sk, sl, es, sv, ru, uk)
+- [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
+- [TDT: Multilingual (auto lang detection) ](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
 - Token-level timestamps
 - Speaker diarization: see `examples/pyannote.rs`
 
