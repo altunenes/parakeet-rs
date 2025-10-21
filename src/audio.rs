@@ -120,7 +120,7 @@ pub fn extract_features(audio_path: &Path, config: &PreprocessorConfig) -> Resul
 
     if spec.sample_rate != config.sampling_rate as u32 {
         return Err(Error::Audio(format!(
-            "Audio sample rate {} doesn't match expected {}",
+            "Audio sample rate {} doesn't match expected {}. Please resample your audio first.",
             spec.sample_rate, config.sampling_rate
         )));
     }

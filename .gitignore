@@ -8,3 +8,5 @@ DS_Store
 *.json
 *.onnx_data
 *.wav
+*.txt
+*.onnx.data
