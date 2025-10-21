@@ -2,15 +2,30 @@
 [![Rust](https://github.com/altunenes/parakeet-rs/actions/workflows/rust.yml/badge.svg)](https://github.com/altunenes/parakeet-rs/actions/workflows/rust.yml)
 [![crates.io](https://img.shields.io/crates/v/parakeet-rs.svg)](https://crates.io/crates/parakeet-rs)
 
-Fast English speech recognition with NVIDIA's Parakeet model via ONNX Runtime.
-Note: CoreML doesn't work with this model - stick w/ CPU (or other GPU EP like CUDA). But its incredible fast in my Mac M3 16gb' CPU compared to Whisper metal! :-)
+Fast speech recognition with NVIDIA's Parakeet models via ONNX Runtime.
+Note: CoreML doesn't stable with this model - stick w/ CPU (or other GPU EP like CUDA). But its incredible fast in my Mac M3 16gb' CPU compared to Whisper metal! :-)
 
+## Models
 
+**CTC (English-only)**: Fast & accurate
 ```rust
 use parakeet_rs::Parakeet;
 
-//CPU (default)
 let mut parakeet = Parakeet::from_pretrained(".", None)?;
+let result = parakeet.transcribe("audio.wav")?;
+println!("{}", result.text);
+
+// Token-level timestamps
+for token in result.tokens {
+    println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
+}
+```
+
+**TDT (Multilingual)**: 25 languages with auto-detection
+```rust
+use parakeet_rs::ParakeetTDT;
+
+let mut parakeet = ParakeetTDT::from_pretrained("./tdt", None)?;
 let result = parakeet.transcribe("audio.wav")?;
 println!("{}", result.text);
 
@@ -22,9 +37,11 @@ for token in result.tokens {
 
 ## Setup
 
-Download from [HuggingFace](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx): `model.onnx`, `model.onnx_data`, `tokenizer.json`
+**CTC**: Download from [HuggingFace](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx): `model.onnx`, `model.onnx_data`, `tokenizer.json`
 
-Quantized versions also available (fp16, int8, q4). All 3 files must be in the same directory.
+**TDT**: Download from [HuggingFace](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx): `encoder-model.onnx`, `encoder-model.onnx.data`, `decoder_joint-model.onnx`, `vocab.txt`
+
+Quantized versions available (int8). All files must be in the same directory.
 
 GPU support (auto-falls back to CPU if fails):
 ```toml
@@ -40,10 +57,10 @@ let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 
 ## Features
 
-- English transcription with punctuation & capitalization
-- Token-level timestamps from CTC output
-- Batch processing: `transcribe_batch(&["a.wav", "b.wav"])` etc
-- See `examples/pyannote.rs` for speaker diarization + transcription.
+- CTC: English with punctuation & capitalization
+- TDT: 25 languages (bg, hr, cs, da, nl, en, et, fi, fr, de, el, hu, it, lv, lt, mt, pl, pt, ro, sk, sl, es, sv, ru, uk)
+- Token-level timestamps
+- Speaker diarization: see `examples/pyannote.rs`
 
 ## Notes
 
