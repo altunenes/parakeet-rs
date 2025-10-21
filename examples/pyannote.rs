@@ -2,26 +2,49 @@
 wget https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/segmentation-3.0.onnx
 wget https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/wespeaker_en_voxceleb_CAM++.onnx
 wget https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav
+
+CTC (English-only):
 cargo run --example pyannote 6_speakers.wav
+
+TDT (Multilingual):
+cargo run --example pyannote 6_speakers.wav tdt
 */
 
-use parakeet_rs::Parakeet;
 use pyannote_rs::{EmbeddingExtractor, EmbeddingManager};
 use std::env;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let audio_path = env::args()
-        .nth(1)
-        .expect("Please specify audio file: cargo run --example pyannote <audio.wav>");
+enum TranscribeModel {
+    CTC(parakeet_rs::Parakeet),
+    TDT(parakeet_rs::ParakeetTDT),
+}
 
-    let (samples, sample_rate) = pyannote_rs::read_wav(&audio_path)?;
+impl TranscribeModel {
+    fn transcribe(&mut self, path: &str) -> parakeet_rs::Result<parakeet_rs::TranscriptionResult> {
+        match self {
+            TranscribeModel::CTC(parakeet) => parakeet.transcribe(path),
+            TranscribeModel::TDT(parakeet) => parakeet.transcribe(path),
+        }
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = env::args().collect();
+    let audio_path = args.get(1)
+        .expect("Please specify audio file: cargo run --example pyannote <audio.wav> [tdt]");
+
+    let use_tdt = args.get(2).map(|s| s.as_str()) == Some("tdt");
+
+    let (samples, sample_rate) = pyannote_rs::read_wav(audio_path)?;
 
     let max_speakers = 6;
     let speaker_threshold = 0.5;
 
-    // Load model from current directory (auto-detects with priority: model.onnx > model_fp16.onnx > model_int8.onnx > model_q4.onnx)
-    // Or specify exact model: Parakeet::from_pretrained("model_q4.onnx", None)?
-    let mut parakeet = Parakeet::from_pretrained(".", None)?;
+    // Load ASR model - CTC or TDT 
+    let mut parakeet = if use_tdt {
+        TranscribeModel::TDT(parakeet_rs::ParakeetTDT::from_pretrained("./tdt", None)?)
+    } else {
+        TranscribeModel::CTC(parakeet_rs::Parakeet::from_pretrained(".", None)?)
+    };
 
     let mut extractor = EmbeddingExtractor::new("wespeaker_en_voxceleb_CAM++.onnx")?;
     let mut manager = EmbeddingManager::new(max_speakers);
