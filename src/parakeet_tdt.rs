@@ -72,13 +72,15 @@ impl ParakeetTDT {
         })
     }
 
-    /// Transcribe audio file
+    /// Transcribe audio file with token-level timestamps
     pub fn transcribe<P: AsRef<Path>>(&mut self, audio_path: P) -> Result<TranscriptionResult> {
         let features = audio::extract_features(audio_path.as_ref(), &self.preprocessor_config)?;
-        let logits = self.model.forward(features)?;
+        let (tokens, frame_indices, durations) = self.model.forward(features)?;
 
         self.decoder.decode_with_timestamps(
-            &logits,
+            &tokens,
+            &frame_indices,
+            &durations,
             self.preprocessor_config.hop_length,
             self.preprocessor_config.sampling_rate,
         )
