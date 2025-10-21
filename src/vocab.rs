@@ -7,7 +7,7 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub struct Vocabulary {
     pub id_to_token: Vec<String>,
-    pub blank_id: usize,
+    pub _blank_id: usize,
 }
 
 impl Vocabulary {
@@ -52,7 +52,7 @@ impl Vocabulary {
 
         Ok(Self {
             id_to_token,
-            blank_id,
+            _blank_id: blank_id,
         })
     }
 
