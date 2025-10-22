@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "coreml"))]
     let mut parakeet = Parakeet::from_pretrained(".", None)?;
 
-    let result = parakeet.transcribe(audio_path)?;
+    let result = parakeet.transcribe_file(audio_path)?;
 
     // Print transcription
     println!("{}", result.text);

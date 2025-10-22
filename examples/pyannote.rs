@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             writer.finalize()?;
 
             // Transcribe segment
-            if let Ok(result) = parakeet.transcribe(&temp_path) {
+            if let Ok(result) = parakeet.transcribe_file(&temp_path) {
                 if !result.text.trim().is_empty() {
                     println!("\n[{:.2}s - {:.2}s] Speaker {}:", seg_start, seg_end, speaker);
                     println!("  {}", result.text.trim());
@@ -145,7 +145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             writer.finalize()?;
 
             // Transcribe segment
-            if let Ok(result) = parakeet.transcribe(&temp_path) {
+            if let Ok(result) = parakeet.transcribe_file(&temp_path) {
                 if !result.text.trim().is_empty() {
                     println!("\n[{:.2}s - {:.2}s] Speaker {}:", seg_start, seg_end, speaker);
                     println!("  {}", result.text.trim());
