@@ -115,9 +115,11 @@ fn create_mel_filterbank(n_fft: usize, n_mels: usize, sample_rate: usize) -> Arr
     filterbank
 }
 
-pub fn extract_features(audio_path: &Path, config: &PreprocessorConfig) -> Result<Array2<f32>> {
-    let (mut audio, spec) = load_audio(audio_path)?;
-
+pub fn extract_features(
+    mut audio: Vec<f32>,
+    spec: WavSpec,
+    config: &PreprocessorConfig,
+) -> Result<Array2<f32>> {
     if spec.sample_rate != config.sampling_rate as u32 {
         return Err(Error::Audio(format!(
             "Audio sample rate {} doesn't match expected {}. Please resample your audio first.",

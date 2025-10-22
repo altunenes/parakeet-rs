@@ -1,3 +1,5 @@
+use hound::WavSpec;
+
 use crate::audio;
 use crate::config::PreprocessorConfig;
 use crate::decoder::{ParakeetDecoder, TranscriptionResult};
@@ -114,9 +116,22 @@ impl Parakeet {
         )))
     }
 
-    pub fn transcribe<P: AsRef<Path>>(&mut self, audio_path: P) -> Result<TranscriptionResult> {
-        let audio_path = audio_path.as_ref();
-        let features = audio::extract_features(audio_path, &self.preprocessor_config)?;
+    /// Transcribes audio samples into a transcription result with timestamps.
+    ///
+    /// # Arguments
+    ///
+    /// * `audio`: A vector of 32-bit floating-point values representing the audio signal.
+    /// * `spec`: WavSpec struct containing information about the waveform (e.g., channels, sample rate).
+    ///
+    /// # Returns
+    ///
+    /// This function returns a `TranscriptionResult` which includes the transcribed text along with durations for timestamping.
+    pub fn transcribe_samples(
+        &mut self,
+        audio: Vec<f32>,
+        spec: WavSpec,
+    ) -> Result<TranscriptionResult> {
+        let features = audio::extract_features(audio, spec, &self.preprocessor_config)?;
         let logits = self.model.forward(features)?;
 
         let result = self.decoder.decode_with_timestamps(
@@ -128,13 +143,41 @@ impl Parakeet {
         Ok(result)
     }
 
-    pub fn transcribe_batch<P: AsRef<Path>>(
+    /// Transcribe an audio file with token-level timestamps
+    ///
+    /// # Arguments
+    ///
+    /// * `audio_path` - A path to the audio file that needs to be transcribed.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a `TranscriptionResult` which includes the transcribed text along with durations for timestamping.
+    pub fn transcribe_file<P: AsRef<Path>>(
+        &mut self,
+        audio_path: P,
+    ) -> Result<TranscriptionResult> {
+        let audio_path = audio_path.as_ref();
+        let (audio, spec) = audio::load_audio(audio_path)?;
+
+        self.transcribe_samples(audio, spec)
+    }
+
+    /// Transcribes multiple audio files in batch.
+    ///
+    /// # Arguments
+    ///
+    /// * `audio_paths`: A slice of paths to the audio files that need to be transcribed.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a `TranscriptionResult` which includes the transcribed text along with durations for timestamping.
+    pub fn transcribe_file_batch<P: AsRef<Path>>(
         &mut self,
         audio_paths: &[P],
     ) -> Result<Vec<TranscriptionResult>> {
         let mut results = Vec::with_capacity(audio_paths.len());
         for path in audio_paths {
-            let result = self.transcribe(path)?;
+            let result = self.transcribe_file(path)?;
             results.push(result);
         }
         Ok(results)
