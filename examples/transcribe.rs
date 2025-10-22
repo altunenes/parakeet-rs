@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::CoreML);
             let mut parakeet = parakeet_rs::ParakeetTDT::from_pretrained("./tdt", Some(config))?;
-            let result = parakeet.transcribe(audio_path)?;
+            let result = parakeet.transcribe_file(audio_path)?;
             println!("{}", result.text);
 
             println!("\nFirst 10 tokens:");
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(not(feature = "coreml"))]
         {
             let mut parakeet = parakeet_rs::ParakeetTDT::from_pretrained("./tdt", None)?;
-            let result = parakeet.transcribe(audio_path)?;
+            let result = parakeet.transcribe_file(audio_path)?;
             println!("{}", result.text);
 
             println!("\nFirst 10 tokens:");
