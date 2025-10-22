@@ -73,10 +73,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // TDT: Transcribe each speaker segment
         let mut parakeet = parakeet_rs::ParakeetTDT::from_pretrained("./tdt", None)?;
 
+        // TDT needs more context than CTC - add padding before/after segments
+        let padding_before = (0.2 * sample_rate as f64) as usize;
+        let padding_after = (0.1 * sample_rate as f64) as usize;
+
         for (seg_start, seg_end, speaker) in &segment_speakers {
-            // Extract segment audio samples
-            let start_sample = (*seg_start * sample_rate as f64) as usize;
-            let end_sample = (*seg_end * sample_rate as f64) as usize;
+            // Extract segment audio samples with padding
+            let start_sample = ((*seg_start * sample_rate as f64) as usize)
+                .saturating_sub(padding_before);
+            let end_sample = (((*seg_end * sample_rate as f64) as usize) + padding_after)
+                .min(samples.len());
 
             if start_sample >= samples.len() || end_sample > samples.len() {
                 continue;
