@@ -12,7 +12,7 @@ Note: CoreML doesn't stable with this model - stick w/ CPU (or other GPU EP like
 use parakeet_rs::Parakeet;
 
 let mut parakeet = Parakeet::from_pretrained(".", None)?;
-let result = parakeet.transcribe("audio.wav")?;
+let result = parakeet.transcribe_file("audio.wav")?;
 println!("{}", result.text);
 
 // Token-level timestamps
@@ -26,7 +26,7 @@ for token in result.tokens {
 use parakeet_rs::ParakeetTDT;
 
 let mut parakeet = ParakeetTDT::from_pretrained("./tdt", None)?;
-let result = parakeet.transcribe("audio.wav")?;
+let result = parakeet.transcribe_file("audio.wav")?;
 println!("{}", result.text);
 
 // Token-level timestamps
