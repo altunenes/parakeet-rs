@@ -22,7 +22,7 @@
 //! let parakeet = Parakeet::from_pretrained(".")?;
 //!
 //! // Transcribe audio file
-//! let text = parakeet.transcribe("audio.wav")?;
+//! let text = parakeet.transcribe_file("audio.wav")?;
 //! println!("Transcription: {}", text);
 //! ```
 //!
