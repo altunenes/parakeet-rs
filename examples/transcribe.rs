@@ -8,6 +8,8 @@ cargo run --example transcribe 6_speakers.wav
 TDT (Multilingual):
 cargo run --example transcribe 6_speakers.wav tdt
 
+WARNING: This may fail on very long audio files (>8 min).
+For longer audio, use the pyannote example which processes segments, or split your audio into chunks.
 
 Note: The coreml feature flag is only for reproducing a known ONNX Runtime bug.
 Just ignore it :). See: https://github.com/microsoft/onnxruntime/issues/26355
