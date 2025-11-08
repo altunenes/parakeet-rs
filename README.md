@@ -32,7 +32,7 @@ let mut parakeet = ParakeetTDT::from_pretrained("./tdt", None)?;
 let result = parakeet.transcribe_file("audio.wav")?;
 println!("{}", result.text);
 
-// Or transcribe in-memory audio (sample_rate: Hz, channels: 1=mono, 2=stereo)
+// Or transcribe in-memory audio
 // let result = parakeet.transcribe_samples(audio, 16000, 1)?;
 
 // Token-level timestamps
