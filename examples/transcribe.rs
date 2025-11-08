@@ -8,8 +8,8 @@ cargo run --example transcribe 6_speakers.wav
 TDT (Multilingual):
 cargo run --example transcribe 6_speakers.wav tdt
 
-NOTE: If you do't want to depend on hound for WavSpec, see examples/raw.rs
-- transcribe_raw() - without WavSpec dependency
+NOTE: For manual audio loading without using transcribe_file(), see examples/raw.rs
+- Shows transcribe_samples(audio, sample_rate, channels) usage
 
 WARNING: This may fail on very long audio files (>8 min).
 For longer audio, use the pyannote example which processes segments, or split your audio into chunks.

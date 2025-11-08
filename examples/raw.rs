@@ -1,7 +1,8 @@
 /*
-Demonstrates using raw audio API (No WavSpec dependency!!)
+Demonstrates using transcribe_samples()
 
-This example shows using transcribe_raw() instead of transcribe_file()
+This example shows manual audio loading and calling transcribe_samples() directly
+with sample_rate and channels instead of using transcribe_file()
 
 Usage:
 cargo run --example raw 6_speakers.wav
@@ -44,8 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Loading TDT model...");
         let mut parakeet = ParakeetTDT::from_pretrained("./tdt", None)?;
 
-        // Use transcribe_raw() -  without WavSpec
-        let result = parakeet.transcribe_raw(audio, spec.sample_rate, spec.channels)?;
+        // Use transcribe_samples() with raw parameters
+        let result = parakeet.transcribe_samples(audio, spec.sample_rate, spec.channels)?;
 
         println!("{}", result.text);
         println!("\nFirst 10 tokens:");
@@ -53,11 +54,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
         }
     } else {
-        // CTC also supports transcribe_raw()
         println!("Loading CTC model...");
         let mut parakeet = Parakeet::from_pretrained(".", None)?;
 
-        let result = parakeet.transcribe_raw(audio, spec.sample_rate, spec.channels)?;
+        // Use transcribe_samples() with raw parameters
+        let result = parakeet.transcribe_samples(audio, spec.sample_rate, spec.channels)?;
 
         println!("{}", result.text);
         println!("\nFirst 10 tokens:");
