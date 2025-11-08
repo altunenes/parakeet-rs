@@ -21,6 +21,10 @@ path = "examples/transcribe.rs"
 name = "pyannote"
 path = "examples/pyannote.rs"
 
+[[example]]
+name = "raw"
+path = "examples/raw.rs"
+
 [dependencies]
 ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }
 hound = "3.5"

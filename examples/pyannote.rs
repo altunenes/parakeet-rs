@@ -9,6 +9,9 @@ cargo run --example pyannote 6_speakers.wav
 TDT (Multilingual):
 cargo run --example pyannote 6_speakers.wav tdt
 
+NOTE: If you do't want to depend on hound for WavSpec, see examples/raw.rs
+- transcribe_raw() - without WavSpec dependency
+
 
 */
 

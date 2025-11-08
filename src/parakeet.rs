@@ -116,22 +116,24 @@ impl Parakeet {
         )))
     }
 
-    /// Transcribes audio samples into a transcription result with timestamps.
+    /// Transcribe raw audio samples without WavSpec.
     ///
     /// # Arguments
     ///
-    /// * `audio`: A vector of 32-bit floating-point values representing the audio signal.
-    /// * `spec`: WavSpec struct containing information about the waveform (e.g., channels, sample rate).
+    /// * `audio` - Audio samples as f32 values
+    /// * `sample_rate` - Sample rate in Hz
+    /// * `channels` - Number of audio channels
     ///
     /// # Returns
     ///
-    /// This function returns a `TranscriptionResult` which includes the transcribed text along with durations for timestamping.
-    pub fn transcribe_samples(
+    /// A `TranscriptionResult` containing the transcribed text and token-level timestamps.
+    pub fn transcribe_raw(
         &mut self,
         audio: Vec<f32>,
-        spec: WavSpec,
+        sample_rate: u32,
+        channels: u16,
     ) -> Result<TranscriptionResult> {
-        let features = audio::extract_features(audio, spec, &self.preprocessor_config)?;
+        let features = audio::extract_features_raw(audio, sample_rate, channels, &self.preprocessor_config)?;
         let logits = self.model.forward(features)?;
 
         let result = self.decoder.decode_with_timestamps(
@@ -141,6 +143,24 @@ impl Parakeet {
         )?;
 
         Ok(result)
+    }
+
+    /// Transcribe audio samples with WavSpec.
+    ///
+    /// # Arguments
+    ///
+    /// * `audio` - Audio samples as f32 values
+    /// * `spec` - WavSpec containing sample rate, channels, etc.
+    ///
+    /// # Returns
+    ///
+    /// A `TranscriptionResult` containing the transcribed text and token-level timestamps.
+    pub fn transcribe_samples(
+        &mut self,
+        audio: Vec<f32>,
+        spec: WavSpec,
+    ) -> Result<TranscriptionResult> {
+        self.transcribe_raw(audio, spec.sample_rate, spec.channels)
     }
 
     /// Transcribe an audio file with token-level timestamps
