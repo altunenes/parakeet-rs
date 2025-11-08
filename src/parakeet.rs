@@ -1,5 +1,3 @@
-use hound::WavSpec;
-
 use crate::audio;
 use crate::config::PreprocessorConfig;
 use crate::decoder::{ParakeetDecoder, TranscriptionResult};
@@ -116,7 +114,7 @@ impl Parakeet {
         )))
     }
 
-    /// Transcribe raw audio samples without WavSpec.
+    /// Transcribe audio samples.
     ///
     /// # Arguments
     ///
@@ -127,7 +125,7 @@ impl Parakeet {
     /// # Returns
     ///
     /// A `TranscriptionResult` containing the transcribed text and token-level timestamps.
-    pub fn transcribe_raw(
+    pub fn transcribe_samples(
         &mut self,
         audio: Vec<f32>,
         sample_rate: u32,
@@ -143,24 +141,6 @@ impl Parakeet {
         )?;
 
         Ok(result)
-    }
-
-    /// Transcribe audio samples with WavSpec.
-    ///
-    /// # Arguments
-    ///
-    /// * `audio` - Audio samples as f32 values
-    /// * `spec` - WavSpec containing sample rate, channels, etc.
-    ///
-    /// # Returns
-    ///
-    /// A `TranscriptionResult` containing the transcribed text and token-level timestamps.
-    pub fn transcribe_samples(
-        &mut self,
-        audio: Vec<f32>,
-        spec: WavSpec,
-    ) -> Result<TranscriptionResult> {
-        self.transcribe_raw(audio, spec.sample_rate, spec.channels)
     }
 
     /// Transcribe an audio file with token-level timestamps
@@ -179,7 +159,7 @@ impl Parakeet {
         let audio_path = audio_path.as_ref();
         let (audio, spec) = audio::load_audio(audio_path)?;
 
-        self.transcribe_samples(audio, spec)
+        self.transcribe_samples(audio, spec.sample_rate, spec.channels)
     }
 
     /// Transcribes multiple audio files in batch.

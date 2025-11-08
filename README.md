@@ -15,6 +15,9 @@ let mut parakeet = Parakeet::from_pretrained(".", None)?;
 let result = parakeet.transcribe_file("audio.wav")?;
 println!("{}", result.text);
 
+// Or transcribe in-memory audio
+// let result = parakeet.transcribe_samples(audio, 16000, 1)?;
+
 // Token-level timestamps
 for token in result.tokens {
     println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
@@ -28,6 +31,9 @@ use parakeet_rs::ParakeetTDT;
 let mut parakeet = ParakeetTDT::from_pretrained("./tdt", None)?;
 let result = parakeet.transcribe_file("audio.wav")?;
 println!("{}", result.text);
+
+// Or transcribe in-memory audio
+// let result = parakeet.transcribe_samples(audio, 16000, 1)?;
 
 // Token-level timestamps
 for token in result.tokens {
