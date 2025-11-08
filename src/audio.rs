@@ -115,22 +115,35 @@ fn create_mel_filterbank(n_fft: usize, n_mels: usize, sample_rate: usize) -> Arr
     filterbank
 }
 
-pub fn extract_features(
+/// Extract mel spectrogram features from raw audio samples.
+///
+/// # Arguments
+///
+/// * `audio` - Audio samples as f32 values
+/// * `sample_rate` - Sample rate in Hz
+/// * `channels` - Number of audio channels
+/// * `config` - Preprocessor configuration
+///
+/// # Returns
+///
+/// 2D array of mel spectrogram features (time_steps x feature_size)
+pub fn extract_features_raw(
     mut audio: Vec<f32>,
-    spec: WavSpec,
+    sample_rate: u32,
+    channels: u16,
     config: &PreprocessorConfig,
 ) -> Result<Array2<f32>> {
-    if spec.sample_rate != config.sampling_rate as u32 {
+    if sample_rate != config.sampling_rate as u32 {
         return Err(Error::Audio(format!(
             "Audio sample rate {} doesn't match expected {}. Please resample your audio first.",
-            spec.sample_rate, config.sampling_rate
+            sample_rate, config.sampling_rate
         )));
     }
 
-    if spec.channels > 1 {
+    if channels > 1 {
         let mono: Vec<f32> = audio
-            .chunks(spec.channels as usize)
-            .map(|chunk| chunk.iter().sum::<f32>() / spec.channels as f32)
+            .chunks(channels as usize)
+            .map(|chunk| chunk.iter().sum::<f32>() / channels as f32)
             .collect();
         audio = mono;
     }
