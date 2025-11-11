@@ -53,12 +53,14 @@ mod model;
 mod model_tdt;
 mod parakeet;
 mod parakeet_tdt;
+mod timestamps;
 mod vocab;
 
 pub use error::{Error, Result};
 pub use execution::{ExecutionProvider, ModelConfig as ExecutionConfig};
 pub use parakeet::Parakeet;
 pub use parakeet_tdt::ParakeetTDT;
+pub use timestamps::TimestampMode;
 
 pub use config::{ModelConfig as ModelConfigJson, PreprocessorConfig};
 
