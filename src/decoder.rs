@@ -155,22 +155,38 @@ impl ParakeetDecoder {
             .decode(&token_ids, true)
             .map_err(|e| Error::Tokenizer(format!("Failed to decode: {e}")))?;
 
-        // Decode individual tokens with timestamps
+        // Progressive decode to detect word boundaries
+        // BPE tokenizers only add spaces when decoding sequences, not individual tokens
         let mut timed_tokens = Vec::new();
-        for (token_id, start_frame, end_frame) in collapsed_with_frames {
-            // Decode single token
-            if let Ok(token_text) = self.tokenizer.decode(&[token_id], false) {
-                let token_text = token_text.trim();
-                if !token_text.is_empty() {
-                    let start_time = (start_frame * hop_length) as f32 / sample_rate as f32;
-                    let end_time = (end_frame * hop_length) as f32 / sample_rate as f32;
+        let mut prev_decode = String::new();
+
+        for (i, (_token_id, start_frame, end_frame)) in collapsed_with_frames.iter().enumerate() {
+            // Decode from start up to and including current token
+            let token_ids_so_far: Vec<u32> = collapsed_with_frames[0..=i]
+                .iter()
+                .map(|(id, _, _)| *id)
+                .collect();
+
+            if let Ok(curr_decode) = self.tokenizer.decode(&token_ids_so_far, true) {
+                // Find what this token added
+                let added_text = if curr_decode.len() > prev_decode.len() {
+                    &curr_decode[prev_decode.len()..]
+                } else {
+                    ""
+                };
+
+                if !added_text.is_empty() {
+                    let start_time = (*start_frame * hop_length) as f32 / sample_rate as f32;
+                    let end_time = (*end_frame * hop_length) as f32 / sample_rate as f32;
 
                     timed_tokens.push(TimedToken {
-                        text: token_text.to_string(),
+                        text: added_text.to_string(),
                         start: start_time,
                         end: end_time,
                     });
                 }
+
+                prev_decode = curr_decode;
             }
         }
 
