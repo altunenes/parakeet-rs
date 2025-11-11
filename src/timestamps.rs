@@ -177,6 +177,8 @@ fn group_by_sentences(tokens: &[TimedToken]) -> Vec<TimedToken> {
 }
 
 // Remove consecutive duplicate words from a sentence
+// Note we can discuss this: because also removes intentional repetitions (e.g., "very very good" → "very good")
+// but this tradeoff is acceptable as model artifacts are far more common... (at least based on my experience)
 fn deduplicate_words(words: &[TimedToken]) -> String {
     let mut result = Vec::new();
     let mut prev_lower = String::new();
