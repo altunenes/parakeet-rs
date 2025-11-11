@@ -149,8 +149,7 @@ fn group_by_sentences(tokens: &[TimedToken]) -> Vec<TimedToken> {
             || word.text.contains('!');
 
         if ends_sentence {
-            // Build sentence with deduplication
-            let sentence_text = deduplicate_words(&current_sentence);
+            let sentence_text = format_sentence(&current_sentence);
             let start = current_sentence.first().unwrap().start;
             let end = current_sentence.last().unwrap().end;
 
@@ -167,7 +166,7 @@ fn group_by_sentences(tokens: &[TimedToken]) -> Vec<TimedToken> {
 
     // Add final sentence if exists
     if !current_sentence.is_empty() {
-        let sentence_text = deduplicate_words(&current_sentence);
+        let sentence_text = format_sentence(&current_sentence);
         let start = current_sentence.first().unwrap().start;
         let end = current_sentence.last().unwrap().end;
 
@@ -183,20 +182,9 @@ fn group_by_sentences(tokens: &[TimedToken]) -> Vec<TimedToken> {
     sentences
 }
 
-// Remove consecutive duplicate words from a sentence
-// Note we can discuss this: because also removes intentional repetitions (e.g., "very very good" → "very good")
-// but this tradeoff is acceptable as model artifacts are far more common... (at least based on my experience)
-fn deduplicate_words(words: &[TimedToken]) -> String {
-    let mut result = Vec::new();
-    let mut prev_lower = String::new();
-
-    for word in words {
-        let word_lower = word.text.to_lowercase();
-        if word_lower != prev_lower {
-            result.push(word.text.as_str());
-            prev_lower = word_lower;
-        }
-    }
+// Join words with punctuation spacing
+fn format_sentence(words: &[TimedToken]) -> String {
+    let result: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
 
     // Join words, but don't add space before certain punctuation
     let mut output = String::new();
@@ -267,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deduplication() {
+    fn test_repetition_preservation() {
         let words = vec![
             TimedToken {
                 text: "uh".to_string(),
@@ -286,7 +274,7 @@ mod tests {
             },
         ];
 
-        let result = deduplicate_words(&words);
-        assert_eq!(result, "uh hello");
+        let result = format_sentence(&words);
+        assert_eq!(result, "uh uh hello");
     }
 }
