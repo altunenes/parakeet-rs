@@ -5,6 +5,7 @@ use crate::decoder_tdt::ParakeetTDTDecoder;
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model_tdt::ParakeetTDTModel;
+use crate::timestamps::{process_timestamps, TimestampMode};
 use crate::vocab::Vocabulary;
 use std::path::{Path, PathBuf};
 
@@ -79,45 +80,61 @@ impl ParakeetTDT {
     /// * `audio` - Audio samples as f32 values
     /// * `sample_rate` - Sample rate in Hz
     /// * `channels` - Number of audio channels
+    /// * `mode` - Optional timestamp mode (Token, Word, or Segment)
     ///
     /// # Returns
     ///
-    /// A `TranscriptionResult` containing the transcribed text and token-level timestamps.
+    /// A `TranscriptionResult` containing the transcribed text and timestamps at the requested mode.
     pub fn transcribe_samples(
         &mut self,
         audio: Vec<f32>,
         sample_rate: u32,
         channels: u16,
+        mode: Option<TimestampMode>,
     ) -> Result<TranscriptionResult> {
         let features = audio::extract_features_raw(audio, sample_rate, channels, &self.preprocessor_config)?;
         let (tokens, frame_indices, durations) = self.model.forward(features)?;
 
-        self.decoder.decode_with_timestamps(
+        let mut result = self.decoder.decode_with_timestamps(
             &tokens,
             &frame_indices,
             &durations,
             self.preprocessor_config.hop_length,
             self.preprocessor_config.sampling_rate,
-        )
+        )?;
+
+        // Apply timestamp mode conversion
+        let mode = mode.unwrap_or(TimestampMode::Tokens);
+        result.tokens = process_timestamps(&result.tokens, mode);
+
+        // Rebuild full text from processed tokens
+        result.text = result.tokens.iter()
+            .map(|t| t.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        Ok(result)
     }
 
-    /// Transcribe an audio file with token-level timestamps
+    /// Transcribe an audio file with timestamps
     ///
     /// # Arguments
     ///
     /// * `audio_path` - A path to the audio file that needs to be transcribed.
+    /// * `mode` - Optional timestamp mode (Token, Word, or Segment)
     ///
     /// # Returns
     ///
-    /// This function returns a `TranscriptionResult` which includes the transcribed text along with durations for timestamping.
+    /// This function returns a `TranscriptionResult` which includes the transcribed text along with timestamps at the requested mode.
     pub fn transcribe_file<P: AsRef<Path>>(
         &mut self,
         audio_path: P,
+        mode: Option<TimestampMode>,
     ) -> Result<TranscriptionResult> {
         let audio_path = audio_path.as_ref();
         let (audio, spec) = audio::load_audio(audio_path)?;
 
-        self.transcribe_samples(audio, spec.sample_rate, spec.channels)
+        self.transcribe_samples(audio, spec.sample_rate, spec.channels, mode)
     }
 
     /// Transcribes multiple audio files in batch.
@@ -125,17 +142,19 @@ impl ParakeetTDT {
     /// # Arguments
     ///
     /// * `audio_paths`: A slice of paths to the audio files that need to be transcribed.
+    /// * `mode` - Optional timestamp mode (Token, Word, or Segment)
     ///
     /// # Returns
     ///
-    /// This function returns a `TranscriptionResult` which includes the transcribed text along with durations for timestamping.
+    /// This function returns a `TranscriptionResult` which includes the transcribed text along with timestamps at the requested mode.
     pub fn transcribe_file_batch<P: AsRef<Path>>(
         &mut self,
         audio_paths: &[P],
+        mode: Option<TimestampMode>,
     ) -> Result<Vec<TranscriptionResult>> {
         let mut results = Vec::with_capacity(audio_paths.len());
         for path in audio_paths {
-            let result = self.transcribe_file(path)?;
+            let result = self.transcribe_file(path, mode)?;
             results.push(result);
         }
         Ok(results)
