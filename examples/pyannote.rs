@@ -10,7 +10,7 @@ TDT (Multilingual):
 cargo run --example pyannote 6_speakers.wav tdt
 
 NOTE: This example demonstrates pyannote for speaker diarization (speaker identification),
-but uses Parakeet's Sentences-level timestamps. you can directly use pyannote's timestamps also.
+but uses Parakeet's Sentences-level timestamps. you can directly use pyannote's timestamps also
 Pyannote's rust version is still experimental, please check this for further discussions:
 https://github.com/thewh1teagle/pyannote-rs/pull/24
 
@@ -127,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         writer.finalize()?;
 
-        // Transcribe with Sentences granularity - this gives better timestamps!
+        // Transcribe with timestamps
         if let Ok(result) = parakeet.transcribe_file(temp_path, Some(TimestampMode::Sentences)) {
             // For each transcription segment, find the corresponding speaker
             for segment in &result.tokens {
