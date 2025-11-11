@@ -72,12 +72,19 @@ fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
 
         // Check if this starts a new word (SentencePiece uses ▁ or space prefix)
         // Also treat PURE punctuation marks (like ".", ",") as separate words
-        // But NOT contractions like "'re" or "'s" which mix punctuation with letters
+        // But NOT contractions like "'re" or "'s" which should attach to previous word
         let is_pure_punctuation = !token.text.is_empty() &&
             token.text.chars().all(|c| c.is_ascii_punctuation());
-        let starts_word = token.text.starts_with('▁')
+
+        // Check if this is a contraction suffix
+        // These should NOT start a new word - they attach to the previous word
+        let token_without_marker = token.text.trim_start_matches('▁').trim_start_matches(' ');
+        let is_contraction = token_without_marker.starts_with('\'');
+
+        let starts_word = (token.text.starts_with('▁')
             || token.text.starts_with(' ')
-            || is_pure_punctuation
+            || is_pure_punctuation)
+            && !is_contraction
             || i == 0;
 
         if starts_word && !current_word_text.is_empty() {
