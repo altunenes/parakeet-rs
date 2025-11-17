@@ -61,12 +61,33 @@ let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::C
 let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 ```
 
+**Sortformer (Speaker Diarization)**: NVIDIA's 4-speaker diarization
+
+Enable the feature:
+```toml
+parakeet-rs = { version = "0.2", features = ["sortformer"] }
+```
+
+```rust
+#[cfg(feature = "sortformer")]
+use parakeet_rs::sortformer::Sortformer;
+let audio: Vec<f32> = 
+// Perform diarization
+let mut sortformer = Sortformer::new("diar_sortformer_4spk-v1.onnx")?;
+let segments = sortformer.diarize(audio, 16000, 1)?;
+for seg in segments {
+    println!("Speaker {} [{:.2}s - {:.2}s]", seg.speaker_id, seg.start, seg.end);
+}
+```
+
+See `examples/diarization.rs` for combining with TDT transcription.
+
 ## Features
 
 - [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
 - [TDT: Multilingual (auto lang detection) ](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
+- [Sortformer: Speaker diarization (up to 4 speakers)](https://huggingface.co/altunenes/parakeet-rs)
 - Token-level timestamps
-- Speaker diarization: see `examples/pyannote.rs`
 
 ## Notes
 

@@ -56,6 +56,9 @@ mod parakeet_tdt;
 mod timestamps;
 mod vocab;
 
+#[cfg(feature = "sortformer")]
+pub mod sortformer;
+
 pub use error::{Error, Result};
 pub use execution::{ExecutionProvider, ModelConfig as ExecutionConfig};
 pub use parakeet::Parakeet;
