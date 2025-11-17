@@ -1,6 +1,6 @@
 [package]
 name = "parakeet-rs"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["altunenes"]
 description = "Fast English ASR with NVIDIA Parakeet via ONNX"
@@ -18,8 +18,8 @@ name = "transcribe"
 path = "examples/transcribe.rs"
 
 [[example]]
-name = "pyannote"
-path = "examples/pyannote.rs"
+name = "diarization"
+path = "examples/diarization.rs"
 
 [[example]]
 name = "raw"
@@ -48,3 +48,4 @@ directml = ["ort/directml"]
 rocm = ["ort/rocm"]
 openvino = ["ort/openvino"]
 webgpu = ["ort/webgpu"]
+sortformer = []
