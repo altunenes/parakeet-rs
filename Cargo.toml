@@ -36,7 +36,6 @@ serde_json = "1.0"
 rustfft = "6.4"
 
 [dev-dependencies]
-pyannote-rs = "0.3.4"
 
 [features]
 default = ["cpu"]
