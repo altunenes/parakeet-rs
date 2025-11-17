@@ -86,7 +86,7 @@ See `examples/diarization.rs` for combining with TDT transcription.
 
 - [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
 - [TDT: Multilingual (auto lang detection) ](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
-- [Sortformer: Speaker diarization (up to 4 speakers)](https://huggingface.co/altunenes/parakeet-rs)
+- [Sortformer: Speaker diarization (up to 4 speakers)](https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_sortformer_4spk-v1.onnx)
 - Token-level timestamps
 
 ## Notes
