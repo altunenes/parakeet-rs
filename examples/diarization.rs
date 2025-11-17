@@ -11,9 +11,29 @@ cargo run --example diarization --features sortformer 6_speakers.wav
 NOTE: This example combines two NVIDIA models:
 - Parakeet-TDT: Provides transcription with sentence-level timestamps
 - Sortformer: Provides speaker identification (4 speakers max)
-
 - We use TDT's sentence timestamps + Sortformer's speaker IDs
 - Even if Sortformer can't detect a segment, we still get the transcription (marked UNKNOWN)
+
+MEMORY LIMITATION (Sortformer v1 Model):
+This model has significant memory requirements that increase with audio duration.
+According to NVIDIA's official documentation:
+  "The maximum duration of a test recording depends on available GPU memory.
+   For an RTX A6000 48GB model, the limit is around 12 minutes."
+
+Expected memory usage (based on my tests):
+  • 5 minutes:  ~8-10 GB RAM
+  • 10 minutes: ~15-17 GB RAM
+  • 15+ minutes: Will likely crash on systems with <32GB RAM
+
+This is a known limitation of the Sortformer v1 model architecture.
+For long audio files, consider:
+  - Processing shorter segments separately
+
+NOTE: We could reduce RAM usage by increasing HOP_LENGTH in src/sortformer.rs (e.g., 160→320),
+which would cut memory in half. However, this breaks the model's expected input format since
+it was trained with specific NeMo preprocessing parameters. The quality degrades and we'd still
+hit the model's inherent sequence length limits. Rather than fighting the model's architecture
+with workarounds, it's better to wait for NVIDIA's next generation models with improved efficiency.
 
 */
 
