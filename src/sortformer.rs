@@ -16,7 +16,7 @@
 
 use crate::error::{Error, Result};
 use ndarray::{s, Array1, Array2, Array3};
-use ort::session::Session;
+use ort::session::{builder::GraphOptimizationLevel, Session};
 use rustfft::{num_complex::Complex, FftPlanner};
 use std::f32::consts::PI;
 use std::path::Path;
@@ -50,7 +50,11 @@ pub struct Sortformer {
 impl Sortformer {
     /// a new Sortformer instance from ONNX model path
     pub fn new<P: AsRef<Path>>(model_path: P) -> Result<Self> {
-        let session = Session::builder()?.commit_from_file(model_path)?;
+        let session = Session::builder()?
+            .with_optimization_level(GraphOptimizationLevel::Level3)?
+            .with_intra_threads(4)?
+            .with_inter_threads(1)?
+            .commit_from_file(model_path)?;
 
         Ok(Self { session })
     }
