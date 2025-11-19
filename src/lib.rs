@@ -55,7 +55,8 @@ mod parakeet;
 mod parakeet_tdt;
 mod timestamps;
 mod vocab;
-
+mod model_eou;
+mod parakeet_eou;
 #[cfg(feature = "sortformer")]
 pub mod sortformer;
 
@@ -69,3 +70,5 @@ pub use config::{ModelConfig as ModelConfigJson, PreprocessorConfig};
 
 pub use decoder::{ParakeetDecoder, TimedToken, TranscriptionResult};
 pub use model::ParakeetModel;
+pub use model_eou::ParakeetEOUModel;
+pub use parakeet_eou::ParakeetEOU;
