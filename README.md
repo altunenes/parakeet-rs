@@ -41,11 +41,30 @@ for token in result.tokens {
 }
 ```
 
+**EOU (Streaming)**: Real-time ASR with end-of-utterance detection
+```rust
+use parakeet_rs::ParakeetEOU;
+
+let mut parakeet = ParakeetEOU::from_pretrained("./eou", None)?;
+
+// Prepare your audio (Vec<f32>, 16kHz mono, normalized)
+let audio: Vec<f32> = /* your audio samples */;
+
+// Process in 160ms chunks for streaming
+const CHUNK_SIZE: usize = 2560; // 160ms at 16kHz
+for chunk in audio.chunks(CHUNK_SIZE) {
+    let text = parakeet.transcribe(chunk, false)?;
+    print!("{}", text);
+}
+```
+
 ## Setup
 
 **CTC**: Download from [HuggingFace](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx): `model.onnx`, `model.onnx_data`, `tokenizer.json`
 
 **TDT**: Download from [HuggingFace](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx): `encoder-model.onnx`, `encoder-model.onnx.data`, `decoder_joint-model.onnx`, `vocab.txt`
+
+**EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`
 
 Quantized versions available (int8). All files must be in the same directory.
 
@@ -86,8 +105,9 @@ See `examples/diarization.rs` for combining with TDT transcription.
 
 - [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
 - [TDT: Multilingual (auto lang detection) ](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
+- [EOU: Streaming ASR with end-of-utterance detection](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1)
 - [Sortformer: Speaker diarization (up to 4 speakers)](https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_sortformer_4spk-v1.onnx)
-- Token-level timestamps
+- Token-level timestamps (CTC, TDT)
 
 ## Notes
 
