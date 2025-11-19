@@ -66,6 +66,8 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 
 **EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`
 
+**Diarization**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_sortformer_4spk-v1.onnx): `diar_sortformer_4spk-v1.onnx`
+
 Quantized versions available (int8). All files must be in the same directory.
 
 GPU support (auto-falls back to CPU if fails):
