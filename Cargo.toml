@@ -1,6 +1,6 @@
 [package]
 name = "parakeet-rs"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["altunenes"]
 description = "Fast English ASR with NVIDIA Parakeet via ONNX"
@@ -24,6 +24,10 @@ path = "examples/diarization.rs"
 [[example]]
 name = "raw"
 path = "examples/raw.rs"
+
+[[example]]
+name = "streaming"
+path = "examples/streaming.rs"
 
 [dependencies]
 ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }
