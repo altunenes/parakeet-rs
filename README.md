@@ -58,6 +58,28 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 }
 ```
 
+**Sortformer (Speaker Diarization)**: NVIDIA's 4-speaker diarization
+
+Enable the feature:
+```toml
+parakeet-rs = { version = "0.2", features = ["sortformer"] }
+```
+
+```rust
+#[cfg(feature = "sortformer")]
+use parakeet_rs::sortformer::Sortformer;
+let audio: Vec<f32> = 
+// Perform diarization
+let mut sortformer = Sortformer::new("diar_sortformer_4spk-v1.onnx")?;
+let segments = sortformer.diarize(audio, 16000, 1)?;
+for seg in segments {
+    println!("Speaker {} [{:.2}s - {:.2}s]", seg.speaker_id, seg.start, seg.end);
+}
+```
+
+See `examples/diarization.rs` for combining with TDT transcription.
+
+
 ## Setup
 
 **CTC**: Download from [HuggingFace](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx): `model.onnx`, `model.onnx_data`, `tokenizer.json`
@@ -82,26 +104,6 @@ let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::C
 let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 ```
 
-**Sortformer (Speaker Diarization)**: NVIDIA's 4-speaker diarization
-
-Enable the feature:
-```toml
-parakeet-rs = { version = "0.2", features = ["sortformer"] }
-```
-
-```rust
-#[cfg(feature = "sortformer")]
-use parakeet_rs::sortformer::Sortformer;
-let audio: Vec<f32> = 
-// Perform diarization
-let mut sortformer = Sortformer::new("diar_sortformer_4spk-v1.onnx")?;
-let segments = sortformer.diarize(audio, 16000, 1)?;
-for seg in segments {
-    println!("Speaker {} [{:.2}s - {:.2}s]", seg.speaker_id, seg.start, seg.end);
-}
-```
-
-See `examples/diarization.rs` for combining with TDT transcription.
 
 ## Features
 
