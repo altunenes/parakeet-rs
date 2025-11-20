@@ -1,6 +1,9 @@
 /*
 Demonstrates streaming ASR with Parakeet RealTime EOU
 
+Download models files from:
+https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx
+
 This example 
 - Maintains 4-second ring buffer for feature extraction context
 - Processes 160ms chunks (2560 samples at 16kHz)
