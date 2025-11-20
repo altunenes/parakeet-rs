@@ -1,14 +1,13 @@
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
-use crate::model_eou::ParakeetEOUModel;
+use crate::model_eou::{EncoderCache, ParakeetEOUModel};
 use ndarray::{s, Array2, Array3};
 use rustfft::{num_complex::Complex, FftPlanner};
+use std::collections::VecDeque;
 use std::f32::consts::PI;
 use std::path::Path;
 
 const SAMPLE_RATE: usize = 16000;
-const BUFFER_SIZE: usize = (4.0 * SAMPLE_RATE as f32) as usize;
-const ENCODER_STRIDE: f32 = 0.08;
 
 const N_FFT: usize = 512;
 const WIN_LENGTH: usize = 400;
@@ -19,10 +18,11 @@ const LOG_ZERO_GUARD: f32 = 5.960464478e-8;
 const FMAX: f32 = 8000.0;
 
 /// Parakeet RealTime EOU model for streaming ASR with end-of-utterance detection.
+/// Uses cache-aware streaming with audio buffering for pre-encode context.
 pub struct ParakeetEOU {
     model: ParakeetEOUModel,
     tokenizer: tokenizers::Tokenizer,
-    audio_buffer: Vec<f32>,
+    encoder_cache: EncoderCache,
     state_h: Array3<f32>,
     state_c: Array3<f32>,
     last_token: Array2<i32>,
@@ -30,6 +30,8 @@ pub struct ParakeetEOU {
     eou_id: i32,
     mel_basis: Array2<f32>,
     window: Vec<f32>,
+    audio_buffer: VecDeque<f32>,
+    buffer_size_samples: usize,
 }
 
 impl ParakeetEOU {
@@ -52,10 +54,15 @@ impl ParakeetEOU {
         let exec_config = config.unwrap_or_default();
         let model = ParakeetEOUModel::from_pretrained(path, exec_config)?;
 
+        // Buffer size: 4 seconds of audio
+        // Provides long history for feature extraction context
+        // Note that, I pick those "magic numbers" by looking NeMo's ring buffer approach.
+        let buffer_size_samples = SAMPLE_RATE * 4;  // 4 seconds = 64000 samples
+
         Ok(Self {
             model,
             tokenizer,
-            audio_buffer: vec![0.0; BUFFER_SIZE],
+            encoder_cache: EncoderCache::new(),
             state_h: Array3::zeros((1, 1, 640)),
             state_c: Array3::zeros((1, 1, 640)),
             last_token: Array2::from_elem((1, 1), blank_id),
@@ -63,6 +70,8 @@ impl ParakeetEOU {
             eou_id,
             mel_basis: Self::create_mel_filterbank(),
             window: Self::create_window(),
+            audio_buffer: VecDeque::with_capacity(buffer_size_samples),
+            buffer_size_samples,
         })
     }
 
@@ -71,24 +80,59 @@ impl ParakeetEOU {
     /// # Arguments
     /// * `chunk` - Audio chunk (typically 160ms / 2560 samples at 16kHz)
     /// * `reset_on_eou` - If true, reset decoder state when end-of-utterance is detected
+    ///
+    /// # Streaming Behavior
+    /// Cache-aware streaming
+    /// - Maintains 4-second ring buffer for feature extraction context
+    /// - Extracts features from full buffer
+    /// - Slices last (pre_encode_cache + new_frames) for encoder input
+    /// - pre_encode_cache=9 frames, new_frames=~16, total=~25 frames to encoder
     pub fn transcribe(&mut self, chunk: &[f32], reset_on_eou: bool) -> Result<String> {
-        let keep_len = self.audio_buffer.len().saturating_sub(chunk.len());
-        self.audio_buffer.copy_within(chunk.len().., 0);
-        self.audio_buffer[keep_len..].copy_from_slice(chunk);
+        // Add new chunk to rolling buffer
+        self.audio_buffer.extend(chunk.iter().copied());
 
-        let features = self.extract_mel_features(&self.audio_buffer);
-        let time_steps = features.shape()[2];
-        let encoder_out = self.model.run_encoder(&features, time_steps as i64)?;
+        // Trim buffer to keep only the most recent samples
+        while self.audio_buffer.len() > self.buffer_size_samples {
+            self.audio_buffer.pop_front();
+        }
 
-        let chunk_frames = (chunk.len() as f32 / SAMPLE_RATE as f32 / ENCODER_STRIDE).round() as usize;
-        let total_frames = encoder_out.shape()[2];
-        if chunk_frames == 0 || total_frames < 4 {
+        // Wait until buffer has minimum samples (at least 1 second for stable features)
+        const MIN_BUFFER_SAMPLES: usize = SAMPLE_RATE;  // 1 second
+        if self.audio_buffer.len() < MIN_BUFFER_SAMPLES {
             return Ok(String::new());
         }
 
-        let start_idx = total_frames - 4;
-        let end_idx = total_frames - 2;
-        let new_frames = encoder_out.slice(s![.., .., start_idx..end_idx]);
+        // Extract features from FULL buffer (provides context for feature extraction)
+        let buffer_slice: Vec<f32> = self.audio_buffer.iter().copied().collect();
+        let full_features = self.extract_mel_features(&buffer_slice);
+        let total_frames = full_features.shape()[2];
+
+        // Slice to take only (pre_encode_cache + new_frames) for encoder
+        // pre_encode_cache = 9 frames, new_frames = ~16 for 160ms chunk
+        const PRE_ENCODE_CACHE: usize = 9;
+        const FRAMES_PER_CHUNK: usize = 16;
+        const SLICE_LEN: usize = PRE_ENCODE_CACHE + FRAMES_PER_CHUNK;
+
+        let start_frame = if total_frames > SLICE_LEN {
+            total_frames - SLICE_LEN
+        } else {
+            0
+        };
+
+        let features = full_features.slice(s![.., .., start_frame..]).to_owned();
+        let time_steps = features.shape()[2];
+
+        // Encode with cache - encoder sees full buffer context
+        let (encoder_out, new_cache) = self.model.run_encoder(&features, time_steps as i64, &self.encoder_cache)?;
+        self.encoder_cache = new_cache;
+
+        let total_frames = encoder_out.shape()[2];
+        if total_frames == 0 {
+            return Ok(String::new());
+        }
+
+        // Process all output frames (typically 1 frame per chunk)
+        let new_frames = encoder_out;
 
         let mut text_output = String::new();
 
@@ -146,9 +190,13 @@ impl ParakeetEOU {
     }
 
     fn reset_states(&mut self) {
+        // Soft reset: Only reset decoder states
+        // at this state, we need to keep encoder cache and audio buffer flowing for continuous context
+        // self.encoder_cache = EncoderCache::new();  // DON'T reset!!!
         self.state_h.fill(0.0);
         self.state_c.fill(0.0);
         self.last_token.fill(self.blank_id);
+        // self.audio_buffer.clear();  // DON'T clear!! 
     }
 
     fn extract_mel_features(&self, audio: &[f32]) -> Array3<f32> {
