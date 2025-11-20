@@ -1,8 +1,22 @@
 /*
 Demonstrates streaming ASR with Parakeet RealTime EOU
 
-This example shows how to process audio in small chunks (160ms) for real-time
-transcription with end-of-utterance detection.
+This example 
+- Maintains 4-second ring buffer for feature extraction context
+- Processes 160ms chunks (2560 samples at 16kHz)
+- Extracts features from full buffer, then slices last 25 frames
+- Encoder receives: 9 frames (pre-encode cache) + 16 frames (new) = 25 total
+- Cache states (cache_last_channel/time) maintain temporal context
+
+Model files required in ./fullstr/:
+  - encoder.onnx (cache_aware_stream_step export)
+  - decoder_joint.onnx
+  - tokenizer.json
+
+Additional notes:
+let reset_on_eou: bool = false;
+I must admit that this is not work very well on my real world tests :/
+
 
 Usage:
 cargo run --release --example streaming <audio.wav>
@@ -21,8 +35,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get(1)
         .expect("Usage: cargo run --release --example streaming <audio.wav>");
 
-    println!("Loading model from ./eou...");
-    let mut parakeet = ParakeetEOU::from_pretrained("./eou", None)?;
+    println!("Loading model from ./fullstr...");
+    let mut parakeet = ParakeetEOU::from_pretrained("./fullstr", None)?;
 
     println!("Loading audio: {}", audio_path);
     let mut reader = hound::WavReader::open(audio_path)?;
@@ -62,11 +76,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let duration = audio.len() as f32 / 16000.0;
-
+    // 160ms at 16kHz
     const CHUNK_SIZE: usize = 2560;
-    let reset_on_eou = false;
+    let reset_on_eou: bool = false;
 
-    println!("Streaming transcription (160ms chunks)...\n");
+    println!("Streaming transcription (160ms chunks with 4s buffer)...\n");
 
     let mut full_text = String::new();
 
