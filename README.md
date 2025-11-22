@@ -58,7 +58,7 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 }
 ```
 
-**Sortformer (Speaker Diarization)**: NVIDIA's 4-speaker diarization
+**Sortformer v2 (Speaker Diarization)**: NVIDIA's streaming 4-speaker diarization
 
 Enable the feature:
 ```toml
@@ -66,18 +66,29 @@ parakeet-rs = { version = "0.2", features = ["sortformer"] }
 ```
 
 ```rust
-#[cfg(feature = "sortformer")]
-use parakeet_rs::sortformer::Sortformer;
-let audio: Vec<f32> = 
-// Perform diarization
-let mut sortformer = Sortformer::new("diar_sortformer_4spk-v1.onnx")?;
+use parakeet_rs::sortformer::{Sortformer, DiarizationConfig};
+
+// Load model with pre-tuned config (callhome, dihard3, or ami)
+let mut sortformer = Sortformer::with_config(
+    "diar_streaming_sortformer_4spk-v2.onnx",
+    None,
+    DiarizationConfig::callhome(),  // or dihard3(), ami(), or your own custom
+)?;
+
+// Diarize - handles long audio natively via streaming
 let segments = sortformer.diarize(audio, 16000, 1)?;
 for seg in segments {
     println!("Speaker {} [{:.2}s - {:.2}s]", seg.speaker_id, seg.start, seg.end);
 }
+
+// Custom config for fine-tuning
+let mut config = DiarizationConfig::custom(0.6, 0.5);
+config.min_duration_on = 0.3;  // Ignore segments < 300ms
 ```
 
 See `examples/diarization.rs` for combining with TDT transcription.
+
+> **Note**: Sortformer handles long audio (25+ min) natively via streaming. TDT transcription has ~8-10 min limit(unless you have a decent system).chunk long audio for transcription, then map to Sortformer's speaker segments.
 
 
 ## Setup
@@ -88,7 +99,7 @@ See `examples/diarization.rs` for combining with TDT transcription.
 
 **EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`
 
-**Diarization**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_sortformer_4spk-v1.onnx): `diar_sortformer_4spk-v1.onnx`
+**Diarization (Sortformer v2)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.onnx): `diar_streaming_sortformer_4spk-v2.onnx`
 
 Quantized versions available (int8). All files must be in the same directory.
 
@@ -110,7 +121,7 @@ let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 - [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
 - [TDT: Multilingual (auto lang detection) ](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
 - [EOU: Streaming ASR with end-of-utterance detection](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1)
-- [Sortformer: Speaker diarization (up to 4 speakers)](https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_sortformer_4spk-v1.onnx)
+- [Sortformer v2: Streaming speaker diarization (up to 4 speakers)](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2)
 - Token-level timestamps (CTC, TDT)
 
 ## Notes
