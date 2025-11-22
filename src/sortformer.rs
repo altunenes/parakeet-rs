@@ -73,7 +73,6 @@ const SIL_THRESHOLD: f32 = 0.2;
 /// # Pre-tuned Configs
 /// - `callhome()` - (default)
 /// - `dihard3()`
-/// - `ami()`
 ///
 /// # Custom Config
 /// Use `custom(onset, offset)` to create your own config for fine-tuning.

@@ -68,7 +68,7 @@ use parakeet_rs::sortformer::{Sortformer, DiarizationConfig};
 let mut sortformer = Sortformer::with_config(
     "diar_streaming_sortformer_4spk-v2.onnx",
     None,
-    DiarizationConfig::callhome(),  // or dihard3(), ami(), custom()
+    DiarizationConfig::callhome(),  // or dihard3(),custom()
 )?;
 let segments = sortformer.diarize(audio, 16000, 1)?;
 for seg in segments {
