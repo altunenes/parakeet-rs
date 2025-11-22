@@ -56,7 +56,28 @@ const WEAK_BOOST_RATE: f32 = 1.5;
 const MIN_POS_SCORES_RATE: f32 = 0.5;
 const SIL_THRESHOLD: f32 = 0.2;
 
-/// Post-processing configuration (NVIDIA official configs from v2 YAMLs)
+/// Post-processing configuration for speaker diarization. (NVIDIA official configs from v2 YAMLs)
+///
+/// Controls how raw model predictions are converted into speaker segments.
+/// NVIDIA provides pre-tuned configs for different datasets (CallHome, DIHARD3, AMI).
+///
+/// # Parameters
+/// - `onset`: Probability threshold to START a speaker segment (higher = more strict)
+/// - `offset`: Probability threshold to END a speaker segment (lower = longer segments)
+/// - `pad_onset`: Seconds to subtract from segment start times
+/// - `pad_offset`: Seconds to add to segment end times
+/// - `min_duration_on`: Minimum segment length in seconds (filters short blips)
+/// - `min_duration_off`: Minimum gap between segments before merging
+/// - `median_window`: Smoothing window size (odd number, higher = smoother)
+///
+/// # Pre-tuned Configs
+/// - `callhome()` - (default)
+/// - `dihard3()`
+/// - `ami()`
+///
+/// # Custom Config
+/// Use `custom(onset, offset)` to create your own config for fine-tuning.
+///
 /// See: https://github.com/NVIDIA-NeMo/NeMo/tree/main/examples/speaker_tasks/diarization/conf/neural_diarizer
 #[derive(Debug, Clone)]
 pub struct DiarizationConfig {
@@ -104,7 +125,27 @@ impl DiarizationConfig {
         }
     }
 
-    /// Custom config builder
+    /// Create a custom config for fine-tuning diarization behavior.
+    ///
+    /// # Arguments
+    /// * `onset` - Probability threshold to start a segment (0.0-1.0, typical: 0.5-0.7)
+    /// * `offset` - Probability threshold to end a segment (0.0-1.0, typical: 0.4-0.6)
+    ///
+    /// # Example
+    /// ```rust
+    /// use parakeet_rs::sortformer::DiarizationConfig;
+    ///
+    /// // More sensitive detection (lower thresholds)
+    /// let sensitive = DiarizationConfig::custom(0.5, 0.4);
+    ///
+    /// // Stricter detection (higher thresholds, fewer false positives)
+    /// let strict = DiarizationConfig::custom(0.7, 0.6);
+    ///
+    /// // Full customization
+    /// let mut config = DiarizationConfig::custom(0.6, 0.5);
+    /// config.min_duration_on = 0.3;  // Ignore segments shorter than 300ms
+    /// config.median_window = 15;      // More smoothing
+    /// ```
     pub fn custom(onset: f32, offset: f32) -> Self {
         Self {
             onset,
