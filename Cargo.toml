@@ -1,9 +1,9 @@
 [package]
 name = "parakeet-rs"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 authors = ["altunenes"]
-description = "Fast English ASR with NVIDIA Parakeet via ONNX"
+description = "Fast ASR & Speaker Diarization with NVIDIA Parakeet via ONNX"
 repository = "https://github.com/altunenes/parakeet-rs"
 license = "MIT OR Apache-2.0"
 keywords = ["speech-recognition", "asr", "parakeet", "onnx", "nvidia"]
