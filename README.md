@@ -58,37 +58,24 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 }
 ```
 
-**Sortformer v2 (Speaker Diarization)**: NVIDIA's streaming 4-speaker diarization
-
-Enable the feature:
+**Sortformer v2 (Speaker Diarization)**: Streaming 4-speaker diarization
 ```toml
 parakeet-rs = { version = "0.2", features = ["sortformer"] }
 ```
-
 ```rust
 use parakeet_rs::sortformer::{Sortformer, DiarizationConfig};
 
-// Load model with pre-tuned config (callhome, dihard3, or ami)
 let mut sortformer = Sortformer::with_config(
     "diar_streaming_sortformer_4spk-v2.onnx",
     None,
-    DiarizationConfig::callhome(),  // or dihard3(), ami(), or your own custom
+    DiarizationConfig::callhome(),  // or dihard3(), ami(), custom()
 )?;
-
-// Diarize - handles long audio natively via streaming
 let segments = sortformer.diarize(audio, 16000, 1)?;
 for seg in segments {
     println!("Speaker {} [{:.2}s - {:.2}s]", seg.speaker_id, seg.start, seg.end);
 }
-
-// Custom config for fine-tuning
-let mut config = DiarizationConfig::custom(0.6, 0.5);
-config.min_duration_on = 0.3;  // Ignore segments < 300ms
 ```
-
 See `examples/diarization.rs` for combining with TDT transcription.
-
-> **Note**: Sortformer handles long audio (25+ min) natively via streaming. TDT transcription has ~8-10 min limit(unless you have a decent system).chunk long audio for transcription, then map to Sortformer's speaker segments.
 
 
 ## Setup
