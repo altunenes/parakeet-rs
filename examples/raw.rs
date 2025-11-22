@@ -7,6 +7,13 @@ with sample_rate and channels instead of using transcribe_file()
 Usage:
 cargo run --example raw 6_speakers.wav
 cargo run --example raw 6_speakers.wav tdt
+
+WARNING: TDT model has sequence length limitations (~8-10 minutes max).
+For longer audio files, you must split into chunks (e.g., 5-minute segments)
+and transcribe each chunk separately. Attempting to transcribe 25+ minute
+audio files in one call will cause ONNX runtime errors.
+Otherwise you will likely get a error like:
+"Error: Ort(Error { code: RuntimeException, msg: "Non-zero status code returned while running Add node. Name:'/layers.0/self_attn/Add_2' Status Message: /Users/runner/work/ort-artifacts/ort-artifacts/onnxruntime/onnxruntime/core/providers/cpu/math/element_wise_ops.h:540 void onnxruntime::BroadcastIterator::Init(ptrdiff_t, ptrdiff_t) axis == 1 || axis == largest was false. })"
 */
 
 use parakeet_rs::{Parakeet, ParakeetTDT, TimestampMode};

@@ -17,6 +17,10 @@ NOTE: This example combines two NVIDIA models:
 - For more information:
 https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2
 
+WARNING: Sortformer handles long audio natively (streaming), but TDT has sequence
+length limitations (~8-10 minutes max). For production use with long audio files,
+run Sortformer on the full audio for diarization, then chunk the audio into
+~5-minute segments for TDT transcription, and map the results back together.
 */
 
 #[cfg(feature = "sortformer")]
