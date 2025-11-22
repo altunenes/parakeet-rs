@@ -33,7 +33,6 @@ const WIN_LENGTH: usize = 400;
 const HOP_LENGTH: usize = 160;
 const N_MELS: usize = 128;
 const PREEMPH: f32 = 0.97;
-const DITHER: f32 = 1e-5;
 const LOG_ZERO_GUARD: f32 = 5.960464478e-8;
 const SAMPLE_RATE: usize = 16000;
 const FMIN: f32 = 0.0;
@@ -806,14 +805,6 @@ impl Sortformer {
         }
 
         spectrogram
-    }
-
-    fn hz_to_mel(hz: f32) -> f32 {
-        2595.0 * (1.0 + hz / 700.0).log10()
-    }
-
-    fn mel_to_hz(mel: f32) -> f32 {
-        700.0 * (10.0f32.powf(mel / 2595.0) - 1.0)
     }
 
     // Librosa's Slaney mel scale (htk=False, which is the default)
