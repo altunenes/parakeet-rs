@@ -1,7 +1,8 @@
 /*
-Download the Sortformer model:
-https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_sortformer_4spk-v1.onnx
+Speaker Diarization with NVIDIA Sortformer v2 (Streaming)
 
+Download the Sortformer v2 model:
+https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.onnx
 Download test audio:
 wget https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav
 
@@ -10,35 +11,16 @@ cargo run --example diarization --features sortformer 6_speakers.wav
 
 NOTE: This example combines two NVIDIA models:
 - Parakeet-TDT: Provides transcription with sentence-level timestamps
-- Sortformer: Provides speaker identification (4 speakers max)
+- Sortformer v2: Provides streaming speaker identification (4 speakers max)
 - We use TDT's sentence timestamps + Sortformer's speaker IDs
 - Even if Sortformer can't detect a segment, we still get the transcription (marked UNKNOWN)
-
-MEMORY LIMITATION (Sortformer v1 Model):
-This model has significant memory requirements that increase with audio duration.
-According to NVIDIA's official documentation:
-  "The maximum duration of a test recording depends on available GPU memory.
-   For an RTX A6000 48GB model, the limit is around 12 minutes."
-
-Expected memory usage (based on my tests):
-  • 5 minutes:  ~8-10 GB RAM
-  • 10 minutes: ~15-17 GB RAM
-  • 15+ minutes: Will likely crash on systems with <32GB RAM
-
-This is a known limitation of the Sortformer v1 model architecture.
-For long audio files, consider:
-  - Processing shorter segments separately
-
-NOTE: We could reduce RAM usage by increasing HOP_LENGTH in src/sortformer.rs (e.g., 160→320),
-which would cut memory in half. However, this breaks the model's expected input format since
-it was trained with specific NeMo preprocessing parameters. The quality degrades and we'd still
-hit the model's inherent sequence length limits. Rather than fighting the model's architecture
-with workarounds, it's better to wait for NVIDIA's next generation models with improved efficiency.
+- For more information:
+https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2
 
 */
 
 #[cfg(feature = "sortformer")]
-use parakeet_rs::sortformer::Sortformer;
+use parakeet_rs::sortformer::{DiarizationConfig, Sortformer};
 #[cfg(feature = "sortformer")]
 use parakeet_rs::TimestampMode;
 #[cfg(feature = "sortformer")]
@@ -80,18 +62,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Result<Vec<_>, _>>()?,
         };
 
-        println!("Loaded {} samples ({} Hz, {} channels)", audio.len(), spec.sample_rate, spec.channels);
+        let duration = audio.len() as f32 / spec.sample_rate as f32 / spec.channels as f32;
+        println!("Loaded {} samples ({} Hz, {} channels, {:.1}s)",
+            audio.len(), spec.sample_rate, spec.channels, duration);
 
         println!("{}", "=".repeat(80));
-        println!("Step 2/3: Performing speaker diarization with NVIDIA Sortformer...");
+        println!("Step 2/3: Performing speaker diarization with Sortformer v2 (streaming)...");
 
-        // Perform diarization
-        let mut sortformer = Sortformer::new("diar_sortformer_4spk-v1.onnx")?;
+        // Create Sortformer with default config (callhome)
+        let mut sortformer = Sortformer::with_config(
+            "diar_streaming_sortformer_4spk-v2.onnx",
+            None,  // default exec config
+            DiarizationConfig::callhome(),
+        )?;
+
         let speaker_segments = sortformer.diarize(audio.clone(), spec.sample_rate, spec.channels)?;
 
         println!("Found {} speaker segments from Sortformer", speaker_segments.len());
 
-        println!("{}", "=".repeat(80));
+        // Print raw diarization segments
+        println!("\nRaw diarization segments:");
+        for seg in &speaker_segments {
+            println!("  [{:06.2}s - {:06.2}s] Speaker {}", seg.start, seg.end, seg.speaker_id);
+        }
+
+        println!("\n{}", "=".repeat(80));
         println!("Step 3/3: Transcribing with Parakeet-TDT and attributing speakers...\n");
 
         // Use TDT for transcription with sentence-level timestamps
@@ -101,12 +96,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok(result) = parakeet.transcribe_samples(audio, spec.sample_rate, spec.channels, Some(TimestampMode::Sentences)) {
             // For each sentence from TDT, find the corresponding speaker from Sortformer
             for segment in &result.tokens {
-                // Find which speaker was active during this segment's midpoint
-                let segment_mid = (segment.start + segment.end) / 2.0;
+                // Find speaker with maximum overlap 
                 let speaker = speaker_segments
                     .iter()
-                    .find(|s| segment_mid >= s.start && segment_mid <= s.end)
-                    .map(|s| format!("Speaker {}", s.speaker_id))
+                    .filter_map(|s| {
+                        // Calculate overlap between transcription and diarization segment
+                        let overlap_start = segment.start.max(s.start);
+                        let overlap_end = segment.end.min(s.end);
+                        let overlap = (overlap_end - overlap_start).max(0.0);
+                        if overlap > 0.0 {
+                            Some((s.speaker_id, overlap))
+                        } else {
+                            None
+                        }
+                    })
+                    .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                    .map(|(id, _)| format!("Speaker {}", id))
                     .unwrap_or_else(|| "UNKNOWN".to_string());
 
                 println!("[{:.2}s - {:.2}s] {}: {}",
@@ -118,6 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let elapsed = start_time.elapsed();
         println!("\n✓ Diarization and transcription completed in {:.2}s", elapsed.as_secs_f32());
         println!("• UNKNOWN: Segments where no speaker was detected by Sortformer");
+        println!("• Config: callhome v2 (onset=0.641, offset=0.561, min_on=0.511, min_off=0.296)");
 
         Ok(())
     }
