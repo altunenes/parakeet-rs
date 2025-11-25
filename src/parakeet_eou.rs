@@ -14,7 +14,7 @@ const WIN_LENGTH: usize = 400;
 const HOP_LENGTH: usize = 160;
 const N_MELS: usize = 128;
 const PREEMPH: f32 = 0.97;
-const LOG_ZERO_GUARD: f32 = 5.960464478e-8;
+const LOG_ZERO_GUARD: f32 = 5.960_464_5e-8;
 const FMAX: f32 = 8000.0;
 
 /// Parakeet RealTime EOU model for streaming ASR with end-of-utterance detection.
@@ -113,11 +113,7 @@ impl ParakeetEOU {
         const FRAMES_PER_CHUNK: usize = 16;
         const SLICE_LEN: usize = PRE_ENCODE_CACHE + FRAMES_PER_CHUNK;
 
-        let start_frame = if total_frames > SLICE_LEN {
-            total_frames - SLICE_LEN
-        } else {
-            0
-        };
+        let start_frame = total_frames.saturating_sub(SLICE_LEN);
 
         let features = full_features.slice(s![.., .., start_frame..]).to_owned();
         let time_steps = features.shape()[2];
@@ -229,7 +225,7 @@ impl ParakeetEOU {
         let pad_amount = N_FFT / 2;
         let mut padded_audio = vec![0.0; pad_amount];
         padded_audio.extend_from_slice(audio);
-        padded_audio.extend(std::iter::repeat(0.0).take(pad_amount));
+        padded_audio.extend(std::iter::repeat_n(0.0, pad_amount));
 
         let num_frames = 1 + (padded_audio.len().saturating_sub(WIN_LENGTH)) / HOP_LENGTH;
         let freq_bins = N_FFT / 2 + 1;

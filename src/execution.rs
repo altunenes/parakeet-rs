@@ -117,11 +117,11 @@ impl ModelConfig {
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
-            #[cfg(feature = "rocm")]
-            ExecutionProvider::ROCm => builder.with_execution_providers([
-                ort::execution_providers::ROCMExecutionProvider::default().build(),
-                CPUExecutionProvider::default().build().error_on_failure(),
-            ])?,
+#[cfg(feature = "rocm")]
+ExecutionProvider::ROCm => builder.with_execution_providers([
+    ort::execution_providers::ROCmExecutionProvider::default().build(),
+    CPUExecutionProvider::default().build().error_on_failure(),
+])?,
 
             #[cfg(feature = "openvino")]
             ExecutionProvider::OpenVINO => builder.with_execution_providers([

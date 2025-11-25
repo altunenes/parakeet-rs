@@ -25,7 +25,6 @@ Usage:
 cargo run --release --example streaming <audio.wav>
 */
 
-use hound;
 use parakeet_rs::ParakeetEOU;
 use std::env;
 use std::time::Instant;

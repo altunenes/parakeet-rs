@@ -6,6 +6,7 @@ use std::path::Path;
 
 /// Encoder cache state for streaming inference
 /// The cache maintains temporal context across chunks
+#[derive(Default)]
 pub struct EncoderCache {
     /// channel cache: [1, 1, 70, 512] - batch=1, 70 frame lookback
     pub cache_last_channel: Array4<f32>,
