@@ -55,6 +55,7 @@ const STRONG_BOOST_RATE: f32 = 0.75;
 const WEAK_BOOST_RATE: f32 = 1.5;
 const MIN_POS_SCORES_RATE: f32 = 0.5;
 const SIL_THRESHOLD: f32 = 0.2;
+const MAX_INDEX: usize = 99999;
 
 /// Post-processing configuration for speaker diarization. (NVIDIA official configs from v2 YAMLs)
 ///
@@ -583,52 +584,62 @@ impl Sortformer {
     fn get_topk_indices(&self, scores: &Array2<f32>, n_frames_no_sil: usize) -> (Vec<usize>, Vec<bool>) {
         let n_frames = scores.shape()[0];
 
-        // Flatten scores (transpose then reshape to match NeMo's T.reshape(-1))
-        let mut flat_scores: Vec<(usize, f32)> = Vec::new();
+        // Flatten scores as (S, T) then reshape to (S*T,)
+        // This means we iterate: speaker 0 all times, then speaker 1 all times, etc.
+        // flat_index = speaker * n_frames + time
+        let mut flat_scores: Vec<(usize, f32)> = Vec::with_capacity(n_frames * NUM_SPEAKERS);
         for s in 0..NUM_SPEAKERS {
             for t in 0..n_frames {
-                flat_scores.push((s * n_frames + t, scores[[t, s]]));
+                let flat_idx = s * n_frames + t;
+                flat_scores.push((flat_idx, scores[[t, s]]));
             }
         }
 
-        // Sort by score descending
-        flat_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        // Sort by score descending to get top-K
+        flat_scores.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+        });
 
-        // Take top SPKCACHE_LEN
-        let topk_flat: Vec<usize> = flat_scores.iter()
+        // Take top SPKCACHE_LEN and replace invalid scores with MAX_INDEX
+        let mut topk_flat: Vec<usize> = flat_scores
+            .iter()
             .take(SPKCACHE_LEN)
-            .map(|(idx, _)| *idx)
+            .map(|(idx, score)| {
+                if *score == f32::NEG_INFINITY {
+                    MAX_INDEX
+                } else {
+                    *idx
+                }
+            })
             .collect();
 
-        // Handle invalid scores
+        // Sort flat indices ascending (this puts MAX_INDEX at the end)
+        topk_flat.sort();
+
+        // Compute is_disabled and convert to frame indices
         let mut is_disabled = vec![false; SPKCACHE_LEN];
-        for (i, &idx) in topk_flat.iter().enumerate() {
-            let t = idx % n_frames;
-            let s = idx / n_frames;
-            if scores[[t, s]] == f32::NEG_INFINITY {
+        let mut frame_indices = vec![0usize; SPKCACHE_LEN];
+
+        for (i, &flat_idx) in topk_flat.iter().enumerate() {
+            if flat_idx == MAX_INDEX {
+                // Invalid entries are disabled
                 is_disabled[i] = true;
+                frame_indices[i] = 0;  // We set disabled to 0
+            } else {
+                // convert to frame index
+                let frame_idx = flat_idx % n_frames;
+                
+                // check if frame is beyond valid range
+                if frame_idx >= n_frames_no_sil {
+                    is_disabled[i] = true;
+                    frame_indices[i] = 0;  // same as abov: set disabled to 0
+                } else {
+                    frame_indices[i] = frame_idx;
+                }
             }
         }
 
-        // Convert to frame indices and sort
-        let frame_indices: Vec<usize> = topk_flat.iter()
-            .map(|&idx| idx % n_frames)
-            .collect();
-
-        // Sort indices (preserving temporal order)
-        let mut indexed: Vec<(usize, usize, bool)> = frame_indices.iter()
-            .zip(is_disabled.iter())
-            .enumerate()
-            .map(|(i, (&f, &d))| (i, f, d))
-            .collect();
-        indexed.sort_by_key(|&(_, f, _)| f);
-
-        let sorted_indices: Vec<usize> = indexed.iter().map(|&(_, f, _)| f).collect();
-        let sorted_disabled: Vec<bool> = indexed.iter()
-            .map(|&(_, f, d)| d || f >= n_frames_no_sil)
-            .collect();
-
-        (sorted_indices, sorted_disabled)
+        (frame_indices, is_disabled)
     }
 
     /// Gather selected frames
