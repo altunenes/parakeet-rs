@@ -73,19 +73,18 @@ fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
         // Check if this starts a new word (SentencePiece uses ▁ or space prefix)
         // Also treat PURE punctuation marks (like ".", ",") as separate words
         // But NOT contractions like "'re" or "'s" which should attach to previous word
-        let is_pure_punctuation = !token.text.is_empty() &&
-            token.text.chars().all(|c| c.is_ascii_punctuation());
+        let is_pure_punctuation =
+            !token.text.is_empty() && token.text.chars().all(|c| c.is_ascii_punctuation());
 
         // Check if this is a contraction suffix
         // These should NOT start a new word - they attach to the previous word
         let token_without_marker = token.text.trim_start_matches('▁').trim_start_matches(' ');
         let is_contraction = token_without_marker.starts_with('\'');
 
-        let starts_word = (token.text.starts_with('▁')
-            || token.text.starts_with(' ')
-            || is_pure_punctuation)
-            && !is_contraction
-            || i == 0;
+        let starts_word =
+            (token.text.starts_with('▁') || token.text.starts_with(' ') || is_pure_punctuation)
+                && !is_contraction
+                || i == 0;
 
         if starts_word && !current_word_text.is_empty() {
             // Save previous word (with deduplication)
@@ -107,10 +106,7 @@ fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
         }
 
         // Add token text, removing word boundary markers
-        let token_text = token
-            .text
-            .trim_start_matches('▁')
-            .trim_start_matches(' ');
+        let token_text = token.text.trim_start_matches('▁').trim_start_matches(' ');
         current_word_text.push_str(token_text);
     }
 
@@ -144,9 +140,8 @@ fn group_by_sentences(tokens: &[TimedToken]) -> Vec<TimedToken> {
         current_sentence.push(word.clone());
 
         // Check if word ends with sentence terminator
-        let ends_sentence = word.text.contains('.')
-            || word.text.contains('?')
-            || word.text.contains('!');
+        let ends_sentence =
+            word.text.contains('.') || word.text.contains('?') || word.text.contains('!');
 
         if ends_sentence {
             let sentence_text = format_sentence(&current_sentence);
@@ -191,8 +186,10 @@ fn format_sentence(words: &[TimedToken]) -> String {
     for (i, word) in result.iter().enumerate() {
         // Check if this word is standalone punctuation that shouldn't have space before it
         // Contractions like "'re" or "'s" should have spaces before them
-        let is_standalone_punct = word.len() == 1 &&
-            word.chars().all(|c| matches!(c, '.' | ',' | '!' | '?' | ';' | ':' | ')'));
+        let is_standalone_punct = word.len() == 1
+            && word
+                .chars()
+                .all(|c| matches!(c, '.' | ',' | '!' | '?' | ';' | ':' | ')'));
 
         if i > 0 && !is_standalone_punct {
             output.push(' ');

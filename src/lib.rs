@@ -50,21 +50,23 @@ mod decoder_tdt;
 mod error;
 mod execution;
 mod model;
+mod model_eou;
 mod model_tdt;
 mod parakeet;
-mod parakeet_tdt;
-mod timestamps;
-mod vocab;
-mod model_eou;
 mod parakeet_eou;
+mod parakeet_tdt;
 #[cfg(feature = "sortformer")]
 pub mod sortformer;
+mod timestamps;
+mod transcriber;
+mod vocab;
 
 pub use error::{Error, Result};
 pub use execution::{ExecutionProvider, ModelConfig as ExecutionConfig};
 pub use parakeet::Parakeet;
 pub use parakeet_tdt::ParakeetTDT;
 pub use timestamps::TimestampMode;
+pub use transcriber::*;
 
 pub use config::{ModelConfig as ModelConfigJson, PreprocessorConfig};
 

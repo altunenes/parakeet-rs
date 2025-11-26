@@ -17,7 +17,7 @@ For longer audio, use the pyannote example which processes segments, or split yo
 Note: The coreml feature flag is only for reproducing a known ONNX Runtime bug.
 Just ignore it :). See: https://github.com/microsoft/onnxruntime/issues/26355
 */
-use parakeet_rs::{Parakeet, TimestampMode};
+use parakeet_rs::{Parakeet, TimestampMode, Transcriber};
 use std::env;
 use std::time::Instant;
 
@@ -46,11 +46,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\nSentencess:");
             for segment in result.tokens.iter() {
-                println!("[{:.2}s - {:.2}s]: {}", segment.start, segment.end, segment.text);
+                println!(
+                    "[{:.2}s - {:.2}s]: {}",
+                    segment.start, segment.end, segment.text
+                );
             }
 
             let elapsed = start_time.elapsed();
-            println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
+            println!(
+                "\n✓ Transcription completed in {:.2}s",
+                elapsed.as_secs_f32()
+            );
             return Ok(());
         }
 
@@ -62,11 +68,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\nSentencess:");
             for segment in result.tokens.iter() {
-                println!("[{:.2}s - {:.2}s]: {}", segment.start, segment.end, segment.text);
+                println!(
+                    "[{:.2}s - {:.2}s]: {}",
+                    segment.start, segment.end, segment.text
+                );
             }
 
             let elapsed = start_time.elapsed();
-            println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
+            println!(
+                "\n✓ Transcription completed in {:.2}s",
+                elapsed.as_secs_f32()
+            );
             return Ok(());
         }
     }
@@ -100,7 +112,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let elapsed = start_time.elapsed();
-    println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
+    println!(
+        "\n✓ Transcription completed in {:.2}s",
+        elapsed.as_secs_f32()
+    );
 
     Ok(())
 }

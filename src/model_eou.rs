@@ -6,6 +6,7 @@ use std::path::Path;
 
 /// Encoder cache state for streaming inference
 /// The cache maintains temporal context across chunks
+#[derive(Default)]
 pub struct EncoderCache {
     /// channel cache: [1, 1, 70, 512] - batch=1, 70 frame lookback
     pub cache_last_channel: Array4<f32>,
@@ -42,7 +43,7 @@ impl ParakeetEOUModel {
         let decoder_path = model_dir.join("decoder_joint.onnx");
 
         if !encoder_path.exists() || !decoder_path.exists() {
-             return Err(Error::Config(format!(
+            return Err(Error::Config(format!(
                 "Missing ONNX files in {}. Expected encoder.onnx and decoder_joint.onnx",
                 model_dir.display()
             )));
@@ -71,7 +72,7 @@ impl ParakeetEOUModel {
         &mut self,
         features: &Array3<f32>,
         length: i64,
-        cache: &EncoderCache
+        cache: &EncoderCache,
     ) -> Result<(Array3<f32>, EncoderCache)> {
         let length_arr = Array1::from_vec(vec![length]);
 
@@ -112,19 +113,32 @@ impl ParakeetEOUModel {
         // Build new cache with extracted shapes
         let new_cache = EncoderCache {
             cache_last_channel: Array4::from_shape_vec(
-                (ch_shape[0] as usize, ch_shape[1] as usize, ch_shape[2] as usize, ch_shape[3] as usize),
-                ch_data.to_vec()
-            ).map_err(|e| Error::Model(format!("Failed to reshape cache_last_channel: {e}")))?,
+                (
+                    ch_shape[0] as usize,
+                    ch_shape[1] as usize,
+                    ch_shape[2] as usize,
+                    ch_shape[3] as usize,
+                ),
+                ch_data.to_vec(),
+            )
+            .map_err(|e| Error::Model(format!("Failed to reshape cache_last_channel: {e}")))?,
 
             cache_last_time: Array4::from_shape_vec(
-                (tm_shape[0] as usize, tm_shape[1] as usize, tm_shape[2] as usize, tm_shape[3] as usize),
-                tm_data.to_vec()
-            ).map_err(|e| Error::Model(format!("Failed to reshape cache_last_time: {e}")))?,
+                (
+                    tm_shape[0] as usize,
+                    tm_shape[1] as usize,
+                    tm_shape[2] as usize,
+                    tm_shape[3] as usize,
+                ),
+                tm_data.to_vec(),
+            )
+            .map_err(|e| Error::Model(format!("Failed to reshape cache_last_time: {e}")))?,
 
             cache_last_channel_len: Array1::from_shape_vec(
                 len_shape[0] as usize,
-                len_data.to_vec()
-            ).map_err(|e| Error::Model(format!("Failed to reshape cache_len: {e}")))?,
+                len_data.to_vec(),
+            )
+            .map_err(|e| Error::Model(format!("Failed to reshape cache_len: {e}")))?,
         };
 
         Ok((encoder_out, new_cache))
@@ -139,7 +153,6 @@ impl ParakeetEOUModel {
         state_h: &Array3<f32>,       // [1, 1, 640]
         state_c: &Array3<f32>,       // [1, 1, 640]
     ) -> Result<(Array3<f32>, Array3<f32>, Array3<f32>)> {
-
         // Target length is always 1 for single step
         let target_len = Array1::from_vec(vec![1i32]);
 
@@ -155,15 +168,15 @@ impl ParakeetEOUModel {
         let (l_shape, l_data) = outputs["outputs"]
             .try_extract_tensor::<f32>()
             .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
-        
+
         // 2. Extract States (output_states_1, output_states_2)
         let (_h_shape, h_data) = outputs["output_states_1"]
-             .try_extract_tensor::<f32>()
-             .map_err(|e| Error::Model(format!("Failed to extract state h: {e}")))?;
+            .try_extract_tensor::<f32>()
+            .map_err(|e| Error::Model(format!("Failed to extract state h: {e}")))?;
 
         let (_c_shape, c_data) = outputs["output_states_2"]
-             .try_extract_tensor::<f32>()
-             .map_err(|e| Error::Model(format!("Failed to extract state c: {e}")))?;
+            .try_extract_tensor::<f32>()
+            .map_err(|e| Error::Model(format!("Failed to extract state c: {e}")))?;
 
         // Reconstruct Arrays
         // Logits: I simplify to [1, 1, vocab]
@@ -173,10 +186,10 @@ impl ParakeetEOUModel {
 
         // States: [1, 1, 640]
         let new_h = Array3::from_shape_vec((1, 1, 640), h_data.to_vec())
-             .map_err(|e| Error::Model(format!("Reshape state h failed: {e}")))?;
-        
+            .map_err(|e| Error::Model(format!("Reshape state h failed: {e}")))?;
+
         let new_c = Array3::from_shape_vec((1, 1, 640), c_data.to_vec())
-             .map_err(|e| Error::Model(format!("Reshape state c failed: {e}")))?;
+            .map_err(|e| Error::Model(format!("Reshape state c failed: {e}")))?;
 
         Ok((logits, new_h, new_c))
     }

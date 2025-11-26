@@ -68,7 +68,6 @@ impl ModelConfig {
         &self,
         builder: SessionBuilder,
     ) -> Result<SessionBuilder> {
-        use ort::session::builder::GraphOptimizationLevel;
         #[cfg(any(
             feature = "cuda",
             feature = "tensorrt",
@@ -79,6 +78,7 @@ impl ModelConfig {
             feature = "webgpu"
         ))]
         use ort::execution_providers::CPUExecutionProvider;
+        use ort::session::builder::GraphOptimizationLevel;
 
         let mut builder = builder
             .with_optimization_level(GraphOptimizationLevel::Level3)?
@@ -102,7 +102,9 @@ impl ModelConfig {
 
             #[cfg(feature = "coreml")]
             ExecutionProvider::CoreML => {
-                use ort::execution_providers::coreml::{CoreMLComputeUnits, CoreMLExecutionProvider};
+                use ort::execution_providers::coreml::{
+                    CoreMLComputeUnits, CoreMLExecutionProvider,
+                };
                 builder.with_execution_providers([
                     CoreMLExecutionProvider::default()
                         .with_compute_units(CoreMLComputeUnits::CPUAndGPU)
@@ -119,7 +121,7 @@ impl ModelConfig {
 
             #[cfg(feature = "rocm")]
             ExecutionProvider::ROCm => builder.with_execution_providers([
-                ort::execution_providers::ROCMExecutionProvider::default().build(),
+                ort::execution_providers::ROCmExecutionProvider::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 

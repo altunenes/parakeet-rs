@@ -13,25 +13,23 @@ pub struct Vocabulary {
 impl Vocabulary {
     /// Load vocabulary from vocab.txt file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let file = File::open(path.as_ref()).map_err(|e| {
-            Error::Config(format!("Failed to open vocab file: {}", e))
-        })?;
+        let file = File::open(path.as_ref())
+            .map_err(|e| Error::Config(format!("Failed to open vocab file: {}", e)))?;
 
         let reader = BufReader::new(file);
         let mut id_to_token = Vec::new();
         let mut blank_id = 0;
 
         for line in reader.lines() {
-            let line = line.map_err(|e| {
-                Error::Config(format!("Failed to read vocab file: {}", e))
-            })?;
+            let line =
+                line.map_err(|e| Error::Config(format!("Failed to read vocab file: {}", e)))?;
 
             let parts: Vec<&str> = line.splitn(2, ' ').collect();
             if parts.len() == 2 {
                 let token = parts[0].to_string();
-                let id: usize = parts[1].parse().map_err(|e| {
-                    Error::Config(format!("Invalid token ID in vocab: {}", e))
-                })?;
+                let id: usize = parts[1]
+                    .parse()
+                    .map_err(|e| Error::Config(format!("Invalid token ID in vocab: {}", e)))?;
 
                 if id >= id_to_token.len() {
                     id_to_token.resize(id + 1, String::new());

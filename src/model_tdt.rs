@@ -12,9 +12,7 @@ pub struct TDTModelConfig {
 
 impl Default for TDTModelConfig {
     fn default() -> Self {
-        Self {
-            vocab_size: 8193,
-        }
+        Self { vocab_size: 8193 }
     }
 }
 
@@ -47,7 +45,6 @@ impl ParakeetTDTModel {
         let builder = Session::builder()?;
         let builder = exec_config.apply_to_session_builder(builder)?;
         let decoder_joint = builder.commit_from_file(&decoder_joint_path)?;
-
 
         Ok(Self {
             encoder,
@@ -89,7 +86,10 @@ impl ParakeetTDTModel {
     }
 
     /// Run greedy decoding - returns (token_ids, frame_indices, durations)
-    pub fn forward(&mut self, features: Array2<f32>) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>)> {
+    pub fn forward(
+        &mut self,
+        features: Array2<f32>,
+    ) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>)> {
         // Run encoder
         let (encoder_out, encoder_len) = self.run_encoder(&features)?;
 
@@ -150,7 +150,11 @@ impl ParakeetTDTModel {
         Ok((encoder_array, lens_data[0]))
     }
 
-    fn greedy_decode(&mut self, encoder_out: &Array3<f32>, _encoder_len: i64) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>)> {
+    fn greedy_decode(
+        &mut self,
+        encoder_out: &Array3<f32>,
+        _encoder_len: i64,
+    ) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>)> {
         // encoder_out shape: [batch, encoder_dim, time]
         let encoder_dim = encoder_out.shape()[1];
         let time_steps = encoder_out.shape()[2];
@@ -222,15 +226,25 @@ impl ParakeetTDTModel {
             // Check if blank token
             if token_id != blank_id {
                 // Update states when we emit a token
-                if let Ok((h_shape, h_data)) = outputs["output_states_1"].try_extract_tensor::<f32>() {
+                if let Ok((h_shape, h_data)) =
+                    outputs["output_states_1"].try_extract_tensor::<f32>()
+                {
                     let dims = h_shape.as_ref();
-                    state_h = Array3::from_shape_vec((dims[0] as usize, dims[1] as usize, dims[2] as usize), h_data.to_vec())
-                        .map_err(|e| Error::Model(format!("Failed to update state_h: {e}")))?;
+                    state_h = Array3::from_shape_vec(
+                        (dims[0] as usize, dims[1] as usize, dims[2] as usize),
+                        h_data.to_vec(),
+                    )
+                    .map_err(|e| Error::Model(format!("Failed to update state_h: {e}")))?;
                 }
-                if let Ok((c_shape, c_data)) = outputs["output_states_2"].try_extract_tensor::<f32>() {
+                if let Ok((c_shape, c_data)) =
+                    outputs["output_states_2"].try_extract_tensor::<f32>()
+                {
                     let dims = c_shape.as_ref();
-                    state_c = Array3::from_shape_vec((dims[0] as usize, dims[1] as usize, dims[2] as usize), c_data.to_vec())
-                        .map_err(|e| Error::Model(format!("Failed to update state_c: {e}")))?;
+                    state_c = Array3::from_shape_vec(
+                        (dims[0] as usize, dims[1] as usize, dims[2] as usize),
+                        c_data.to_vec(),
+                    )
+                    .map_err(|e| Error::Model(format!("Failed to update state_c: {e}")))?;
                 }
 
                 tokens.push(token_id);

@@ -39,14 +39,14 @@ const FMIN: f32 = 0.0;
 const FMAX: f32 = 8000.0;
 
 // Streaming constants
-const CHUNK_LEN: usize = 124;           // Frames per chunk (~10s at 80ms)
-const FIFO_LEN: usize = 124;            // FIFO buffer length
-const SPKCACHE_LEN: usize = 188;        // Speaker cache length
+const CHUNK_LEN: usize = 124; // Frames per chunk (~10s at 80ms)
+const FIFO_LEN: usize = 124; // FIFO buffer length
+const SPKCACHE_LEN: usize = 188; // Speaker cache length
 const SPKCACHE_UPDATE_PERIOD: usize = 124;
-const SUBSAMPLING: usize = 8;           // Audio frames -> model frames
-const EMB_DIM: usize = 512;             // Embedding dimension
-const NUM_SPEAKERS: usize = 4;          // Model supports 4 speakers
-const FRAME_DURATION: f32 = 0.08;       // 80ms per frame
+const SUBSAMPLING: usize = 8; // Audio frames -> model frames
+const EMB_DIM: usize = 512; // Embedding dimension
+const NUM_SPEAKERS: usize = 4; // Model supports 4 speakers
+const FRAME_DURATION: f32 = 0.08; // 80ms per frame
 
 // Cache compression params (from NeMo)
 const SPKCACHE_SIL_FRAMES_PER_SPK: usize = 3;
@@ -172,11 +172,11 @@ pub struct Sortformer {
     session: Session,
     config: DiarizationConfig,
     // Streaming state. note that, Same way as Nemo
-    spkcache: Array3<f32>,           // (1, 0..SPKCACHE_LEN, EMB_DIM)
+    spkcache: Array3<f32>,               // (1, 0..SPKCACHE_LEN, EMB_DIM)
     spkcache_preds: Option<Array3<f32>>, // (1, 0..SPKCACHE_LEN, NUM_SPEAKERS)
-    fifo: Array3<f32>,               // (1, 0..FIFO_LEN, EMB_DIM)
-    fifo_preds: Array3<f32>,         // (1, 0..FIFO_LEN, NUM_SPEAKERS)
-    mean_sil_emb: Array2<f32>,       // (1, EMB_DIM)
+    fifo: Array3<f32>,                   // (1, 0..FIFO_LEN, EMB_DIM)
+    fifo_preds: Array3<f32>,             // (1, 0..FIFO_LEN, NUM_SPEAKERS)
+    mean_sil_emb: Array2<f32>,           // (1, EMB_DIM)
     n_sil_frames: usize,
     // Mel filterbank (cached)
     mel_basis: Array2<f32>,
@@ -274,7 +274,9 @@ impl Sortformer {
             // Pad last chunk if needed
             if current_len < chunk_stride {
                 let mut padded = Array3::zeros((1, chunk_stride, N_MELS));
-                padded.slice_mut(s![.., ..current_len, ..]).assign(&chunk_feat);
+                padded
+                    .slice_mut(s![.., ..current_len, ..])
+                    .assign(&chunk_feat);
                 chunk_feat = padded;
             }
 
@@ -300,7 +302,11 @@ impl Sortformer {
     }
 
     /// NeMo's streaming_update with smart cache compression
-    fn streaming_update(&mut self, chunk_feat: &Array3<f32>, current_len: usize) -> Result<Array2<f32>> {
+    fn streaming_update(
+        &mut self,
+        chunk_feat: &Array3<f32>,
+        current_len: usize,
+    ) -> Result<Array2<f32>> {
         let spkcache_len = self.spkcache.shape()[1];
         let fifo_len = self.fifo.shape()[1];
 
@@ -355,14 +361,24 @@ impl Sortformer {
             let embs_dims = embs_shape.as_ref();
 
             let preds = Array3::from_shape_vec(
-                (preds_dims[0] as usize, preds_dims[1] as usize, preds_dims[2] as usize),
-                preds_data.to_vec()
-            ).map_err(|e| Error::Model(format!("Failed to reshape preds: {e}")))?;
+                (
+                    preds_dims[0] as usize,
+                    preds_dims[1] as usize,
+                    preds_dims[2] as usize,
+                ),
+                preds_data.to_vec(),
+            )
+            .map_err(|e| Error::Model(format!("Failed to reshape preds: {e}")))?;
 
             let new_embs = Array3::from_shape_vec(
-                (embs_dims[0] as usize, embs_dims[1] as usize, embs_dims[2] as usize),
-                embs_data.to_vec()
-            ).map_err(|e| Error::Model(format!("Failed to reshape embs: {e}")))?;
+                (
+                    embs_dims[0] as usize,
+                    embs_dims[1] as usize,
+                    embs_dims[2] as usize,
+                ),
+                embs_data.to_vec(),
+            )
+            .map_err(|e| Error::Model(format!("Failed to reshape embs: {e}")))?;
 
             // Calculate valid frames
             let valid_frames = (current_len + SUBSAMPLING - 1) / SUBSAMPLING;
@@ -372,12 +388,20 @@ impl Sortformer {
 
         // Extract predictions for different parts
         let fifo_preds = if fifo_len > 0 {
-            preds.slice(s![0, spkcache_len..spkcache_len + fifo_len, ..]).to_owned()
+            preds
+                .slice(s![0, spkcache_len..spkcache_len + fifo_len, ..])
+                .to_owned()
         } else {
             Array2::zeros((0, NUM_SPEAKERS))
         };
 
-        let chunk_preds = preds.slice(s![0, spkcache_len + fifo_len..spkcache_len + fifo_len + chunk_len, ..]).to_owned();
+        let chunk_preds = preds
+            .slice(s![
+                0,
+                spkcache_len + fifo_len..spkcache_len + fifo_len + chunk_len,
+                ..
+            ])
+            .to_owned();
         let chunk_embs = new_embs.slice(s![0, ..chunk_len, ..]).to_owned();
 
         // Append chunk embeddings to FIFO
@@ -444,7 +468,10 @@ impl Sortformer {
                 let emb = embs.slice(s![0, t, ..]);
 
                 // Update running mean
-                let old_sum: Vec<f32> = self.mean_sil_emb.slice(s![0, ..]).iter()
+                let old_sum: Vec<f32> = self
+                    .mean_sil_emb
+                    .slice(s![0, ..])
+                    .iter()
                     .map(|&x| x * self.n_sil_frames as f32)
                     .collect();
 
@@ -483,7 +510,10 @@ impl Sortformer {
 
         // Add silence frames placeholder
         if SPKCACHE_SIL_FRAMES_PER_SPK > 0 {
-            let mut padded = Array2::from_elem((n_frames + SPKCACHE_SIL_FRAMES_PER_SPK, NUM_SPEAKERS), f32::NEG_INFINITY);
+            let mut padded = Array2::from_elem(
+                (n_frames + SPKCACHE_SIL_FRAMES_PER_SPK, NUM_SPEAKERS),
+                f32::NEG_INFINITY,
+            );
             padded.slice_mut(s![..n_frames, ..]).assign(&scores);
             for i in n_frames..n_frames + SPKCACHE_SIL_FRAMES_PER_SPK {
                 for j in 0..NUM_SPEAKERS {
@@ -527,7 +557,12 @@ impl Sortformer {
     }
 
     /// Disable non-speech and overlapped speech
-    fn disable_low_scores(&self, preds: &Array2<f32>, mut scores: Array2<f32>, min_pos_scores_per_spk: usize) -> Array2<f32> {
+    fn disable_low_scores(
+        &self,
+        preds: &Array2<f32>,
+        mut scores: Array2<f32>,
+        min_pos_scores_per_spk: usize,
+    ) -> Array2<f32> {
         // Count positive scores per speaker
         let mut pos_count = vec![0usize; NUM_SPEAKERS];
         for t in 0..scores.shape()[0] {
@@ -557,7 +592,12 @@ impl Sortformer {
     }
 
     /// Boost top K frames per speaker
-    fn boost_topk_scores(&self, mut scores: Array2<f32>, n_boost_per_spk: usize, scale_factor: f32) -> Array2<f32> {
+    fn boost_topk_scores(
+        &self,
+        mut scores: Array2<f32>,
+        n_boost_per_spk: usize,
+        scale_factor: f32,
+    ) -> Array2<f32> {
         for s in 0..NUM_SPEAKERS {
             // Get column for this speaker
             let col: Vec<(usize, f32)> = (0..scores.shape()[0])
@@ -581,7 +621,11 @@ impl Sortformer {
     }
 
     /// Get indices of top frames
-    fn get_topk_indices(&self, scores: &Array2<f32>, n_frames_no_sil: usize) -> (Vec<usize>, Vec<bool>) {
+    fn get_topk_indices(
+        &self,
+        scores: &Array2<f32>,
+        n_frames_no_sil: usize,
+    ) -> (Vec<usize>, Vec<bool>) {
         let n_frames = scores.shape()[0];
 
         // Flatten scores as (S, T) then reshape to (S*T,)
@@ -596,9 +640,7 @@ impl Sortformer {
         }
 
         // Sort by score descending to get top-K
-        flat_scores.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        flat_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Take top SPKCACHE_LEN and replace invalid scores with MAX_INDEX
         let mut topk_flat: Vec<usize> = flat_scores
@@ -624,15 +666,15 @@ impl Sortformer {
             if flat_idx == MAX_INDEX {
                 // Invalid entries are disabled
                 is_disabled[i] = true;
-                frame_indices[i] = 0;  // We set disabled to 0
+                frame_indices[i] = 0; // We set disabled to 0
             } else {
                 // convert to frame index
                 let frame_idx = flat_idx % n_frames;
-                
+
                 // check if frame is beyond valid range
                 if frame_idx >= n_frames_no_sil {
                     is_disabled[i] = true;
-                    frame_indices[i] = 0;  // same as abov: set disabled to 0
+                    frame_indices[i] = 0; // same as abov: set disabled to 0
                 } else {
                     frame_indices[i] = frame_idx;
                 }
@@ -643,7 +685,11 @@ impl Sortformer {
     }
 
     /// Gather selected frames
-    fn gather_spkcache(&self, indices: &[usize], is_disabled: &[bool]) -> (Array3<f32>, Array3<f32>) {
+    fn gather_spkcache(
+        &self,
+        indices: &[usize],
+        is_disabled: &[bool],
+    ) -> (Array3<f32>, Array3<f32>) {
         let mut new_embs = Array3::zeros((1, SPKCACHE_LEN, EMB_DIM));
         let mut new_preds = Array3::zeros((1, SPKCACHE_LEN, NUM_SPEAKERS));
 
@@ -656,11 +702,17 @@ impl Sortformer {
 
             if disabled {
                 // Use silence embedding
-                new_embs.slice_mut(s![0, i, ..]).assign(&self.mean_sil_emb.slice(s![0, ..]));
+                new_embs
+                    .slice_mut(s![0, i, ..])
+                    .assign(&self.mean_sil_emb.slice(s![0, ..]));
                 // Predictions stay zero
             } else if idx < self.spkcache.shape()[1] {
-                new_embs.slice_mut(s![0, i, ..]).assign(&self.spkcache.slice(s![0, idx, ..]));
-                new_preds.slice_mut(s![0, i, ..]).assign(&cache_preds.slice(s![0, idx, ..]));
+                new_embs
+                    .slice_mut(s![0, i, ..])
+                    .assign(&self.spkcache.slice(s![0, idx, ..]));
+                new_preds
+                    .slice_mut(s![0, i, ..])
+                    .assign(&cache_preds.slice(s![0, idx, ..]));
             }
         }
 
@@ -713,9 +765,7 @@ impl Sortformer {
                 let start = t.saturating_sub(half);
                 let end = (t + half + 1).min(preds.shape()[0]);
 
-                let mut values: Vec<f32> = (start..end)
-                    .map(|i| preds[[i, spk]])
-                    .collect();
+                let mut values: Vec<f32> = (start..end).map(|i| preds[[i, spk]]).collect();
                 values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
                 filtered[[t, spk]] = values[values.len() / 2];
@@ -745,7 +795,8 @@ impl Sortformer {
                     in_seg = false;
 
                     // Apply padding during conversion
-                    let start_t = (seg_start as f32 * FRAME_DURATION - self.config.pad_onset).max(0.0);
+                    let start_t =
+                        (seg_start as f32 * FRAME_DURATION - self.config.pad_onset).max(0.0);
                     let end_t = t as f32 * FRAME_DURATION + self.config.pad_offset;
 
                     if end_t - start_t >= self.config.min_duration_on {
@@ -794,7 +845,6 @@ impl Sortformer {
         segments.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap());
         segments
     }
-
 
     fn apply_preemphasis(audio: &[f32]) -> Vec<f32> {
         let mut result = Vec::with_capacity(audio.len());
