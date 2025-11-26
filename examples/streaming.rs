@@ -4,7 +4,7 @@ Demonstrates streaming ASR with Parakeet RealTime EOU
 Download models files from:
 https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx
 
-This example 
+This example
 - Maintains 4-second ring buffer for feature extraction context
 - Processes 160ms chunks (2560 samples at 16kHz)
 - Extracts features from full buffer, then slices last 25 frames
@@ -45,9 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let spec = reader.spec();
 
     let mut audio: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => reader
-            .samples::<f32>()
-            .collect::<Result<Vec<_>, _>>()?,
+        hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<Vec<_>, _>>()?,
         hound::SampleFormat::Int => reader
             .samples::<i16>()
             .map(|s| s.map(|s| s as f32 / 32768.0))

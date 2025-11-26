@@ -40,7 +40,10 @@ impl ParakeetEOU {
     /// # Arguments
     /// * `path` - Directory containing encoder.onnx, decoder_joint.onnx, and tokenizer.json
     /// * `config` - Optional execution configuration (defaults to CPU if None)
-    pub fn from_pretrained<P: AsRef<Path>>(path: P, config: Option<ExecutionConfig>) -> Result<Self> {
+    pub fn from_pretrained<P: AsRef<Path>>(
+        path: P,
+        config: Option<ExecutionConfig>,
+    ) -> Result<Self> {
         let path = path.as_ref();
         let tokenizer_path = path.join("tokenizer.json");
         let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
@@ -49,7 +52,10 @@ impl ParakeetEOU {
         let vocab_size = tokenizer.get_vocab_size(true);
         let blank_id = (vocab_size - 1) as i32;
         let blank_id = if blank_id < 1000 { 1026 } else { blank_id };
-        let eou_id = tokenizer.token_to_id("<EOU>").map(|id| id as i32).unwrap_or(1024);
+        let eou_id = tokenizer
+            .token_to_id("<EOU>")
+            .map(|id| id as i32)
+            .unwrap_or(1024);
 
         let exec_config = config.unwrap_or_default();
         let model = ParakeetEOUModel::from_pretrained(path, exec_config)?;
@@ -57,7 +63,7 @@ impl ParakeetEOU {
         // Buffer size: 4 seconds of audio
         // Provides long history for feature extraction context
         // Note that, I pick those "magic numbers" by looking NeMo's ring buffer approach.
-        let buffer_size_samples = SAMPLE_RATE * 4;  // 4 seconds = 64000 samples
+        let buffer_size_samples = SAMPLE_RATE * 4; // 4 seconds = 64000 samples
 
         Ok(Self {
             model,
@@ -97,7 +103,7 @@ impl ParakeetEOU {
         }
 
         // Wait until buffer has minimum samples (at least 1 second for stable features)
-        const MIN_BUFFER_SAMPLES: usize = SAMPLE_RATE;  // 1 second
+        const MIN_BUFFER_SAMPLES: usize = SAMPLE_RATE; // 1 second
         if self.audio_buffer.len() < MIN_BUFFER_SAMPLES {
             return Ok(String::new());
         }
@@ -119,7 +125,9 @@ impl ParakeetEOU {
         let time_steps = features.shape()[2];
 
         // Encode with cache - encoder sees full buffer context
-        let (encoder_out, new_cache) = self.model.run_encoder(&features, time_steps as i64, &self.encoder_cache)?;
+        let (encoder_out, new_cache) =
+            self.model
+                .run_encoder(&features, time_steps as i64, &self.encoder_cache)?;
         self.encoder_cache = new_cache;
 
         let total_frames = encoder_out.shape()[2];
@@ -192,7 +200,7 @@ impl ParakeetEOU {
         self.state_h.fill(0.0);
         self.state_c.fill(0.0);
         self.last_token.fill(self.blank_id);
-        // self.audio_buffer.clear();  // DON'T clear!! 
+        // self.audio_buffer.clear();  // DON'T clear!!
     }
 
     fn extract_mel_features(&self, audio: &[f32]) -> Array3<f32> {

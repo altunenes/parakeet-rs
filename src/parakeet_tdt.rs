@@ -5,8 +5,8 @@ use crate::decoder_tdt::ParakeetTDTDecoder;
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model_tdt::ParakeetTDTModel;
-use crate::transcriber::Transcriber;
 use crate::timestamps::{process_timestamps, TimestampMode};
+use crate::transcriber::Transcriber;
 use crate::vocab::Vocabulary;
 use std::path::{Path, PathBuf};
 

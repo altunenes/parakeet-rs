@@ -36,12 +36,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut reader = hound::WavReader::open(audio_path)?;
     let spec = reader.spec();
 
-    println!("Audio info: {}Hz, {} channel(s)", spec.sample_rate, spec.channels);
+    println!(
+        "Audio info: {}Hz, {} channel(s)",
+        spec.sample_rate, spec.channels
+    );
 
     let audio: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => reader
-            .samples::<f32>()
-            .collect::<Result<Vec<_>, _>>()?,
+        hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<Vec<_>, _>>()?,
         hound::SampleFormat::Int => reader
             .samples::<i16>()
             .map(|s| s.map(|s| s as f32 / 32768.0))
@@ -53,12 +54,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut parakeet = ParakeetTDT::from_pretrained("./tdt", None)?;
 
         // Use transcribe_samples() with raw parameters and timestamp mode
-        let result = parakeet.transcribe_samples(audio, spec.sample_rate, spec.channels, Some(TimestampMode::Sentences))?;
+        let result = parakeet.transcribe_samples(
+            audio,
+            spec.sample_rate,
+            spec.channels,
+            Some(TimestampMode::Sentences),
+        )?;
 
         println!("{}", result.text);
         println!("\nSentencess:");
         for segment in result.tokens.iter() {
-            println!("[{:.2}s - {:.2}s]: {}", segment.start, segment.end, segment.text);
+            println!(
+                "[{:.2}s - {:.2}s]: {}",
+                segment.start, segment.end, segment.text
+            );
         }
     } else {
         println!("Loading CTC model...");
@@ -66,7 +75,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // CTC model doesn't predict punctuation (lowercase alphabet only)
         // This means no sentence boundaries. we use Words mode instead of Sentences
-        let result = parakeet.transcribe_samples(audio, spec.sample_rate, spec.channels, Some(TimestampMode::Words))?;
+        let result = parakeet.transcribe_samples(
+            audio,
+            spec.sample_rate,
+            spec.channels,
+            Some(TimestampMode::Words),
+        )?;
 
         println!("{}", result.text);
 
@@ -80,7 +94,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let elapsed = start_time.elapsed();
-    println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
+    println!(
+        "\n✓ Transcription completed in {:.2}s",
+        elapsed.as_secs_f32()
+    );
 
     Ok(())
 }

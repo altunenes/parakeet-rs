@@ -26,7 +26,7 @@ impl ParakeetTDTDecoder {
     ) -> Result<TranscriptionResult> {
         let mut result_tokens = Vec::new();
         let mut full_text = String::new();
-         // TDT encoder does 8x subsampling
+        // TDT encoder does 8x subsampling
         let encoder_stride = 8;
 
         for (i, &token_id) in tokens.iter().enumerate() {
@@ -43,7 +43,10 @@ impl ParakeetTDTDecoder {
                 let display_text = token_text.replace('▁', " ");
 
                 // Skip special tokens
-                if !(token_text.starts_with('<') && token_text.ends_with('>') && token_text != "<unk>") {
+                if !(token_text.starts_with('<')
+                    && token_text.ends_with('>')
+                    && token_text != "<unk>")
+                {
                     full_text.push_str(&display_text);
 
                     result_tokens.push(crate::decoder::TimedToken {

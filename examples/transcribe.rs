@@ -46,11 +46,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\nSentencess:");
             for segment in result.tokens.iter() {
-                println!("[{:.2}s - {:.2}s]: {}", segment.start, segment.end, segment.text);
+                println!(
+                    "[{:.2}s - {:.2}s]: {}",
+                    segment.start, segment.end, segment.text
+                );
             }
 
             let elapsed = start_time.elapsed();
-            println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
+            println!(
+                "\n✓ Transcription completed in {:.2}s",
+                elapsed.as_secs_f32()
+            );
             return Ok(());
         }
 
@@ -62,11 +68,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\nSentencess:");
             for segment in result.tokens.iter() {
-                println!("[{:.2}s - {:.2}s]: {}", segment.start, segment.end, segment.text);
+                println!(
+                    "[{:.2}s - {:.2}s]: {}",
+                    segment.start, segment.end, segment.text
+                );
             }
 
             let elapsed = start_time.elapsed();
-            println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
+            println!(
+                "\n✓ Transcription completed in {:.2}s",
+                elapsed.as_secs_f32()
+            );
             return Ok(());
         }
     }
@@ -100,7 +112,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let elapsed = start_time.elapsed();
-    println!("\n✓ Transcription completed in {:.2}s", elapsed.as_secs_f32());
+    println!(
+        "\n✓ Transcription completed in {:.2}s",
+        elapsed.as_secs_f32()
+    );
 
     Ok(())
 }

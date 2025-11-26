@@ -24,11 +24,11 @@ run Sortformer on the full audio for diarization, then chunk the audio into
 */
 
 #[cfg(feature = "sortformer")]
+use hound;
+#[cfg(feature = "sortformer")]
 use parakeet_rs::sortformer::{DiarizationConfig, Sortformer};
 #[cfg(feature = "sortformer")]
 use parakeet_rs::TimestampMode;
-#[cfg(feature = "sortformer")]
-use hound;
 #[cfg(feature = "sortformer")]
 use std::env;
 #[cfg(feature = "sortformer")]
@@ -39,7 +39,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "sortformer"))]
     {
         eprintln!("Error: This example requires the 'sortformer' feature.");
-        eprintln!("Please run with: cargo run --example diarization --features sortformer <audio.wav>");
+        eprintln!(
+            "Please run with: cargo run --example diarization --features sortformer <audio.wav>"
+        );
         return Err("sortformer feature not enabled".into());
     }
 
@@ -57,9 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let spec = reader.spec();
 
         let audio: Vec<f32> = match spec.sample_format {
-            hound::SampleFormat::Float => reader
-                .samples::<f32>()
-                .collect::<Result<Vec<_>, _>>()?,
+            hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<Vec<_>, _>>()?,
             hound::SampleFormat::Int => reader
                 .samples::<i16>()
                 .map(|s| s.map(|s| s as f32 / 32768.0))
@@ -67,8 +67,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let duration = audio.len() as f32 / spec.sample_rate as f32 / spec.channels as f32;
-        println!("Loaded {} samples ({} Hz, {} channels, {:.1}s)",
-            audio.len(), spec.sample_rate, spec.channels, duration);
+        println!(
+            "Loaded {} samples ({} Hz, {} channels, {:.1}s)",
+            audio.len(),
+            spec.sample_rate,
+            spec.channels,
+            duration
+        );
 
         println!("{}", "=".repeat(80));
         println!("Step 2/3: Performing speaker diarization with Sortformer v2 (streaming)...");
@@ -76,18 +81,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Create Sortformer with default config (callhome)
         let mut sortformer = Sortformer::with_config(
             "diar_streaming_sortformer_4spk-v2.onnx",
-            None,  // default exec config
+            None, // default exec config
             DiarizationConfig::callhome(),
         )?;
 
-        let speaker_segments = sortformer.diarize(audio.clone(), spec.sample_rate, spec.channels)?;
+        let speaker_segments =
+            sortformer.diarize(audio.clone(), spec.sample_rate, spec.channels)?;
 
-        println!("Found {} speaker segments from Sortformer", speaker_segments.len());
+        println!(
+            "Found {} speaker segments from Sortformer",
+            speaker_segments.len()
+        );
 
         // Print raw diarization segments
         println!("\nRaw diarization segments:");
         for seg in &speaker_segments {
-            println!("  [{:06.2}s - {:06.2}s] Speaker {}", seg.start, seg.end, seg.speaker_id);
+            println!(
+                "  [{:06.2}s - {:06.2}s] Speaker {}",
+                seg.start, seg.end, seg.speaker_id
+            );
         }
 
         println!("\n{}", "=".repeat(80));
@@ -97,10 +109,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut parakeet = parakeet_rs::ParakeetTDT::from_pretrained("./tdt", None)?;
 
         // Transcribe with Sentences mode (TDT provides punctuation for proper segmentation)
-        if let Ok(result) = parakeet.transcribe_samples(audio, spec.sample_rate, spec.channels, Some(TimestampMode::Sentences)) {
+        if let Ok(result) = parakeet.transcribe_samples(
+            audio,
+            spec.sample_rate,
+            spec.channels,
+            Some(TimestampMode::Sentences),
+        ) {
             // For each sentence from TDT, find the corresponding speaker from Sortformer
             for segment in &result.tokens {
-                // Find speaker with maximum overlap 
+                // Find speaker with maximum overlap
                 let speaker = speaker_segments
                     .iter()
                     .filter_map(|s| {
@@ -118,14 +135,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map(|(id, _)| format!("Speaker {}", id))
                     .unwrap_or_else(|| "UNKNOWN".to_string());
 
-                println!("[{:.2}s - {:.2}s] {}: {}",
-                    segment.start, segment.end, speaker, segment.text);
+                println!(
+                    "[{:.2}s - {:.2}s] {}: {}",
+                    segment.start, segment.end, speaker, segment.text
+                );
             }
         }
 
         println!("\n{}", "=".repeat(80));
         let elapsed = start_time.elapsed();
-        println!("\n✓ Diarization and transcription completed in {:.2}s", elapsed.as_secs_f32());
+        println!(
+            "\n✓ Diarization and transcription completed in {:.2}s",
+            elapsed.as_secs_f32()
+        );
         println!("• UNKNOWN: Segments where no speaker was detected by Sortformer");
         println!("• Config: callhome v2 (onset=0.641, offset=0.561, min_on=0.511, min_off=0.296)");
 
