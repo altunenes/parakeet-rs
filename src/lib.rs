@@ -52,6 +52,7 @@ mod execution;
 mod model;
 mod model_tdt;
 mod parakeet;
+mod transcriber;
 mod parakeet_tdt;
 mod timestamps;
 mod vocab;
@@ -63,6 +64,7 @@ pub mod sortformer;
 pub use error::{Error, Result};
 pub use execution::{ExecutionProvider, ModelConfig as ExecutionConfig};
 pub use parakeet::Parakeet;
+pub use transcriber::*;
 pub use parakeet_tdt::ParakeetTDT;
 pub use timestamps::TimestampMode;
 

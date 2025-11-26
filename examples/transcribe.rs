@@ -17,7 +17,7 @@ For longer audio, use the pyannote example which processes segments, or split yo
 Note: The coreml feature flag is only for reproducing a known ONNX Runtime bug.
 Just ignore it :). See: https://github.com/microsoft/onnxruntime/issues/26355
 */
-use parakeet_rs::{Parakeet, TimestampMode};
+use parakeet_rs::{Parakeet, TimestampMode, Transcriber};
 use std::env;
 use std::time::Instant;
 

@@ -16,7 +16,7 @@ Otherwise you will likely get a error like:
 "Error: Ort(Error { code: RuntimeException, msg: "Non-zero status code returned while running Add node. Name:'/layers.0/self_attn/Add_2' Status Message: /Users/runner/work/ort-artifacts/ort-artifacts/onnxruntime/onnxruntime/core/providers/cpu/math/element_wise_ops.h:540 void onnxruntime::BroadcastIterator::Init(ptrdiff_t, ptrdiff_t) axis == 1 || axis == largest was false. })"
 */
 
-use parakeet_rs::{Parakeet, ParakeetTDT, TimestampMode};
+use parakeet_rs::{Parakeet, ParakeetTDT, TimestampMode, Transcriber};
 use std::env;
 use std::time::Instant;
 
