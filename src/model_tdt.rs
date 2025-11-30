@@ -52,13 +52,28 @@ impl ParakeetTDTModel {
             config,
         })
     }
-
+    //file names simply from: https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/main
     fn find_encoder(dir: &Path) -> Result<PathBuf> {
-        let candidates = ["encoder-model.onnx", "encoder.onnx"];
+        let candidates = [
+            "encoder-model.onnx",
+            "encoder.onnx",
+            "encoder-model.int8.onnx",
+        ];
         for candidate in &candidates {
             let path = dir.join(candidate);
             if path.exists() {
                 return Ok(path);
+            }
+        }
+        // fallback
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                    if name.starts_with("encoder") && name.ends_with(".onnx") {
+                        return Ok(path);
+                    }
+                }
             }
         }
         Err(Error::Config(format!(
@@ -67,9 +82,11 @@ impl ParakeetTDTModel {
         )))
     }
 
+
     fn find_decoder_joint(dir: &Path) -> Result<PathBuf> {
         let candidates = [
             "decoder_joint-model.onnx",
+            "decoder_joint-model.int8.onnx",
             "decoder_joint.onnx",
             "decoder-model.onnx",
         ];
