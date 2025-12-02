@@ -3,6 +3,8 @@ Speaker Diarization with NVIDIA Sortformer v2 (Streaming)
 
 Download the Sortformer v2 model:
 https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.onnx
+Or download the Sortformer v2.1 model:
+https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.1.onnx
 Download test audio:
 wget https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav
 
