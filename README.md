@@ -66,7 +66,7 @@ parakeet-rs = { version = "0.2", features = ["sortformer"] }
 use parakeet_rs::sortformer::{Sortformer, DiarizationConfig};
 
 let mut sortformer = Sortformer::with_config(
-    "diar_streaming_sortformer_4spk-v2.onnx",
+    "diar_streaming_sortformer_4spk-v2.onnx", // or v2.1.onnx
     None,
     DiarizationConfig::callhome(),  // or dihard3(),custom()
 )?;
@@ -108,7 +108,7 @@ let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 - [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
 - [TDT: Multilingual (auto lang detection) ](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
 - [EOU: Streaming ASR with end-of-utterance detection](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1)
-- [Sortformer v2: Streaming speaker diarization (up to 4 speakers)](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2)
+- [Sortformer v2: Streaming speaker diarization (up to 4 speakers)](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2) NOTE: you can also download v2.1 model same way.
 - Token-level timestamps (CTC, TDT)
 
 ## Notes
