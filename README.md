@@ -58,7 +58,7 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 }
 ```
 
-**Sortformer v2 (Speaker Diarization)**: Streaming 4-speaker diarization
+**Sortformer v2 & v2.1 (Speaker Diarization)**: Streaming 4-speaker diarization
 ```toml
 parakeet-rs = { version = "0.2", features = ["sortformer"] }
 ```
@@ -86,7 +86,7 @@ See `examples/diarization.rs` for combining with TDT transcription.
 
 **EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`
 
-**Diarization (Sortformer v2)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.onnx): `diar_streaming_sortformer_4spk-v2.onnx`
+**Diarization (Sortformer v2 & v2.1)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.onnx): `diar_streaming_sortformer_4spk-v2.onnx`
 
 Quantized versions available (int8). All files must be in the same directory.
 
