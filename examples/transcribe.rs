@@ -8,6 +8,9 @@ cargo run --example transcribe 6_speakers.wav
 TDT (Multilingual):
 cargo run --example transcribe 6_speakers.wav tdt
 
+Canary (Multilingual):
+cargo run --example transcribe 6_speakers.wav canary
+
 NOTE: For manual audio loading without using transcribe_file(), see examples/raw.rs
 - Shows transcribe_samples(audio, sample_rate, channels, timestamps) usage
 
@@ -17,7 +20,7 @@ For longer audio, use the pyannote example which processes segments, or split yo
 Note: The coreml feature flag is only for reproducing a known ONNX Runtime bug.
 Just ignore it :). See: https://github.com/microsoft/onnxruntime/issues/26355
 */
-use parakeet_rs::{Parakeet, TimestampMode, Transcriber};
+use parakeet_rs::{Parakeet, ParakeetCanary, TimestampMode, Transcriber};
 use std::env;
 use std::time::Instant;
 
@@ -33,7 +36,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "6_speakers.wav"
     };
 
-    let use_tdt = args.len() > 2 && args[2] == "tdt";
+    let model_type = args.get(2).map(|s| s.as_str()).unwrap_or("ctc");
+
+    // Canary model (multilingual ASR/AST, 25 European languages)
+    if model_type == "canary" {
+        let mut canary = ParakeetCanary::from_pretrained("./canary", None)?;
+
+        // Set source and target languages (both default to "en")
+        // Transcription: canary.set_language("sv");  // Swedish → Swedish
+        // Translation: canary.set_source_language("sv"); canary.set_target_language("en"); // Swedish → English
+
+        let result = canary.transcribe_file(audio_path, Some(TimestampMode::Sentences))?;
+        println!("{}", result.text);
+
+        println!("\nSentences:");
+        for segment in result.tokens.iter() {
+            println!(
+                "[{:.2}s - {:.2}s]: {}",
+                segment.start, segment.end, segment.text
+            );
+        }
+
+        let elapsed = start_time.elapsed();
+        println!(
+            "\n✓ Transcription completed in {:.2}s",
+            elapsed.as_secs_f32()
+        );
+        return Ok(());
+    }
+
+    let use_tdt = model_type == "tdt";
 
     // TDT model (multilingual, 25 languages)
     if use_tdt {

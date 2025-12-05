@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loading model from ./fullstr...");
     let mut parakeet = ParakeetEOU::from_pretrained("./fullstr", None)?;
 
-    println!("Loading audio: {}", audio_path);
+    println!("Loading audio: {audio_path}");
     let mut reader = hound::WavReader::open(audio_path)?;
     let spec = reader.spec();
 
@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let text = parakeet.transcribe(&chunk_vec, reset_on_eou)?;
         if !text.is_empty() {
-            print!("{}", text);
+            print!("{text}");
             std::io::Write::flush(&mut std::io::stdout())?;
             full_text.push_str(&text);
         }
@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for _ in 0..3 {
         let text = parakeet.transcribe(&silence, reset_on_eou)?;
         if !text.is_empty() {
-            print!("{}", text);
+            print!("{text}");
             std::io::Write::flush(&mut std::io::stdout())?;
             full_text.push_str(&text);
         }
