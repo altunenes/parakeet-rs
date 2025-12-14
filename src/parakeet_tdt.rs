@@ -62,8 +62,11 @@ impl ParakeetTDT {
 
         let exec_config = config.unwrap_or_default();
 
-        let model = ParakeetTDTModel::from_pretrained(path, exec_config)?;
+        // Load vocab first to get the actual vocabulary size
         let vocab = Vocabulary::from_file(&vocab_path)?;
+        let vocab_size = vocab.size();
+
+        let model = ParakeetTDTModel::from_pretrained(path, exec_config, vocab_size)?;
         let decoder = ParakeetTDTDecoder::from_vocab(vocab);
 
         Ok(Self {

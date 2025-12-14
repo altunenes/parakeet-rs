@@ -10,9 +10,10 @@ pub struct TDTModelConfig {
     pub vocab_size: usize,
 }
 
-impl Default for TDTModelConfig {
-    fn default() -> Self {
-        Self { vocab_size: 8193 }
+impl TDTModelConfig {
+    /// Create config with specified vocab size
+    pub fn new(vocab_size: usize) -> Self {
+        Self { vocab_size }
     }
 }
 
@@ -24,9 +25,15 @@ pub struct ParakeetTDTModel {
 
 impl ParakeetTDTModel {
     /// Load TDT model from directory containing encoder and decoder_joint ONNX files
+    ///
+    /// # Arguments
+    /// * `model_dir` - Directory containing encoder and decoder_joint ONNX files
+    /// * `exec_config` - Execution configuration for ONNX runtime
+    /// * `vocab_size` - Vocabulary size (number of tokens including blank)
     pub fn from_pretrained<P: AsRef<Path>>(
         model_dir: P,
         exec_config: ExecutionConfig,
+        vocab_size: usize,
     ) -> Result<Self> {
         let model_dir = model_dir.as_ref();
 
@@ -34,7 +41,7 @@ impl ParakeetTDTModel {
         let encoder_path = Self::find_encoder(model_dir)?;
         let decoder_joint_path = Self::find_decoder_joint(model_dir)?;
 
-        let config = TDTModelConfig::default();
+        let config = TDTModelConfig::new(vocab_size);
 
         // Load encoder
         let builder = Session::builder()?;
@@ -218,7 +225,7 @@ impl ParakeetTDTModel {
                 .try_extract_tensor::<f32>()
                 .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
 
-            // TDT outputs vocab_size + 5 durations (8193 + 5 = 8198)
+            // TDT outputs vocab_size + 5 durations
             let vocab_logits: Vec<f32> = logits_data.iter().take(vocab_size).copied().collect();
             let duration_logits: Vec<f32> = logits_data.iter().skip(vocab_size).copied().collect();
 
