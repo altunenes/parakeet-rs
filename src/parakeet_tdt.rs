@@ -108,12 +108,22 @@ impl Transcriber for ParakeetTDT {
         result.tokens = process_timestamps(&result.tokens, mode);
 
         // Rebuild full text from processed tokens
-        result.text = result
-            .tokens
-            .iter()
-            .map(|t| t.text.as_str())
-            .collect::<Vec<_>>()
-            .join(" ");
+        result.text = if mode == TimestampMode::Tokens {
+            result
+                .tokens
+                .iter()
+                .map(|t| t.text.as_str())
+                .collect::<String>()
+                .trim()
+                .to_string()
+        } else {
+            result
+                .tokens
+                .iter()
+                .map(|t| t.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
 
         Ok(result)
     }
