@@ -58,4 +58,9 @@ impl Vocabulary {
     pub fn id_to_text(&self, id: usize) -> Option<&str> {
         self.id_to_token.get(id).map(|s| s.as_str())
     }
+
+    /// Get vocabulary size (number of tokens)
+    pub fn size(&self) -> usize {
+        self.id_to_token.len()
+    }
 }
