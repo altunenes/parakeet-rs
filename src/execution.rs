@@ -5,7 +5,6 @@ use ort::session::builder::SessionBuilder;
 // GPU providers (CUDA, TensorRT, ROCm) offer 5-10x speedup but require specific hardware.
 // All GPU providers automatically fall back to CPU if they fail.
 //
-// Note: CoreML currently fails with this model due to unsupported operations.
 // WebGPU is experimental and may produce incorrect results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExecutionProvider {
@@ -107,6 +106,8 @@ impl ModelConfig {
                 };
                 builder.with_execution_providers([
                     CoreMLExecutionProvider::default()
+                        // Enable subgraphs for models with control flow operators.
+                        .with_subgraphs(true)
                         .with_compute_units(CoreMLComputeUnits::CPUAndGPU)
                         .build(),
                     CPUExecutionProvider::default().build().error_on_failure(),
