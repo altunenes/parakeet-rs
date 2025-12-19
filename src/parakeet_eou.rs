@@ -183,9 +183,8 @@ impl ParakeetEOU {
                 self.state_c = new_c;
                 self.last_token.fill(max_idx);
 
-                if let Some(token) = self.tokenizer.id_to_token(max_idx as u32) {
-                    let clean = token.replace('▁', " ");
-                    text_output.push_str(&clean);
+                if let Ok(decoded) = self.tokenizer.decode(&[max_idx as u32], true) {
+                    text_output.push_str(&decoded);
                 }
                 syms_added += 1;
             }

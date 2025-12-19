@@ -65,8 +65,21 @@ fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
     let mut last_word_lower = String::new();
 
     for (i, token) in tokens.iter().enumerate() {
-        // Skip empty tokens
+        // Space-only tokens (from SentencePiece ▁ word boundaries) act as word separators
+        // but don't contribute text. Save current word if we hit one.
         if token.text.trim().is_empty() {
+            if !current_word_text.is_empty() {
+                let word_lower = current_word_text.to_lowercase();
+                if word_lower != last_word_lower {
+                    words.push(TimedToken {
+                        text: current_word_text.clone(),
+                        start: current_word_start,
+                        end: if i > 0 { tokens[i - 1].end } else { token.end },
+                    });
+                    last_word_lower = word_lower;
+                }
+                current_word_text.clear();
+            }
             continue;
         }
 
@@ -273,5 +286,47 @@ mod tests {
 
         let result = format_sentence(&words);
         assert_eq!(result, "uh uh hello");
+    }
+
+    #[test]
+    fn test_space_token_separates_words_from_digits() {
+        // Simulates "like 100" tokenized as [" like", " ", "1", "0", "0"]
+        // The space-only token should act as word boundary
+        let tokens = vec![
+            TimedToken {
+                text: " like".to_string(),
+                start: 0.0,
+                end: 0.5,
+            },
+            TimedToken {
+                text: " ".to_string(), // Space-only token from ▁
+                start: 0.5,
+                end: 0.5,
+            },
+            TimedToken {
+                text: "1".to_string(),
+                start: 0.5,
+                end: 0.6,
+            },
+            TimedToken {
+                text: "0".to_string(),
+                start: 0.6,
+                end: 0.7,
+            },
+            TimedToken {
+                text: "0".to_string(),
+                start: 0.7,
+                end: 0.8,
+            },
+        ];
+
+        let words = group_by_words(&tokens);
+        assert_eq!(words.len(), 2);
+        assert_eq!(words[0].text, "like");
+        assert_eq!(words[1].text, "100");
+
+        // Also test sentence formatting
+        let sentence = format_sentence(&words);
+        assert_eq!(sentence, "like 100");
     }
 }
