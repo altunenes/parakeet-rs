@@ -119,6 +119,21 @@ impl Transcriber for ParakeetTDT {
                 .collect::<String>()
                 .trim()
                 .to_string()
+        } else if mode == TimestampMode::Words {
+            // (".", ",", "!", "?") are standalone punctuation tokens and should not be joined with spaces
+            let mut out = String::new();
+            for (i, t) in result.tokens.iter().enumerate() {
+                let text = t.text.as_str();
+                if i == 0 {
+                    out.push_str(text);
+                } else if text == "," || text == "." || text == "!" || text == "?" {
+                    out.push_str(text);
+                } else {
+                    out.push(' ');
+                    out.push_str(text);
+                }
+            }
+            out.trim().to_string()
         } else {
             result
                 .tokens
