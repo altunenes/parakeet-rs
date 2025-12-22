@@ -227,6 +227,36 @@ mod tests {
     }
 
     #[test]
+    fn test_word_grouping_with_hyphenated_word() {
+        let tokens = vec![
+            TimedToken {
+                text: "▁twenty".to_string(),
+                start: 0.0,
+                end: 0.3,
+            },
+            TimedToken {
+                text: "-two".to_string(),
+                start: 0.3,
+                end: 0.6,
+            },
+            TimedToken {
+                text: "▁apples".to_string(),
+                start: 0.6,
+                end: 1.0,
+            },
+        ];
+
+        let words = group_by_words(&tokens);
+        assert_eq!(words.len(), 2);
+        assert_eq!(words[0].text, "twenty-two");
+        assert_eq!(words[1].text, "apples");
+        assert_eq!(words[0].start, 0.0);
+        assert_eq!(words[0].end, 0.6);
+        assert_eq!(words[1].start, 0.6);
+        assert_eq!(words[1].end, 1.0);
+    }
+
+    #[test]
     fn test_sentence_grouping() {
         let tokens = vec![
             TimedToken {
