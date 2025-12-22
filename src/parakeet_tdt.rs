@@ -120,20 +120,18 @@ impl Transcriber for ParakeetTDT {
                 .trim()
                 .to_string()
         } else if mode == TimestampMode::Words {
-            // (".", ",", "!", "?") are standalone punctuation tokens and should not be joined with spaces
             let mut out = String::new();
-            for (i, t) in result.tokens.iter().enumerate() {
-                let text = t.text.as_str();
-                if i == 0 {
-                    out.push_str(text);
-                } else if text == "," || text == "." || text == "!" || text == "?" {
-                    out.push_str(text);
-                } else {
+            for (i, word) in result.tokens.iter().map(|t| t.text.as_str()).enumerate() {
+                let is_standalone_punct = word.len() == 1
+                    && word
+                        .chars()
+                        .all(|c| matches!(c, '.' | ',' | '!' | '?' | ';' | ':' | ')'));
+                if i > 0 && !is_standalone_punct {
                     out.push(' ');
-                    out.push_str(text);
                 }
+                out.push_str(word);
             }
-            out.trim().to_string()
+            out
         } else {
             result
                 .tokens
