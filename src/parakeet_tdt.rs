@@ -119,6 +119,19 @@ impl Transcriber for ParakeetTDT {
                 .collect::<String>()
                 .trim()
                 .to_string()
+        } else if mode == TimestampMode::Words {
+            let mut out = String::new();
+            for (i, word) in result.tokens.iter().map(|t| t.text.as_str()).enumerate() {
+                let is_standalone_punct = word.len() == 1
+                    && word
+                        .chars()
+                        .all(|c| matches!(c, '.' | ',' | '!' | '?' | ';' | ':' | ')'));
+                if i > 0 && !is_standalone_punct {
+                    out.push(' ');
+                }
+                out.push_str(word);
+            }
+            out
         } else {
             result
                 .tokens

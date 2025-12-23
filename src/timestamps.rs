@@ -85,18 +85,20 @@ fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
 
         // Check if this starts a new word (SentencePiece uses ▁ or space prefix)
         // Also treat PURE punctuation marks (like ".", ",") as separate words
-        // But NOT contractions like "'re" or "'s" which should attach to previous word
+        // But NOT contractions like "'re" or "'s" or hyphenations like "-two" (ex. twenty-two) which should attach to previous word
         let is_pure_punctuation =
             !token.text.is_empty() && token.text.chars().all(|c| c.is_ascii_punctuation());
 
-        // Check if this is a contraction suffix
+        // Check if this is a contraction or hyphenation suffix
         // These should NOT start a new word - they attach to the previous word
         let token_without_marker = token.text.trim_start_matches('▁').trim_start_matches(' ');
         let is_contraction = token_without_marker.starts_with('\'');
+        let is_hyphenation = token_without_marker.starts_with('-');
 
         let starts_word =
             (token.text.starts_with('▁') || token.text.starts_with(' ') || is_pure_punctuation)
                 && !is_contraction
+                && !is_hyphenation
                 || i == 0;
 
         if starts_word && !current_word_text.is_empty() {
@@ -235,6 +237,36 @@ mod tests {
         assert_eq!(words.len(), 2);
         assert_eq!(words[0].text, "Hello");
         assert_eq!(words[1].text, "world");
+    }
+
+    #[test]
+    fn test_word_grouping_with_hyphenated_word() {
+        let tokens = vec![
+            TimedToken {
+                text: "▁twenty".to_string(),
+                start: 0.0,
+                end: 0.3,
+            },
+            TimedToken {
+                text: "-two".to_string(),
+                start: 0.3,
+                end: 0.6,
+            },
+            TimedToken {
+                text: "▁apples".to_string(),
+                start: 0.6,
+                end: 1.0,
+            },
+        ];
+
+        let words = group_by_words(&tokens);
+        assert_eq!(words.len(), 2);
+        assert_eq!(words[0].text, "twenty-two");
+        assert_eq!(words[1].text, "apples");
+        assert_eq!(words[0].start, 0.0);
+        assert_eq!(words[0].end, 0.6);
+        assert_eq!(words[1].start, 0.6);
+        assert_eq!(words[1].end, 1.0);
     }
 
     #[test]
