@@ -30,7 +30,7 @@ name = "streaming"
 path = "examples/streaming.rs"
 
 [dependencies]
-ort = { version = "2.0.0-rc.10", features = ["download-binaries", "ndarray"] }
+ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "ndarray"] }
 hound = "3.5"
 eyre = "0.6"
 ndarray = "0.16"
@@ -42,8 +42,9 @@ rustfft = "6.4"
 [dev-dependencies]
 
 [features]
-default = ["cpu"]
+default = ["cpu", "ort-defaults"]
 cpu = []
+ort-defaults = ["ort/default"]
 cuda = ["ort/cuda"]
 tensorrt = ["ort/tensorrt"]
 coreml = ["ort/coreml"]
