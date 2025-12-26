@@ -729,7 +729,7 @@ dependencies = [
 
 [[package]]
 name = "parakeet-rs"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "eyre",
  "hound",
