@@ -89,7 +89,6 @@ impl ParakeetTDTModel {
         )))
     }
 
-
     fn find_decoder_joint(dir: &Path) -> Result<PathBuf> {
         let candidates = [
             "decoder_joint-model.onnx",
