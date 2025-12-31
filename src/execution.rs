@@ -25,6 +25,8 @@ pub enum ExecutionProvider {
     OpenVINO,
     #[cfg(feature = "webgpu")]
     WebGPU,
+    #[cfg(feature = "nnapi")]
+    NNAPI,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +138,12 @@ impl ModelConfig {
                 ort::execution_providers::WebGPUExecutionProvider::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
+
+            #[cfg(feature = "nnapi")]
+            ExecutionProvider::NNAPI => builder.with_execution_providers([
+                ort::execution_providers::NNAPIExecutionProvider::default().build(),
+                CPUExecutionProvider::default().build().error_on_failure(),
+            ])?,            
         };
 
         Ok(builder)
