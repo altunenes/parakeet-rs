@@ -77,9 +77,10 @@ impl ModelConfig {
             feature = "directml",
             feature = "rocm",
             feature = "openvino",
-            feature = "webgpu"
+            feature = "webgpu",
+            feature = "nnapi"
         ))]
-        use ort::execution_providers::CPUExecutionProvider;
+        use ort::ep::CPU as CPUExecutionProvider;
         use ort::session::builder::GraphOptimizationLevel;
 
         let mut builder = builder
@@ -92,24 +93,22 @@ impl ModelConfig {
 
             #[cfg(feature = "cuda")]
             ExecutionProvider::Cuda => builder.with_execution_providers([
-                ort::execution_providers::CUDAExecutionProvider::default().build(),
+                ort::ep::CUDA::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "tensorrt")]
             ExecutionProvider::TensorRT => builder.with_execution_providers([
-                ort::execution_providers::TensorRTExecutionProvider::default().build(),
+                ort::ep::TensorRT::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "coreml")]
             ExecutionProvider::CoreML => {
-                use ort::execution_providers::coreml::{
-                    CoreMLComputeUnits, CoreMLExecutionProvider,
-                };
+                use ort::ep::coreml::{ComputeUnits, CoreML};
                 builder.with_execution_providers([
-                    CoreMLExecutionProvider::default()
-                        .with_compute_units(CoreMLComputeUnits::CPUAndGPU)
+                    CoreML::default()
+                        .with_compute_units(ComputeUnits::CPUAndGPU)
                         .build(),
                     CPUExecutionProvider::default().build().error_on_failure(),
                 ])?
@@ -117,31 +116,31 @@ impl ModelConfig {
 
             #[cfg(feature = "directml")]
             ExecutionProvider::DirectML => builder.with_execution_providers([
-                ort::execution_providers::DirectMLExecutionProvider::default().build(),
+                ort::ep::DirectML::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "rocm")]
             ExecutionProvider::ROCm => builder.with_execution_providers([
-                ort::execution_providers::ROCmExecutionProvider::default().build(),
+                ort::ep::ROCm::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "openvino")]
             ExecutionProvider::OpenVINO => builder.with_execution_providers([
-                ort::execution_providers::OpenVINOExecutionProvider::default().build(),
+                ort::ep::OpenVINO::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "webgpu")]
             ExecutionProvider::WebGPU => builder.with_execution_providers([
-                ort::execution_providers::WebGPUExecutionProvider::default().build(),
+                ort::ep::WebGPU::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
             #[cfg(feature = "nnapi")]
             ExecutionProvider::NNAPI => builder.with_execution_providers([
-                ort::execution_providers::NNAPIExecutionProvider::default().build(),
+                ort::ep::NNAPI::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,            
         };
