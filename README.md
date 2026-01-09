@@ -58,6 +58,23 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 }
 ```
 
+**Nemotron (Streaming)**: Cache-aware streaming ASR with punctuation
+```rust
+use parakeet_rs::Nemotron;
+
+let mut model = Nemotron::from_pretrained("./nemotron", None)?;
+
+// Process in 560ms chunks for streaming
+const CHUNK_SIZE: usize = 8960; // 560ms at 16kHz
+for chunk in audio.chunks(CHUNK_SIZE) {
+    let text = model.transcribe_chunk(chunk)?;
+    print!("{}", text);
+}
+
+// Get clean final transcript
+println!("{}", model.get_transcript());
+```
+
 **Sortformer v2 & v2.1 (Speaker Diarization)**: Streaming 4-speaker diarization
 ```toml
 parakeet-rs = { version = "0.2", features = ["sortformer"] }
@@ -86,6 +103,8 @@ See `examples/diarization.rs` for combining with TDT transcription.
 
 **EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`
 
+**Nemotron**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`
+
 **Diarization (Sortformer v2 & v2.1)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main): `diar_streaming_sortformer_4spk-v2.onnx` or `v2.1.onnx`.
 
 Quantized versions available (int8). All files must be in the same directory.
@@ -108,6 +127,7 @@ let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 - [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
 - [TDT: Multilingual (auto lang detection) ](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
 - [EOU: Streaming ASR with end-of-utterance detection](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1)
+- [Nemotron: Cache aware streaming ASR (600M params,EN only)](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b)
 - [Sortformer v2 & v2.1: Streaming speaker diarization (up to 4 speakers)](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2) NOTE: you can also download v2.1 model same way.
 - Token-level timestamps (CTC, TDT)
 
