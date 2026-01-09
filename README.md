@@ -70,9 +70,6 @@ for chunk in audio.chunks(CHUNK_SIZE) {
     let text = model.transcribe_chunk(chunk)?;
     print!("{}", text);
 }
-
-// Get clean final transcript
-println!("{}", model.get_transcript());
 ```
 
 **Sortformer v2 & v2.1 (Speaker Diarization)**: Streaming 4-speaker diarization
