@@ -3,11 +3,11 @@
 [![crates.io](https://img.shields.io/crates/v/parakeet-rs.svg)](https://crates.io/crates/parakeet-rs)
 
 Fast speech recognition with NVIDIA's Parakeet models via ONNX Runtime.
-Note: CoreML doesn't stable with this model - stick w/ CPU (or other GPU EP like CUDA). But its incredible fast in my Mac M3 16gb' CPU compared to Whisper metal! :-)
+Note: CoreML doesn't stable with this model - stick w/ CPU (or other GPU EP). But its incredible fast in my Mac M3 16gb' CPU compared to Whisper metal! :-)
 
 ## Models
 
-**CTC (English-only)**: Fast & accurate
+**CTC (English-only)**:
 ```rust
 use parakeet_rs::Parakeet;
 
@@ -108,7 +108,7 @@ Quantized versions available (int8). All files must be in the same directory.
 
 GPU support (auto-falls back to CPU if fails):
 ```toml
-parakeet-rs = { version = "0.1", features = ["cuda"] }  # or tensorrt, webgpu, directml, rocm
+parakeet-rs = { version = "0.1", features = ["cuda"] }  # or tensorrt, webgpu, directml, rocm, or other ort supported EPs (check cargo features)
 ```
 
 ```rust
