@@ -197,8 +197,10 @@ pub struct Nemotron {
     last_token: i32,
     mel_basis: Array2<f32>,
     window: Vec<f32>,
-    mel_buffer: Vec<f32>,
-    mel_frames: usize,
+    /// Raw audio sample buffer for proper mel computation
+    audio_buffer: Vec<f32>,
+    /// How many audio samples have been processed (converted to mel and sent to encoder)
+    audio_processed: usize,
     chunk_idx: usize,
     accumulated_tokens: Vec<usize>,
 }
@@ -244,8 +246,8 @@ impl Nemotron {
             last_token: BLANK_ID as i32,
             mel_basis: Self::create_mel_filterbank(),
             window: Self::create_window(),
-            mel_buffer: Vec::new(),
-            mel_frames: 0,
+            audio_buffer: Vec::new(),
+            audio_processed: 0,
             chunk_idx: 0,
             accumulated_tokens: Vec::new(),
         })
@@ -258,8 +260,8 @@ impl Nemotron {
         self.state_1.fill(0.0);
         self.state_2.fill(0.0);
         self.last_token = BLANK_ID as i32;
-        self.mel_buffer.clear();
-        self.mel_frames = 0;
+        self.audio_buffer.clear();
+        self.audio_processed = 0;
         self.chunk_idx = 0;
         self.accumulated_tokens.clear();
     }
@@ -352,47 +354,69 @@ impl Nemotron {
         Ok(self.vocab.decode(&valid_tokens))
     }
 
-    /// Stream transcribe a chunk of audio (call repeatedly for real-time)
+    /// Stream transcribe a chunk of audio (call repeatedly for real-time).
+    ///
+    /// This buffers raw audio and computes mel spectrograms over the full buffer
+    /// to avoid edge effects at chunk boundaries.
     pub fn transcribe_chunk(&mut self, audio_chunk: &[f32]) -> Result<String> {
-        let chunk_mel = self.compute_mel_spectrogram(audio_chunk);
-        let new_frames = chunk_mel.shape()[1];
+        // Append raw audio to buffer
+        self.audio_buffer.extend_from_slice(audio_chunk);
 
-        if new_frames == 0 {
+        // Calculate how many mel frames we can produce from buffered audio
+        // mel_frames = 1 + (audio_len + 2*pad - win_length) / hop_length
+        // For center=true padding, we need at least win_length samples to get 1 frame
+        let total_audio = self.audio_buffer.len();
+        if total_audio < WIN_LENGTH {
             return Ok(String::new());
         }
 
-        // Append to mel buffer
-        for f in 0..new_frames {
-            for m in 0..N_MELS {
-                self.mel_buffer.push(chunk_mel[[m, f]]);
-            }
-        }
-        self.mel_frames += new_frames;
+        // Compute mel spectrogram over the ENTIRE audio buffer
+        let full_mel = self.compute_mel_spectrogram(&self.audio_buffer);
+        let total_mel_frames = full_mel.shape()[1];
 
-        if self.mel_frames < CHUNK_SIZE {
+        // Calculate how many mel frames correspond to processed audio
+        // Each CHUNK_SIZE mel frames = CHUNK_SIZE * HOP_LENGTH audio samples
+        let processed_mel_frames = self.audio_processed / HOP_LENGTH;
+
+        // Check if we have enough NEW frames to process a chunk
+        let available_new_frames = total_mel_frames.saturating_sub(processed_mel_frames);
+        if available_new_frames < CHUNK_SIZE {
             return Ok(String::new());
         }
 
-        // Build chunk
+        // Build encoder input chunk
         let expected_size = PRE_ENCODE_CACHE + CHUNK_SIZE;
         let mut chunk_data = vec![0.0f32; N_MELS * expected_size];
 
-        let buffer_start = if self.mel_frames > expected_size {
-            self.mel_frames - expected_size
-        } else {
-            0
-        };
+        // Determine the mel frame range for this chunk
+        let is_first_chunk = self.chunk_idx == 0;
+        let main_start = processed_mel_frames;
+        let _main_end = main_start + CHUNK_SIZE;
 
-        let available = self.mel_frames - buffer_start;
-        let offset = expected_size.saturating_sub(available);
-
-        for f in 0..available.min(expected_size) {
-            let src_frame = buffer_start + f;
-            let dst_frame = offset + f;
-            if dst_frame < expected_size {
+        if is_first_chunk {
+            // First chunk: zero-pad for pre-encode cache
+            for f in 0..CHUNK_SIZE.min(total_mel_frames) {
                 for m in 0..N_MELS {
-                    chunk_data[m * expected_size + dst_frame] =
-                        self.mel_buffer[src_frame * N_MELS + m];
+                    chunk_data[m * expected_size + PRE_ENCODE_CACHE + f] = full_mel[[m, f]];
+                }
+            }
+        } else {
+            // Subsequent chunks: include pre-encode cache from previous frames
+            let cache_start = main_start.saturating_sub(PRE_ENCODE_CACHE);
+            let cache_frames = main_start - cache_start;
+            let cache_offset = PRE_ENCODE_CACHE - cache_frames;
+
+            // Fill pre-encode cache
+            for f in 0..cache_frames {
+                for m in 0..N_MELS {
+                    chunk_data[m * expected_size + cache_offset + f] = full_mel[[m, cache_start + f]];
+                }
+            }
+
+            // Fill main chunk
+            for f in 0..CHUNK_SIZE.min(total_mel_frames - main_start) {
+                for m in 0..N_MELS {
+                    chunk_data[m * expected_size + PRE_ENCODE_CACHE + f] = full_mel[[m, main_start + f]];
                 }
             }
         }
@@ -408,15 +432,20 @@ impl Nemotron {
         let tokens = self.decode_chunk(&encoded, enc_len as usize)?;
         self.accumulated_tokens.extend(&tokens);
 
-        // Trim mel buffer
-        let keep_frames = PRE_ENCODE_CACHE + CHUNK_SIZE;
-        if self.mel_frames > keep_frames * 2 {
-            let remove = self.mel_frames - keep_frames;
-            self.mel_buffer.drain(0..remove * N_MELS);
-            self.mel_frames -= remove;
-        }
-
+        // Advance processed position
+        self.audio_processed += CHUNK_SIZE * HOP_LENGTH;
         self.chunk_idx += 1;
+
+        // Trim audio buffer to keep memory bounded
+        // Keep enough for pre-encode cache context
+        let keep_samples = (PRE_ENCODE_CACHE + CHUNK_SIZE) * HOP_LENGTH + WIN_LENGTH;
+        if self.audio_buffer.len() > keep_samples * 2 {
+            let remove = self.audio_buffer.len() - keep_samples;
+            // Adjust processed counter since we're removing from the start
+            let actual_remove = remove.min(self.audio_processed);
+            self.audio_buffer.drain(0..actual_remove);
+            self.audio_processed -= actual_remove;
+        }
 
         let mut result = String::new();
         for &t in &tokens {
