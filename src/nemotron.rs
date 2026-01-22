@@ -576,8 +576,27 @@ impl Nemotron {
     fn create_mel_filterbank() -> Array2<f32> {
         let num_freqs = N_FFT / 2 + 1;
 
-        let hz_to_mel = |hz: f32| 2595.0 * (1.0 + hz / 700.0).log10();
-        let mel_to_hz = |mel: f32| 700.0 * (10.0_f32.powf(mel / 2595.0) - 1.0);
+        // Slaney mel scale note that I coded this same: src/sortformer.rs
+        const F_SP: f32 = 200.0 / 3.0;
+        const MIN_LOG_HZ: f32 = 1000.0;
+        const MIN_LOG_MEL: f32 = MIN_LOG_HZ / F_SP;
+        const LOG_STEP: f32 = 0.06875177742094912;
+
+        let hz_to_mel = |hz: f32| -> f32 {
+            if hz < MIN_LOG_HZ {
+                hz / F_SP
+            } else {
+                MIN_LOG_MEL + (hz / MIN_LOG_HZ).ln() / LOG_STEP
+            }
+        };
+
+        let mel_to_hz = |mel: f32| -> f32 {
+            if mel < MIN_LOG_MEL {
+                mel * F_SP
+            } else {
+                MIN_LOG_HZ * ((mel - MIN_LOG_MEL) * LOG_STEP).exp()
+            }
+        };
 
         let mel_min = hz_to_mel(0.0);
         let mel_max = hz_to_mel(FMAX);
@@ -598,9 +617,9 @@ impl Nemotron {
             let right = mel_points[i + 2];
 
             for (j, &freq) in fft_freqs.iter().enumerate() {
-                if freq >= left && freq <= center {
+                if freq >= left && freq <= center && center != left {
                     weights[[i, j]] = (freq - left) / (center - left);
-                } else if freq > center && freq <= right {
+                } else if freq > center && freq <= right && right != center {
                     weights[[i, j]] = (right - freq) / (right - center);
                 }
             }
@@ -608,9 +627,12 @@ impl Nemotron {
 
         // Slaney normalization
         for i in 0..N_MELS {
-            let enorm = 2.0 / (mel_points[i + 2] - mel_points[i]);
-            for j in 0..num_freqs {
-                weights[[i, j]] *= enorm;
+            let bandwidth = mel_points[i + 2] - mel_points[i];
+            if bandwidth > 0.0 {
+                let enorm = 2.0 / bandwidth;
+                for j in 0..num_freqs {
+                    weights[[i, j]] *= enorm;
+                }
             }
         }
 
