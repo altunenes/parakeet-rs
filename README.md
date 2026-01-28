@@ -108,7 +108,7 @@ Quantized versions available (int8). All files must be in the same directory.
 
 GPU support (auto-falls back to CPU if fails):
 ```toml
-parakeet-rs = { version = "0.1", features = ["cuda"] }  # or tensorrt, webgpu, directml, rocm, or other ort supported EPs (check cargo features)
+parakeet-rs = { version = "0.3", features = ["cuda"] }  # or tensorrt, webgpu, directml, migraphx or other ort supported EPs (check cargo features)
 ```
 
 ```rust
@@ -122,7 +122,7 @@ let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 ## Features
 
 - [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
-- [TDT: Multilingual (auto lang detection) ](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
+- [TDT: Multilingual (auto lang detection)](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
 - [EOU: Streaming ASR with end-of-utterance detection](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1)
 - [Nemotron: Cache aware streaming ASR (600M params,EN only)](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b)
 - [Sortformer v2 & v2.1: Streaming speaker diarization (up to 4 speakers)](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2) NOTE: you can also download v2.1 model same way.
