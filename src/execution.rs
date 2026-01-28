@@ -2,7 +2,7 @@ use crate::error::Result;
 use ort::session::builder::SessionBuilder;
 
 // Hardware acceleration options. CPU is default and most reliable.
-// GPU providers (CUDA, TensorRT, ROCm) offer 5-10x speedup but require specific hardware.
+// GPU providers (CUDA, TensorRT, MIGraphX) offer 5-10x speedup but require specific hardware.
 // All GPU providers automatically fall back to CPU if they fail.
 //
 // Note: CoreML currently fails with this model due to unsupported operations.
@@ -19,8 +19,8 @@ pub enum ExecutionProvider {
     CoreML,
     #[cfg(feature = "directml")]
     DirectML,
-    #[cfg(feature = "rocm")]
-    ROCm,
+    #[cfg(feature = "migraphx")]
+    MIGraphX,
     #[cfg(feature = "openvino")]
     OpenVINO,
     #[cfg(feature = "webgpu")]
@@ -75,7 +75,7 @@ impl ModelConfig {
             feature = "tensorrt",
             feature = "coreml",
             feature = "directml",
-            feature = "rocm",
+            feature = "migraphx",
             feature = "openvino",
             feature = "webgpu",
             feature = "nnapi"
@@ -120,9 +120,9 @@ impl ModelConfig {
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
-            #[cfg(feature = "rocm")]
-            ExecutionProvider::ROCm => builder.with_execution_providers([
-                ort::ep::ROCm::default().build(),
+            #[cfg(feature = "migraphx")]
+            ExecutionProvider::MIGraphX => builder.with_execution_providers([
+                ort::ep::MIGraphX::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])?,
 
