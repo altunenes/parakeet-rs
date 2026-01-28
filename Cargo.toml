@@ -14,10 +14,6 @@ name = "parakeet_rs"
 path = "src/lib.rs"
 
 [[example]]
-name = "transcribe"
-path = "examples/transcribe.rs"
-
-[[example]]
 name = "diarization"
 path = "examples/diarization.rs"
 
