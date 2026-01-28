@@ -16,14 +16,14 @@
 //! ## Quick Start
 //!
 //! ```ignore
-//! use parakeet_rs::Parakeet;
+//! use parakeet_rs::{Parakeet, Transcriber, TimestampMode};
 //!
 //! // Load the model
-//! let parakeet = Parakeet::from_pretrained(".")?;
+//! let mut parakeet = Parakeet::from_pretrained(".")?;
 //!
-//! // Transcribe audio file
-//! let text = parakeet.transcribe_file("audio.wav")?;
-//! println!("Transcription: {}", text);
+//! // Transcribe audio samples (see examples/raw.rs for audio loading)
+//! let result = parakeet.transcribe_samples(audio, sample_rate, channels, Some(TimestampMode::Words))?;
+//! println!("Transcription: {}", result.text);
 //! ```
 //!
 //! ## Model Requirements
