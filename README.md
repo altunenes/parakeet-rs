@@ -113,6 +113,12 @@ let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::C
 let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 ```
 
+Advanced session configuration via [ort SessionBuilder](https://docs.rs/ort/latest/ort/session/builder/struct.SessionBuilder.html):
+```rust
+let config = ExecutionConfig::new()
+    .with_custom_configure(|builder| builder.with_memory_pattern(false));
+```
+
 ## Features
 
 - [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
