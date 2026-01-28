@@ -1,3 +1,5 @@
+use std::{fmt, rc::Rc};
+
 use crate::error::Result;
 use ort::session::builder::SessionBuilder;
 
@@ -29,11 +31,30 @@ pub enum ExecutionProvider {
     NNAPI,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ModelConfig {
     pub execution_provider: ExecutionProvider,
     pub intra_threads: usize,
     pub inter_threads: usize,
+    pub configure: Option<Rc<dyn Fn(SessionBuilder) -> ort::Result<SessionBuilder>>>,
+}
+
+impl fmt::Debug for ModelConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ModelConfig")
+            .field("execution_provider", &self.execution_provider)
+            .field("intra_threads", &self.intra_threads)
+            .field("inter_threads", &self.inter_threads)
+            .field(
+                "configure",
+                &if self.configure.is_some() {
+                    "<fn>"
+                } else {
+                    "None"
+                },
+            )
+            .finish()
+    }
 }
 
 impl Default for ModelConfig {
@@ -42,6 +63,7 @@ impl Default for ModelConfig {
             execution_provider: ExecutionProvider::default(),
             intra_threads: 4,
             inter_threads: 1,
+            configure: None,
         }
     }
 }
@@ -63,6 +85,14 @@ impl ModelConfig {
 
     pub fn with_inter_threads(mut self, threads: usize) -> Self {
         self.inter_threads = threads;
+        self
+    }
+
+    pub fn with_custom_configure(
+        mut self,
+        configure: impl Fn(SessionBuilder) -> ort::Result<SessionBuilder> + 'static,
+    ) -> Self {
+        self.configure = Some(Rc::new(configure));
         self
     }
 
@@ -142,8 +172,12 @@ impl ModelConfig {
             ExecutionProvider::NNAPI => builder.with_execution_providers([
                 ort::ep::NNAPI::default().build(),
                 CPUExecutionProvider::default().build().error_on_failure(),
-            ])?,            
+            ])?,
         };
+
+        if let Some(configure) = self.configure.as_ref() {
+            builder = configure(builder)?;
+        }
 
         Ok(builder)
     }
