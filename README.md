@@ -9,14 +9,13 @@ Note: CoreML doesn't stable with this model - stick w/ CPU (or other GPU EP). Bu
 
 **CTC (English-only)**:
 ```rust
-use parakeet_rs::Parakeet;
+use parakeet_rs::{Parakeet, Transcriber, TimestampMode};
 
 let mut parakeet = Parakeet::from_pretrained(".", None)?;
-let result = parakeet.transcribe_file("audio.wav")?;
-println!("{}", result.text);
 
-// Or transcribe in-memory audio
-// let result = parakeet.transcribe_samples(audio, 16000, 1)?;
+// Load and transcribe audio (see examples/raw.rs for full example)
+let result = parakeet.transcribe_samples(audio, 1600, 1, Some(TimestampMode::Words))?;
+println!("{}", result.text);
 
 // Token-level timestamps
 for token in result.tokens {
@@ -26,14 +25,11 @@ for token in result.tokens {
 
 **TDT (Multilingual)**: 25 languages with auto-detection
 ```rust
-use parakeet_rs::ParakeetTDT;
+use parakeet_rs::{ParakeetTDT, Transcriber, TimestampMode};
 
 let mut parakeet = ParakeetTDT::from_pretrained("./tdt", None)?;
-let result = parakeet.transcribe_file("audio.wav")?;
+let result = parakeet.transcribe_samples(audio, 16000, 1, Some(TimestampMode::Sentences))?;
 println!("{}", result.text);
-
-// Or transcribe in-memory audio
-// let result = parakeet.transcribe_samples(audio, 16000, 1)?;
 
 // Token-level timestamps
 for token in result.tokens {
@@ -91,7 +87,6 @@ for seg in segments {
 ```
 See `examples/diarization.rs` for combining with TDT transcription.
 
-
 ## Setup
 
 **CTC**: Download from [HuggingFace](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx): `model.onnx`, `model.onnx_data`, `tokenizer.json`
@@ -118,7 +113,6 @@ let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::C
 let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 ```
 
-
 ## Features
 
 - [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
@@ -131,6 +125,7 @@ let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 ## Notes
 
 - Audio: 16kHz mono WAV (16-bit PCM or 32-bit float)
+- CTC/TDT models have ~4-5 minute audio length limit. For longer files, use streaming models or split into chunks
 
 ## License
 
