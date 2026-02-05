@@ -276,21 +276,13 @@ impl ParakeetTDTModel {
                 durations.push(duration_step);
                 last_emitted_token = token_id as i32;
                 emitted_tokens += 1;
-
-                // Don't advance yet - try to emit more tokens from the same frame
-            } else {
-                // Blank token - advance frame pointer
-                // Duration prediction applies when we finally move to next frame after emitting tokens
-                if duration_step > 0 && emitted_tokens > 0 {
-                    t += duration_step;
-                } else {
-                    t += 1;
-                }
-                emitted_tokens = 0;
             }
-
-            // Safety check: if we've emitted too many tokens from the same frame, advance
-            if emitted_tokens >= max_tokens_per_step {
+            // When duration > 0, skip frames according to duration prediction
+            // Otherwise advance by 1 on blank or when max tokens reached
+            if duration_step > 0 {
+                t += duration_step;
+                emitted_tokens = 0;
+            } else if token_id == blank_id || emitted_tokens >= max_tokens_per_step {
                 t += 1;
                 emitted_tokens = 0;
             }
