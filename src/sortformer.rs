@@ -35,8 +35,6 @@ const N_MELS: usize = 128;
 const PREEMPH: f32 = 0.97;
 const LOG_ZERO_GUARD: f32 = 5.960464478e-8;
 const SAMPLE_RATE: usize = 16000;
-const FMIN: f32 = 0.0;
-const FMAX: f32 = 8000.0;
 
 // Streaming constants
 const CHUNK_LEN: usize = 124; // Frames per chunk (~10s at 80ms)
@@ -200,7 +198,7 @@ impl Sortformer {
             .apply_to_session_builder(Session::builder()?)?
             .commit_from_file(model_path.as_ref())?;
 
-        let mel_basis = Self::create_mel_filterbank();
+        let mel_basis = crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE);
 
         let mut instance = Self {
             session,
@@ -906,82 +904,6 @@ impl Sortformer {
         }
 
         spectrogram
-    }
-
-    // Librosa's Slaney mel scale (htk=False, which is the default)
-    fn hz_to_mel_slaney(hz: f64) -> f64 {
-        let f_min = 0.0;
-        let f_sp = 200.0 / 3.0;
-        let min_log_hz = 1000.0;
-        let min_log_mel = (min_log_hz - f_min) / f_sp;
-        let logstep = (6.4f64).ln() / 27.0;
-
-        if hz >= min_log_hz {
-            min_log_mel + (hz / min_log_hz).ln() / logstep
-        } else {
-            (hz - f_min) / f_sp
-        }
-    }
-
-    fn mel_to_hz_slaney(mel: f64) -> f64 {
-        let f_min = 0.0;
-        let f_sp = 200.0 / 3.0;
-        let min_log_hz = 1000.0;
-        let min_log_mel = (min_log_hz - f_min) / f_sp;
-        let logstep = (6.4f64).ln() / 27.0;
-
-        if mel >= min_log_mel {
-            min_log_hz * (logstep * (mel - min_log_mel)).exp()
-        } else {
-            f_min + f_sp * mel
-        }
-    }
-
-    fn create_mel_filterbank() -> Array2<f32> {
-        // lets use f64 for intermediate calculations to avoid precision loss
-        let freq_bins = N_FFT / 2 + 1;
-        let mut filterbank = Array2::<f32>::zeros((N_MELS, freq_bins));
-
-        // FFT frequencies: fftfreqs[k] = k * sr / n_fft
-        let fftfreqs: Vec<f64> = (0..freq_bins)
-            .map(|k| k as f64 * SAMPLE_RATE as f64 / N_FFT as f64)
-            .collect();
-
-        // Mel center frequencies using Slaney scale (librosa default, htk=False)
-        let fmin_mel = Self::hz_to_mel_slaney(FMIN as f64);
-        let fmax_mel = Self::hz_to_mel_slaney(FMAX as f64);
-        let mel_f: Vec<f64> = (0..=N_MELS + 1)
-            .map(|i| {
-                let mel = fmin_mel + (fmax_mel - fmin_mel) * i as f64 / (N_MELS + 1) as f64;
-                Self::mel_to_hz_slaney(mel)
-            })
-            .collect();
-
-        // Differences between consecutive mel frequencies
-        let fdiff: Vec<f64> = mel_f.windows(2).map(|w| w[1] - w[0]).collect();
-
-        // Compute filterbank weights (reference: librosa's ramp method)
-        // https://librosa.org/doc/main/generated/librosa.stft.html
-        for i in 0..N_MELS {
-            for k in 0..freq_bins {
-                // Lower slope: (fftfreqs[k] - mel_f[i]) / fdiff[i]
-                let lower = (fftfreqs[k] - mel_f[i]) / fdiff[i];
-                // Upper slope: (mel_f[i+2] - fftfreqs[k]) / fdiff[i+1]
-                let upper = (mel_f[i + 2] - fftfreqs[k]) / fdiff[i + 1];
-                // Weight is max(0, min(lower, upper))
-                filterbank[[i, k]] = 0.0f64.max(lower.min(upper)) as f32;
-            }
-        }
-
-        // Apply Slaney normalization: 2.0 / (mel_f[i+2] - mel_f[i])
-        for i in 0..N_MELS {
-            let enorm = 2.0 / (mel_f[i + 2] - mel_f[i]);
-            for k in 0..freq_bins {
-                filterbank[[i, k]] *= enorm as f32;
-            }
-        }
-
-        filterbank
     }
 
     fn extract_mel_features(&self, audio: &[f32]) -> Array3<f32> {

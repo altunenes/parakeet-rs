@@ -20,7 +20,6 @@ const HOP_LENGTH: usize = 160;
 const N_MELS: usize = 128;
 const PREEMPH: f32 = 0.97;
 const LOG_ZERO_GUARD: f32 = 5.960_464_5e-8;
-const FMAX: f32 = 8000.0;
 
 // Encoder arch
 const NUM_ENCODER_LAYERS: usize = 24;
@@ -244,7 +243,7 @@ impl Nemotron {
             state_1: Array3::zeros((2, 1, DECODER_LSTM_DIM)),
             state_2: Array3::zeros((2, 1, DECODER_LSTM_DIM)),
             last_token: BLANK_ID as i32,
-            mel_basis: Self::create_mel_filterbank(),
+            mel_basis: crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE),
             window: Self::create_window(),
             audio_buffer: Vec::new(),
             audio_processed: 0,
@@ -573,69 +572,4 @@ impl Nemotron {
             .collect()
     }
 
-    fn create_mel_filterbank() -> Array2<f32> {
-        let num_freqs = N_FFT / 2 + 1;
-
-        // Slaney mel scale note that I coded this same: src/sortformer.rs
-        const F_SP: f32 = 200.0 / 3.0;
-        const MIN_LOG_HZ: f32 = 1000.0;
-        const MIN_LOG_MEL: f32 = MIN_LOG_HZ / F_SP;
-        const LOG_STEP: f32 = 0.06875177742094912;
-
-        let hz_to_mel = |hz: f32| -> f32 {
-            if hz < MIN_LOG_HZ {
-                hz / F_SP
-            } else {
-                MIN_LOG_MEL + (hz / MIN_LOG_HZ).ln() / LOG_STEP
-            }
-        };
-
-        let mel_to_hz = |mel: f32| -> f32 {
-            if mel < MIN_LOG_MEL {
-                mel * F_SP
-            } else {
-                MIN_LOG_HZ * ((mel - MIN_LOG_MEL) * LOG_STEP).exp()
-            }
-        };
-
-        let mel_min = hz_to_mel(0.0);
-        let mel_max = hz_to_mel(FMAX);
-
-        let mel_points: Vec<f32> = (0..=N_MELS + 1)
-            .map(|i| mel_to_hz(mel_min + (mel_max - mel_min) * i as f32 / (N_MELS + 1) as f32))
-            .collect();
-
-        let fft_freqs: Vec<f32> = (0..num_freqs)
-            .map(|i| (SAMPLE_RATE as f32 / N_FFT as f32) * i as f32)
-            .collect();
-
-        let mut weights = Array2::zeros((N_MELS, num_freqs));
-
-        for i in 0..N_MELS {
-            let left = mel_points[i];
-            let center = mel_points[i + 1];
-            let right = mel_points[i + 2];
-
-            for (j, &freq) in fft_freqs.iter().enumerate() {
-                if freq >= left && freq <= center && center != left {
-                    weights[[i, j]] = (freq - left) / (center - left);
-                } else if freq > center && freq <= right && right != center {
-                    weights[[i, j]] = (right - freq) / (right - center);
-                }
-            }
-        }
-
-        // Slaney normalization
-        for i in 0..N_MELS {
-            let bandwidth = mel_points[i + 2] - mel_points[i];
-            if bandwidth > 0.0 {
-                let enorm = 2.0 / bandwidth;
-                for j in 0..num_freqs {
-                    weights[[i, j]] *= enorm;
-                }
-            }
-        }
-
-        weights
-    }
 }
