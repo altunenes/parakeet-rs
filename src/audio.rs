@@ -102,7 +102,7 @@ fn mel_to_hz_slaney(mel: f64) -> f64 {
     }
 }
 
-fn create_mel_filterbank(n_fft: usize, n_mels: usize, sample_rate: usize) -> Array2<f32> {
+pub fn create_mel_filterbank(n_fft: usize, n_mels: usize, sample_rate: usize) -> Array2<f32> {
     let freq_bins = n_fft / 2 + 1;
     let mut filterbank = Array2::<f32>::zeros((n_mels, freq_bins));
 
