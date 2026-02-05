@@ -48,8 +48,13 @@ fn hann_window(window_length: usize) -> Vec<f32> {
 pub fn stft(audio: &[f32], n_fft: usize, hop_length: usize, win_length: usize) -> Array2<f32> {
     use rustfft::{num_complex::Complex, FftPlanner};
 
+    let pad_amount = n_fft / 2;
+    let mut padded = vec![0.0f32; pad_amount];
+    padded.extend_from_slice(audio);
+    padded.resize(padded.len() + pad_amount, 0.0);
+
     let window = hann_window(win_length);
-    let num_frames = (audio.len() - win_length) / hop_length + 1;
+    let num_frames = (padded.len() - n_fft) / hop_length + 1;
     let freq_bins = n_fft / 2 + 1;
     let mut spectrogram = Array2::<f32>::zeros((freq_bins, num_frames));
 
@@ -60,8 +65,8 @@ pub fn stft(audio: &[f32], n_fft: usize, hop_length: usize, win_length: usize) -
         let start = frame_idx * hop_length;
 
         let mut frame: Vec<Complex<f32>> = vec![Complex::new(0.0, 0.0); n_fft];
-        for i in 0..win_length.min(audio.len() - start) {
-            frame[i] = Complex::new(audio[start + i] * window[i], 0.0);
+        for i in 0..win_length.min(padded.len() - start) {
+            frame[i] = Complex::new(padded[start + i] * window[i], 0.0);
         }
 
         fft.process(&mut frame);
@@ -75,40 +80,62 @@ pub fn stft(audio: &[f32], n_fft: usize, hop_length: usize, win_length: usize) -
     spectrogram
 }
 
-fn hz_to_mel(freq: f32) -> f32 {
-    2595.0 * (1.0 + freq / 700.0).log10()
+// Slaney mel scale (again librosa)
+const F_SP: f64 = 200.0 / 3.0;
+const MIN_LOG_HZ: f64 = 1000.0;
+const MIN_LOG_MEL: f64 = MIN_LOG_HZ / F_SP;
+const LOG_STEP: f64 = 0.06875177742094912;
+
+fn hz_to_mel_slaney(hz: f64) -> f64 {
+    if hz < MIN_LOG_HZ {
+        hz / F_SP
+    } else {
+        MIN_LOG_MEL + (hz / MIN_LOG_HZ).ln() / LOG_STEP
+    }
 }
 
-fn mel_to_hz(mel: f32) -> f32 {
-    700.0 * (10.0_f32.powf(mel / 2595.0) - 1.0)
+fn mel_to_hz_slaney(mel: f64) -> f64 {
+    if mel < MIN_LOG_MEL {
+        mel * F_SP
+    } else {
+        MIN_LOG_HZ * ((mel - MIN_LOG_MEL) * LOG_STEP).exp()
+    }
 }
 
 fn create_mel_filterbank(n_fft: usize, n_mels: usize, sample_rate: usize) -> Array2<f32> {
     let freq_bins = n_fft / 2 + 1;
     let mut filterbank = Array2::<f32>::zeros((n_mels, freq_bins));
 
-    let min_mel = hz_to_mel(0.0);
-    let max_mel = hz_to_mel(sample_rate as f32 / 2.0);
+    let fmax = sample_rate as f64 / 2.0;
+    let mel_min = hz_to_mel_slaney(0.0);
+    let mel_max = hz_to_mel_slaney(fmax);
 
-    let mel_points: Vec<f32> = (0..=n_mels + 1)
-        .map(|i| mel_to_hz(min_mel + (max_mel - min_mel) * i as f32 / (n_mels + 1) as f32))
+    // Mel cent freq
+    let mel_points: Vec<f64> = (0..=n_mels + 1)
+        .map(|i| mel_to_hz_slaney(mel_min + (mel_max - mel_min) * i as f64 / (n_mels + 1) as f64))
         .collect();
 
-    let freq_bin_width = sample_rate as f32 / n_fft as f32;
+    // FFT bin freq
+    let fft_freqs: Vec<f64> = (0..freq_bins)
+        .map(|i| i as f64 * sample_rate as f64 / n_fft as f64)
+        .collect();
 
-    for mel_idx in 0..n_mels {
-        let left = mel_points[mel_idx];
-        let center = mel_points[mel_idx + 1];
-        let right = mel_points[mel_idx + 2];
+    // librosa's ramp
+    let fdiff: Vec<f64> = mel_points.windows(2).map(|w| w[1] - w[0]).collect();
 
-        for freq_idx in 0..freq_bins {
-            let freq = freq_idx as f32 * freq_bin_width;
+    for i in 0..n_mels {
+        for (k, &freq) in fft_freqs.iter().enumerate() {
+            let lower = (freq - mel_points[i]) / fdiff[i];
+            let upper = (mel_points[i + 2] - freq) / fdiff[i + 1];
+            filterbank[[i, k]] = 0.0f64.max(lower.min(upper)) as f32;
+        }
+    }
 
-            if freq >= left && freq <= center {
-                filterbank[[mel_idx, freq_idx]] = (freq - left) / (center - left);
-            } else if freq > center && freq <= right {
-                filterbank[[mel_idx, freq_idx]] = (right - freq) / (right - center);
-            }
+    // Slaney norm
+    for i in 0..n_mels {
+        let enorm = 2.0 / (mel_points[i + 2] - mel_points[i]);
+        for k in 0..freq_bins {
+            filterbank[[i, k]] *= enorm as f32;
         }
     }
 
@@ -155,20 +182,22 @@ pub fn extract_features_raw(
     let mel_filterbank =
         create_mel_filterbank(config.n_fft, config.feature_size, config.sampling_rate);
     let mel_spectrogram = mel_filterbank.dot(&spectrogram);
-    let mel_spectrogram = mel_spectrogram.mapv(|x| (x.max(1e-10)).ln());
+    // Log with additive guard (NeMo: log_zero_guard_type="add", value=2^-24)
+    let log_zero_guard: f32 = 2.0f32.powi(-24);
+    let mel_spectrogram = mel_spectrogram.mapv(|x| (x + log_zero_guard).ln());
 
     let mut mel_spectrogram = mel_spectrogram.t().to_owned();
 
-    // Normalize each feature dimension to mean=0, std=1
+    // Normalize per_feature: mean=0, std=1 with Bessel's correction (N-1)
     let num_frames = mel_spectrogram.shape()[0];
     let num_features = mel_spectrogram.shape()[1];
 
     for feat_idx in 0..num_features {
         let mut column = mel_spectrogram.column_mut(feat_idx);
         let mean: f32 = column.iter().sum::<f32>() / num_frames as f32;
-        let variance: f32 =
-            column.iter().map(|&x| (x - mean).powi(2)).sum::<f32>() / num_frames as f32;
-        let std = variance.sqrt().max(1e-10);
+        let variance: f32 = column.iter().map(|&x| (x - mean).powi(2)).sum::<f32>()
+            / (num_frames as f32 - 1.0);
+        let std = variance.sqrt() + 1e-5;
 
         for val in column.iter_mut() {
             *val = (*val - mean) / std;
