@@ -87,6 +87,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             DiarizationConfig::callhome(),
         )?;
 
+        // For streaming/real-time use cases (e.g. with VAD-based chunking), you can use
+        // sortformer.diarize_chunk(&audio_16k_mono) which preserves internal state (FIFO,
+        // speaker cache) across calls for consistent speaker IDs over time.
         let speaker_segments =
             sortformer.diarize(audio.clone(), spec.sample_rate, spec.channels)?;
 
