@@ -299,6 +299,61 @@ impl Sortformer {
         Ok(segments)
     }
 
+    /// Streaming diarization: process one audio chunk without resetting state.
+    ///
+    /// Unlike `diarize()`, this method preserves internal state (FIFO, speaker cache,
+    /// silence profile) across calls, enabling true streaming diarization.
+    ///
+    /// # Arguments
+    /// * `audio_16k_mono` - Audio chunk at 16kHz mono (any length, typically 2-30s)
+    ///
+    /// # Returns
+    /// Speaker segments with timestamps relative to this chunk (starting at 0.0)
+    pub fn diarize_chunk(&mut self, audio_16k_mono: &[f32]) -> Result<Vec<SpeakerSegment>> {
+        if audio_16k_mono.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let features = self.extract_mel_features(audio_16k_mono);
+        let total_frames = features.shape()[1];
+
+        let chunk_stride = CHUNK_LEN * SUBSAMPLING;
+        let num_chunks = (total_frames + chunk_stride - 1) / chunk_stride;
+
+        let mut all_chunk_preds = Vec::new();
+
+        for chunk_idx in 0..num_chunks {
+            let start = chunk_idx * chunk_stride;
+            let end = (start + chunk_stride).min(total_frames);
+            let current_len = end - start;
+
+            let mut chunk_feat = features.slice(s![.., start..end, ..]).to_owned();
+
+            if current_len < chunk_stride {
+                let mut padded = Array3::zeros((1, chunk_stride, N_MELS));
+                padded
+                    .slice_mut(s![.., ..current_len, ..])
+                    .assign(&chunk_feat);
+                chunk_feat = padded;
+            }
+
+            let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
+            all_chunk_preds.push(chunk_preds);
+        }
+
+        let full_preds = Self::concat_predictions(&all_chunk_preds);
+
+        let filtered_preds = if self.config.median_window > 1 {
+            self.median_filter(&full_preds)
+        } else {
+            full_preds
+        };
+
+        let segments = self.binarize(&filtered_preds);
+
+        Ok(segments)
+    }
+
     /// NeMo's streaming_update with smart cache compression
     fn streaming_update(
         &mut self,
