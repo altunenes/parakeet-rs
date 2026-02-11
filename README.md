@@ -84,6 +84,9 @@ let segments = sortformer.diarize(audio, 16000, 1)?;
 for seg in segments {
     println!("Speaker {} [{:.2}s - {:.2}s]", seg.speaker_id, seg.start, seg.end);
 }
+
+// For streaming/real-time use, diarize_chunk() preserves state across calls:
+let segments = sortformer.diarize_chunk(&audio_chunk_16k_mono)?;
 ```
 See `examples/diarization.rs` for combining with TDT transcription.
 
