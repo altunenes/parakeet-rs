@@ -13,9 +13,10 @@ use crate::decoder::TimedToken;
 ///   alphabet without punctuation, so sentence segmentation is not possible.
 /// - **Parakeet TDT (Multilingual)**: Use `Sentences` mode. The TDT model predicts
 ///   punctuation, enabling natural sentence boundaries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TimestampMode {
     /// Raw token-level timestamps from the model
+    #[default]
     Tokens,
     /// Word-level timestamps (groups subword tokens)
     Words,
@@ -24,12 +25,6 @@ pub enum TimestampMode {
     /// Note: Only works with models that predict punctuation (e.g., Parakeet TDT).
     /// CTC models don't predict punctuation, so use `Words` mode instead.
     Sentences,
-}
-
-impl Default for TimestampMode {
-    fn default() -> Self {
-        Self::Tokens
-    }
 }
 
 /// Convert token timestamps to the requested output mode

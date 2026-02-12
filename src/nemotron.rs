@@ -233,8 +233,12 @@ impl Nemotron {
         let exec = exec_config.unwrap_or_default();
         let model = NemotronModel::from_pretrained(path, exec, model_config)?;
 
-        let encoder_cache =
-            NemotronEncoderCache::with_dims(NUM_ENCODER_LAYERS, LEFT_CONTEXT, HIDDEN_DIM, CONV_CONTEXT);
+        let encoder_cache = NemotronEncoderCache::with_dims(
+            NUM_ENCODER_LAYERS,
+            LEFT_CONTEXT,
+            HIDDEN_DIM,
+            CONV_CONTEXT,
+        );
 
         Ok(Self {
             model,
@@ -254,8 +258,12 @@ impl Nemotron {
 
     /// Reset all state for new utterance
     pub fn reset(&mut self) {
-        self.encoder_cache =
-            NemotronEncoderCache::with_dims(NUM_ENCODER_LAYERS, LEFT_CONTEXT, HIDDEN_DIM, CONV_CONTEXT);
+        self.encoder_cache = NemotronEncoderCache::with_dims(
+            NUM_ENCODER_LAYERS,
+            LEFT_CONTEXT,
+            HIDDEN_DIM,
+            CONV_CONTEXT,
+        );
         self.state_1.fill(0.0);
         self.state_2.fill(0.0);
         self.last_token = BLANK_ID as i32;
@@ -408,14 +416,16 @@ impl Nemotron {
             // Fill pre-encode cache
             for f in 0..cache_frames {
                 for m in 0..N_MELS {
-                    chunk_data[m * expected_size + cache_offset + f] = full_mel[[m, cache_start + f]];
+                    chunk_data[m * expected_size + cache_offset + f] =
+                        full_mel[[m, cache_start + f]];
                 }
             }
 
             // Fill main chunk
             for f in 0..CHUNK_SIZE.min(total_mel_frames - main_start) {
                 for m in 0..N_MELS {
-                    chunk_data[m * expected_size + PRE_ENCODE_CACHE + f] = full_mel[[m, main_start + f]];
+                    chunk_data[m * expected_size + PRE_ENCODE_CACHE + f] =
+                        full_mel[[m, main_start + f]];
                 }
             }
         }
@@ -468,9 +478,12 @@ impl Nemotron {
                 .to_owned();
 
             for _ in 0..max_symbols_per_step {
-                let (logits, new_state_1, new_state_2) =
-                    self.model
-                        .run_decoder(&frame, self.last_token, &self.state_1, &self.state_2)?;
+                let (logits, new_state_1, new_state_2) = self.model.run_decoder(
+                    &frame,
+                    self.last_token,
+                    &self.state_1,
+                    &self.state_2,
+                )?;
 
                 let mut max_idx = 0;
                 let mut max_val = f32::NEG_INFINITY;
@@ -495,8 +508,8 @@ impl Nemotron {
         Ok(tokens)
     }
 
-    /// Compute log mel spectrogram WITHOUT normalization. 
-    /// I use capitals because this gave me some trouble on the Python side :(). I realized they dont use it later. 
+    /// Compute log mel spectrogram WITHOUT normalization.
+    /// I use capitals because this gave me some trouble on the Python side :(). I realized they dont use it later.
     /// so offc nemo feeding raw log-mel spectrogram values (in decibels) directly to the encoder.
     fn compute_mel_spectrogram(&self, audio: &[f32]) -> Array2<f32> {
         if audio.is_empty() {
@@ -571,5 +584,4 @@ impl Nemotron {
             .map(|i| 0.5 - 0.5 * ((2.0 * PI * i as f32) / ((WIN_LENGTH - 1) as f32)).cos())
             .collect()
     }
-
 }

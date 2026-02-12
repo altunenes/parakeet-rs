@@ -195,8 +195,8 @@ pub fn extract_features_raw(
     for feat_idx in 0..num_features {
         let mut column = mel_spectrogram.column_mut(feat_idx);
         let mean: f32 = column.iter().sum::<f32>() / num_frames as f32;
-        let variance: f32 = column.iter().map(|&x| (x - mean).powi(2)).sum::<f32>()
-            / (num_frames as f32 - 1.0);
+        let variance: f32 =
+            column.iter().map(|&x| (x - mean).powi(2)).sum::<f32>() / (num_frames as f32 - 1.0);
         let std = variance.sqrt() + 1e-5;
 
         for val in column.iter_mut() {

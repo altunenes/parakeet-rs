@@ -145,7 +145,13 @@ mod tests {
         let vocab = make_vocab(&["▁In", "2", "0", "2", "1"]);
         let decoder = ParakeetTDTDecoder::from_vocab(vocab);
         let result = decoder
-            .decode_with_timestamps(&[0, 1, 2, 3, 4], &[0, 1, 2, 3, 4], &[1, 1, 1, 1, 1], 160, 16000)
+            .decode_with_timestamps(
+                &[0, 1, 2, 3, 4],
+                &[0, 1, 2, 3, 4],
+                &[1, 1, 1, 1, 1],
+                160,
+                16000,
+            )
             .unwrap();
         assert_eq!(result.text, "In 2021");
     }
@@ -184,7 +190,11 @@ mod tests {
 
         // Test Words mode (what Undertone likely uses)
         let words = process_timestamps(&result.tokens, TimestampMode::Words);
-        let text: String = words.iter().map(|t| t.text.as_str()).collect::<Vec<_>>().join(" ");
+        let text: String = words
+            .iter()
+            .map(|t| t.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         assert_eq!(text, "like 100 bucks");
 
         // Test Tokens mode

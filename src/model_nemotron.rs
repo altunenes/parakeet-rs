@@ -30,7 +30,12 @@ impl NemotronEncoderCache {
         }
     }
 
-    pub fn with_dims(num_layers: usize, left_context: usize, hidden_dim: usize, conv_context: usize) -> Self {
+    pub fn with_dims(
+        num_layers: usize,
+        left_context: usize,
+        hidden_dim: usize,
+        conv_context: usize,
+    ) -> Self {
         Self {
             cache_last_channel: Array4::zeros((num_layers, 1, left_context, hidden_dim)),
             cache_last_time: Array4::zeros((num_layers, 1, hidden_dim, conv_context)),
@@ -187,8 +192,11 @@ impl NemotronModel {
             )
             .map_err(|e| Error::Model(format!("Failed to reshape cache_last_time: {e}")))?,
 
-            cache_last_channel_len: Array1::from_shape_vec(len_shape[0] as usize, len_data.to_vec())
-                .map_err(|e| Error::Model(format!("Failed to reshape cache_len: {e}")))?,
+            cache_last_channel_len: Array1::from_shape_vec(
+                len_shape[0] as usize,
+                len_data.to_vec(),
+            )
+            .map_err(|e| Error::Model(format!("Failed to reshape cache_len: {e}")))?,
         };
 
         Ok((encoder_out, encoded_len, new_cache))
@@ -215,7 +223,7 @@ impl NemotronModel {
             "input_states_2" => ort::value::Value::from_array(state_2.clone())?
         ])?;
 
-        // logits for others I think you can understand by looking at the error msgs right? 
+        // logits for others I think you can understand by looking at the error msgs right?
         let (_l_shape, l_data) = outputs["outputs"]
             .try_extract_tensor::<f32>()
             .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
