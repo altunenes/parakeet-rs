@@ -23,7 +23,7 @@ use crate::error::{Error, Result};
 use crate::execution::ModelConfig;
 use ndarray::{s, Array1, Array2, Array3, Axis};
 use ort::session::Session;
-use rustfft::{num_complex::Complex, FftPlanner};
+use realfft::RealFftPlanner;
 use std::f32::consts::PI;
 use std::path::Path;
 
@@ -368,26 +368,21 @@ impl Sortformer {
         let spkcache_lengths = Array1::from_vec(vec![spkcache_len as i64]);
         let fifo_lengths = Array1::from_vec(vec![fifo_len as i64]);
 
-        // Prepare FIFO input
-        let fifo_input = if fifo_len > 0 {
-            self.fifo.clone()
+        // Use empty arrays as fallbacks when lengths are zero (avoids cloning self fields)
+        let empty_3d = Array3::<f32>::zeros((1, 0, EMB_DIM));
+        let fifo_ref = if fifo_len > 0 { &self.fifo } else { &empty_3d };
+        let spkcache_ref = if spkcache_len > 0 {
+            &self.spkcache
         } else {
-            Array3::zeros((1, 0, EMB_DIM))
+            &empty_3d
         };
 
-        // Prepare spkcache input (may be empty)
-        let spkcache_input = if spkcache_len > 0 {
-            self.spkcache.clone()
-        } else {
-            Array3::zeros((1, 0, EMB_DIM))
-        };
-
-        // Create input values
-        let chunk_value = ort::value::Value::from_array(chunk_feat.clone())?;
+        // Create borrowed tensor views instead of cloning arrays
+        let chunk_value = ort::value::TensorRef::<f32>::from_array_view(chunk_feat.view())?;
         let chunk_lengths_value = ort::value::Value::from_array(chunk_lengths)?;
-        let spkcache_value = ort::value::Value::from_array(spkcache_input)?;
+        let spkcache_value = ort::value::TensorRef::<f32>::from_array_view(spkcache_ref.view())?;
         let spkcache_lengths_value = ort::value::Value::from_array(spkcache_lengths)?;
-        let fifo_value = ort::value::Value::from_array(fifo_input)?;
+        let fifo_value = ort::value::TensorRef::<f32>::from_array_view(fifo_ref.view())?;
         let fifo_lengths_value = ort::value::Value::from_array(fifo_lengths)?;
 
         // Run ONNX inference and extract all data in a block to release borrow
@@ -916,8 +911,8 @@ impl Sortformer {
     }
 
     fn stft(audio: &[f32]) -> Array2<f32> {
-        let mut planner = FftPlanner::<f32>::new();
-        let fft = planner.plan_fft_forward(N_FFT);
+        let mut planner = RealFftPlanner::<f32>::new();
+        let r2c = planner.plan_fft_forward(N_FFT);
 
         // Create Hann window of length win_length, then zero-pad to n_fft (centered)
         // This is exactly what librosa does: util.pad_center(fft_window, size=n_fft)
@@ -937,22 +932,28 @@ impl Sortformer {
         let freq_bins = N_FFT / 2 + 1;
         let mut spectrogram = Array2::<f32>::zeros((freq_bins, num_frames));
 
+        let mut input = vec![0.0f32; N_FFT];
+        let mut output = r2c.make_output_vec();
+        let mut scratch = r2c.make_scratch_vec();
+
         for frame_idx in 0..num_frames {
             let start = frame_idx * HOP_LENGTH;
-            let mut frame: Vec<Complex<f32>> = vec![Complex::new(0.0, 0.0); N_FFT];
 
             // Extract n_fft samples and multiply by zero-padded window
             for i in 0..N_FFT {
-                if start + i < padded_audio.len() {
-                    frame[i] = Complex::new(padded_audio[start + i] * fft_window[i], 0.0);
-                }
+                input[i] = if start + i < padded_audio.len() {
+                    padded_audio[start + i] * fft_window[i]
+                } else {
+                    0.0
+                };
             }
 
-            fft.process(&mut frame);
+            r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
+                .expect("realfft process failed");
+
             for k in 0..freq_bins {
-                let magnitude = frame[k].norm();
                 // Power spectrum (magnitude^2) - NeMo uses mag_power=2.0
-                spectrogram[[k, frame_idx]] = magnitude * magnitude;
+                spectrogram[[k, frame_idx]] = output[k].norm_sqr();
             }
         }
 
@@ -977,16 +978,61 @@ impl Sortformer {
         // NeMo uses normalize='NA' which means NO normalization
         let log_mel_spec = mel_spec.mapv(|x| (x + LOG_ZERO_GUARD).ln());
 
-        let num_frames = log_mel_spec.shape()[1];
-        let mut features = Array3::<f32>::zeros((1, num_frames, N_MELS));
-
         // Transpose to (batch, time, features) - NeMo outputs (B, D, T), model expects (B, T, D)
-        for t in 0..num_frames {
-            for m in 0..N_MELS {
-                features[[0, t, m]] = log_mel_spec[[m, t]];
+        log_mel_spec.t().to_owned().insert_axis(Axis(0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sine_wave(freq_hz: f32, sample_rate: usize, num_samples: usize) -> Vec<f32> {
+        (0..num_samples)
+            .map(|i| (2.0 * PI * freq_hz * i as f32 / sample_rate as f32).sin())
+            .collect()
+    }
+
+    #[test]
+    fn stft_concentrates_power_at_expected_bin() {
+        // 1kHz sine at 16kHz sample rate, 1 second
+        let audio = sine_wave(1000.0, SAMPLE_RATE, SAMPLE_RATE);
+        let spec = Sortformer::stft(&audio);
+
+        // Expected bin: 1000 * N_FFT / SAMPLE_RATE = 1000 * 512 / 16000 = 32
+        let expected_bin = 32;
+        let freq_bins = N_FFT / 2 + 1;
+        let num_frames = spec.shape()[1];
+
+        let mut correct_frames = 0;
+        for frame in 2..num_frames.saturating_sub(2) {
+            let mut max_bin = 0;
+            let mut max_power = 0.0f32;
+            for bin in 0..freq_bins {
+                if spec[[bin, frame]] > max_power {
+                    max_power = spec[[bin, frame]];
+                    max_bin = bin;
+                }
+            }
+            if max_bin == expected_bin {
+                correct_frames += 1;
             }
         }
 
-        features
+        let interior_frames = num_frames.saturating_sub(4);
+        assert!(
+            correct_frames > interior_frames / 2,
+            "Expected bin {expected_bin} to dominate, but only {correct_frames}/{interior_frames}"
+        );
+    }
+
+    #[test]
+    fn stft_output_shape_is_correct() {
+        let audio = vec![0.0f32; SAMPLE_RATE]; // 1 second
+        let spec = Sortformer::stft(&audio);
+
+        let freq_bins = N_FFT / 2 + 1;
+        assert_eq!(spec.shape()[0], freq_bins);
+        assert!(spec.shape()[1] > 0);
     }
 }
