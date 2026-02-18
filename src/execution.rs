@@ -11,7 +11,6 @@ use ort::session::builder::SessionBuilder;
 // Note: CoreML EP currently runs slower than CPU for Sortformer/Parakeet models because
 // the ONNX graphs have dynamic input shapes, preventing CoreML from building optimised
 // execution plans for ANE/GPU. CoreML claims nodes but runs them on CPU with overhead.
-// Re-exporting models with fixed shapes would be needed to benefit from CoreML acceleration.
 //
 // WebGPU is experimental and may produce incorrect results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
