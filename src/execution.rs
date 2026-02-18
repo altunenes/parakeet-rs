@@ -7,7 +7,12 @@ use ort::session::builder::SessionBuilder;
 // Hardware acceleration options. CPU is default and most reliable.
 // GPU providers (CUDA, TensorRT, MIGraphX) offer 5-10x speedup but require specific hardware.
 // All GPU providers automatically fall back to CPU if they fail.
-// CoreML uses MLProgram format with ANE enabled; use with_coreml_cache_dir() to avoid recompilation.
+//
+// Note: CoreML EP currently runs slower than CPU for Sortformer/Parakeet models because
+// the ONNX graphs have dynamic input shapes, preventing CoreML from building optimised
+// execution plans for ANE/GPU. CoreML claims nodes but runs them on CPU with overhead.
+// Re-exporting models with fixed shapes would be needed to benefit from CoreML acceleration.
+//
 // WebGPU is experimental and may produce incorrect results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExecutionProvider {
@@ -148,11 +153,8 @@ impl ModelConfig {
 
             #[cfg(feature = "coreml")]
             ExecutionProvider::CoreML => {
-                use ort::ep::coreml::{ComputeUnits, CoreML, ModelFormat};
-                let mut coreml = CoreML::default()
-                    .with_compute_units(ComputeUnits::All)
-                    .with_model_format(ModelFormat::MLProgram)
-                    .with_static_input_shapes(true);
+                use ort::ep::coreml::{ComputeUnits, CoreML};
+                let mut coreml = CoreML::default().with_compute_units(ComputeUnits::CPUAndGPU);
 
                 if let Some(cache_dir) = &self.coreml_cache_dir {
                     coreml = coreml.with_model_cache_dir(cache_dir.to_string_lossy());
