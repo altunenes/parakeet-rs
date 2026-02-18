@@ -43,10 +43,15 @@ fn hann_window(window_length: usize) -> Vec<f32> {
 
 // We use proper FFT here instead of naive DFT because the model was trained
 // on correctly computed spectrograms. Naive DFT produces wrong frequency bins
-// and the model outputs all blank tokens. RustFFT gives us O(n log n) performance
-// and numerically correct results that match what the model expects.
-pub fn stft(audio: &[f32], n_fft: usize, hop_length: usize, win_length: usize) -> Array2<f32> {
-    use rustfft::{num_complex::Complex, FftPlanner};
+// and the model outputs all blank tokens. realfft (real-valued FFT wrapper around
+// RustFFT) gives us O(n log n) performance and numerically correct results.
+pub fn stft(
+    audio: &[f32],
+    n_fft: usize,
+    hop_length: usize,
+    win_length: usize,
+) -> Result<Array2<f32>> {
+    use realfft::RealFftPlanner;
 
     let pad_amount = n_fft / 2;
     let mut padded = vec![0.0f32; pad_amount];
@@ -58,26 +63,29 @@ pub fn stft(audio: &[f32], n_fft: usize, hop_length: usize, win_length: usize) -
     let freq_bins = n_fft / 2 + 1;
     let mut spectrogram = Array2::<f32>::zeros((freq_bins, num_frames));
 
-    let mut planner = FftPlanner::<f32>::new();
-    let fft = planner.plan_fft_forward(n_fft);
+    let mut planner = RealFftPlanner::<f32>::new();
+    let r2c = planner.plan_fft_forward(n_fft);
+    let mut input = vec![0.0f32; n_fft];
+    let mut output = r2c.make_output_vec();
+    let mut scratch = r2c.make_scratch_vec();
 
     for frame_idx in 0..num_frames {
         let start = frame_idx * hop_length;
 
-        let mut frame: Vec<Complex<f32>> = vec![Complex::new(0.0, 0.0); n_fft];
+        input.fill(0.0);
         for i in 0..win_length.min(padded.len() - start) {
-            frame[i] = Complex::new(padded[start + i] * window[i], 0.0);
+            input[i] = padded[start + i] * window[i];
         }
 
-        fft.process(&mut frame);
+        r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
+            .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
 
         for k in 0..freq_bins {
-            let magnitude = frame[k].norm();
-            spectrogram[[k, frame_idx]] = magnitude * magnitude;
+            spectrogram[[k, frame_idx]] = output[k].norm_sqr();
         }
     }
 
-    spectrogram
+    Ok(spectrogram)
 }
 
 // Slaney mel scale (again librosa)
@@ -177,7 +185,7 @@ pub fn extract_features_raw(
 
     audio = apply_preemphasis(&audio, config.preemphasis);
 
-    let spectrogram = stft(&audio, config.n_fft, config.hop_length, config.win_length);
+    let spectrogram = stft(&audio, config.n_fft, config.hop_length, config.win_length)?;
 
     let mel_filterbank =
         create_mel_filterbank(config.n_fft, config.feature_size, config.sampling_rate);
@@ -205,4 +213,70 @@ pub fn extract_features_raw(
     }
 
     Ok(mel_spectrogram)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Generate a pure sine wave at the given frequency and sample rate.
+    fn sine_wave(freq_hz: f32, sample_rate: usize, num_samples: usize) -> Vec<f32> {
+        (0..num_samples)
+            .map(|i| (2.0 * PI * freq_hz * i as f32 / sample_rate as f32).sin())
+            .collect()
+    }
+
+    #[test]
+    fn stft_concentrates_power_at_expected_bin() {
+        // 1kHz sine at 16kHz sample rate, 1 second
+        let n_fft = 512;
+        let hop_length = 160;
+        let win_length = 400;
+        let sample_rate = 16000;
+        let audio = sine_wave(1000.0, sample_rate, sample_rate);
+
+        let spec = stft(&audio, n_fft, hop_length, win_length).unwrap();
+
+        // Expected bin for 1kHz: freq_hz * n_fft / sample_rate = 1000 * 512 / 16000 = 32
+        let expected_bin = 32;
+        let freq_bins = n_fft / 2 + 1;
+        let num_frames = spec.shape()[1];
+
+        // Check that bin 32 has the highest power in most frames (skip edge frames)
+        let mut correct_frames = 0;
+        for frame in 2..num_frames.saturating_sub(2) {
+            let mut max_bin = 0;
+            let mut max_power = 0.0f32;
+            for bin in 0..freq_bins {
+                if spec[[bin, frame]] > max_power {
+                    max_power = spec[[bin, frame]];
+                    max_bin = bin;
+                }
+            }
+            if max_bin == expected_bin {
+                correct_frames += 1;
+            }
+        }
+
+        let interior_frames = num_frames.saturating_sub(4);
+        assert!(
+            correct_frames > interior_frames / 2,
+            "Expected bin {expected_bin} to dominate in most frames, but only {correct_frames}/{interior_frames}"
+        );
+    }
+
+    #[test]
+    fn stft_output_shape_is_correct() {
+        let n_fft = 512;
+        let hop_length = 160;
+        let win_length = 400;
+        let audio = vec![0.0f32; 16000]; // 1 second of silence
+
+        let spec = stft(&audio, n_fft, hop_length, win_length).unwrap();
+
+        let freq_bins = n_fft / 2 + 1;
+        assert_eq!(spec.shape()[0], freq_bins);
+        // num_frames = (audio_len + n_fft - n_fft) / hop_length + 1 = 16000 / 160 + 1 = 101
+        assert!(spec.shape()[1] > 0);
+    }
 }

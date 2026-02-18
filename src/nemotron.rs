@@ -2,7 +2,7 @@ use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model_nemotron::{NemotronEncoderCache, NemotronModel, NemotronModelConfig};
 use ndarray::{s, Array2, Array3};
-use rustfft::{num_complex::Complex, FftPlanner};
+use realfft::RealFftPlanner;
 use std::f32::consts::PI;
 use std::fs::File;
 use std::io::Read;
@@ -304,7 +304,7 @@ impl Nemotron {
     pub fn transcribe_audio(&mut self, audio: &[f32]) -> Result<String> {
         self.reset();
 
-        let mel = self.compute_mel_spectrogram(audio);
+        let mel = self.compute_mel_spectrogram(audio)?;
         let total_frames = mel.shape()[1];
 
         if total_frames == 0 {
@@ -378,7 +378,7 @@ impl Nemotron {
         }
 
         // Compute mel spectrogram over the ENTIRE audio buffer
-        let full_mel = self.compute_mel_spectrogram(&self.audio_buffer);
+        let full_mel = self.compute_mel_spectrogram(&self.audio_buffer)?;
         let total_mel_frames = full_mel.shape()[1];
 
         // Calculate how many mel frames correspond to processed audio
@@ -511,16 +511,16 @@ impl Nemotron {
     /// Compute log mel spectrogram WITHOUT normalization.
     /// I use capitals because this gave me some trouble on the Python side :(). I realized they dont use it later.
     /// so offc nemo feeding raw log-mel spectrogram values (in decibels) directly to the encoder.
-    fn compute_mel_spectrogram(&self, audio: &[f32]) -> Array2<f32> {
+    fn compute_mel_spectrogram(&self, audio: &[f32]) -> Result<Array2<f32>> {
         if audio.is_empty() {
-            return Array2::zeros((N_MELS, 0));
+            return Ok(Array2::zeros((N_MELS, 0)));
         }
 
         let preemph = Self::apply_preemphasis(audio);
-        let spec = self.stft_center(&preemph);
+        let spec = self.stft_center(&preemph)?;
         let mel = self.mel_basis.dot(&spec);
 
-        mel.mapv(|x| (x.max(0.0) + LOG_ZERO_GUARD).ln())
+        Ok(mel.mapv(|x| (x.max(0.0) + LOG_ZERO_GUARD).ln()))
     }
 
     fn apply_preemphasis(audio: &[f32]) -> Vec<f32> {
@@ -539,9 +539,9 @@ impl Nemotron {
         result
     }
 
-    fn stft_center(&self, audio: &[f32]) -> Array2<f32> {
-        let mut planner = FftPlanner::<f32>::new();
-        let fft = planner.plan_fft_forward(N_FFT);
+    fn stft_center(&self, audio: &[f32]) -> Result<Array2<f32>> {
+        let mut planner = RealFftPlanner::<f32>::new();
+        let r2c = planner.plan_fft_forward(N_FFT);
 
         let pad_amount = N_FFT / 2;
         let mut padded = vec![0.0f32; pad_amount];
@@ -557,26 +557,31 @@ impl Nemotron {
         let freq_bins = N_FFT / 2 + 1;
         let mut spec = Array2::zeros((freq_bins, num_frames));
 
+        let mut input = vec![0.0f32; N_FFT];
+        let mut output = r2c.make_output_vec();
+        let mut scratch = r2c.make_scratch_vec();
+
         for frame_idx in 0..num_frames {
             let start = frame_idx * HOP_LENGTH;
             if start + WIN_LENGTH > padded.len() {
                 break;
             }
 
-            let mut buffer: Vec<Complex<f32>> = vec![Complex::new(0.0, 0.0); N_FFT];
+            input.fill(0.0);
             for i in 0..WIN_LENGTH {
-                buffer[i] = Complex::new(padded[start + i] * self.window[i], 0.0);
+                input[i] = padded[start + i] * self.window[i];
             }
 
-            fft.process(&mut buffer);
+            r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
+                .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
 
-            for (i, val) in buffer.iter().take(freq_bins).enumerate() {
+            for (i, val) in output.iter().take(freq_bins).enumerate() {
                 let mag_sq = val.norm_sqr();
                 spec[[i, frame_idx]] = if mag_sq.is_finite() { mag_sq } else { 0.0 };
             }
         }
 
-        spec
+        Ok(spec)
     }
 
     fn create_window() -> Vec<f32> {

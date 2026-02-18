@@ -2,7 +2,7 @@ use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model_eou::{EncoderCache, ParakeetEOUModel};
 use ndarray::{s, Array2, Array3};
-use rustfft::{num_complex::Complex, FftPlanner};
+use realfft::RealFftPlanner;
 use std::collections::VecDeque;
 use std::f32::consts::PI;
 use std::path::Path;
@@ -110,7 +110,7 @@ impl ParakeetEOU {
 
         // Extract features from FULL buffer (provides context for feature extraction)
         let buffer_slice: Vec<f32> = self.audio_buffer.iter().copied().collect();
-        let full_features = self.extract_mel_features(&buffer_slice);
+        let full_features = self.extract_mel_features(&buffer_slice)?;
         let total_frames = full_features.shape()[2];
 
         // Slice to take only (pre_encode_cache + new_frames) for encoder
@@ -202,12 +202,12 @@ impl ParakeetEOU {
         // self.audio_buffer.clear();  // DON'T clear!!
     }
 
-    fn extract_mel_features(&self, audio: &[f32]) -> Array3<f32> {
+    fn extract_mel_features(&self, audio: &[f32]) -> Result<Array3<f32>> {
         let audio_pre = Self::apply_preemphasis(audio);
-        let spec = self.stft(&audio_pre);
+        let spec = self.stft(&audio_pre)?;
         let mel = self.mel_basis.dot(&spec);
         let mel_log = mel.mapv(|x| (x.max(0.0) + LOG_ZERO_GUARD).ln());
-        mel_log.insert_axis(ndarray::Axis(0))
+        Ok(mel_log.insert_axis(ndarray::Axis(0)))
     }
 
     fn apply_preemphasis(audio: &[f32]) -> Vec<f32> {
@@ -225,9 +225,9 @@ impl ParakeetEOU {
         result
     }
 
-    fn stft(&self, audio: &[f32]) -> Array2<f32> {
-        let mut planner = FftPlanner::<f32>::new();
-        let fft = planner.plan_fft_forward(N_FFT);
+    fn stft(&self, audio: &[f32]) -> Result<Array2<f32>> {
+        let mut planner = RealFftPlanner::<f32>::new();
+        let r2c = planner.plan_fft_forward(N_FFT);
 
         let pad_amount = N_FFT / 2;
         let mut padded_audio = vec![0.0; pad_amount];
@@ -238,23 +238,30 @@ impl ParakeetEOU {
         let freq_bins = N_FFT / 2 + 1;
         let mut spec = Array2::zeros((freq_bins, num_frames));
 
+        let mut input = vec![0.0f32; N_FFT];
+        let mut output = r2c.make_output_vec();
+        let mut scratch = r2c.make_scratch_vec();
+
         for frame_idx in 0..num_frames {
             let start = frame_idx * HOP_LENGTH;
             if start + WIN_LENGTH > padded_audio.len() {
                 break;
             }
 
-            let mut buffer: Vec<Complex<f32>> = vec![Complex::new(0.0, 0.0); N_FFT];
+            input.fill(0.0);
             for i in 0..WIN_LENGTH {
-                buffer[i] = Complex::new(padded_audio[start + i] * self.window[i], 0.0);
+                input[i] = padded_audio[start + i] * self.window[i];
             }
-            fft.process(&mut buffer);
-            for (i, val) in buffer.iter().take(freq_bins).enumerate() {
+
+            r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
+                .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
+
+            for (i, val) in output.iter().take(freq_bins).enumerate() {
                 let mag_sq = val.norm_sqr();
                 spec[[i, frame_idx]] = if mag_sq.is_finite() { mag_sq } else { 0.0 };
             }
         }
-        spec
+        Ok(spec)
     }
 
     fn create_window() -> Vec<f32> {

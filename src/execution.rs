@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::{fmt, rc::Rc};
 
 use crate::error::Result;
@@ -7,7 +8,10 @@ use ort::session::builder::SessionBuilder;
 // GPU providers (CUDA, TensorRT, MIGraphX) offer 5-10x speedup but require specific hardware.
 // All GPU providers automatically fall back to CPU if they fail.
 //
-// Note: CoreML currently fails with this model due to unsupported operations.
+// Note: CoreML EP currently runs slower than CPU for Sortformer/Parakeet models because
+// the ONNX graphs have dynamic input shapes, preventing CoreML from building optimised
+// execution plans for ANE/GPU. CoreML claims nodes but runs them on CPU with overhead.
+//
 // WebGPU is experimental and may produce incorrect results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExecutionProvider {
@@ -37,6 +41,10 @@ pub struct ModelConfig {
     pub intra_threads: usize,
     pub inter_threads: usize,
     pub configure: Option<Rc<dyn Fn(SessionBuilder) -> ort::Result<SessionBuilder>>>,
+    /// Optional cache directory for compiled CoreML models. When set, avoids
+    /// recompiling the ONNX-to-CoreML conversion on each session load (~5s).
+    /// Only used when execution_provider is CoreML.
+    pub coreml_cache_dir: Option<PathBuf>,
 }
 
 impl fmt::Debug for ModelConfig {
@@ -53,6 +61,7 @@ impl fmt::Debug for ModelConfig {
                     "None"
                 },
             )
+            .field("coreml_cache_dir", &self.coreml_cache_dir)
             .finish()
     }
 }
@@ -64,6 +73,7 @@ impl Default for ModelConfig {
             intra_threads: 4,
             inter_threads: 1,
             configure: None,
+            coreml_cache_dir: None,
         }
     }
 }
@@ -93,6 +103,13 @@ impl ModelConfig {
         configure: impl Fn(SessionBuilder) -> ort::Result<SessionBuilder> + 'static,
     ) -> Self {
         self.configure = Some(Rc::new(configure));
+        self
+    }
+
+    /// Set cache directory for compiled CoreML models.
+    /// Avoids ~5s recompilation on each session load.
+    pub fn with_coreml_cache_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.coreml_cache_dir = Some(path.into());
         self
     }
 
@@ -136,10 +153,14 @@ impl ModelConfig {
             #[cfg(feature = "coreml")]
             ExecutionProvider::CoreML => {
                 use ort::ep::coreml::{ComputeUnits, CoreML};
+                let mut coreml = CoreML::default().with_compute_units(ComputeUnits::CPUAndGPU);
+
+                if let Some(cache_dir) = &self.coreml_cache_dir {
+                    coreml = coreml.with_model_cache_dir(cache_dir.to_string_lossy());
+                }
+
                 builder.with_execution_providers([
-                    CoreML::default()
-                        .with_compute_units(ComputeUnits::CPUAndGPU)
-                        .build(),
+                    coreml.build(),
                     CPUExecutionProvider::default().build().error_on_failure(),
                 ])?
             }
