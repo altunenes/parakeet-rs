@@ -252,7 +252,7 @@ impl Sortformer {
         self.reset_state();
 
         // Extract mel features (B, T, D)
-        let features = self.extract_mel_features(&audio);
+        let features = self.extract_mel_features(&audio)?;
         let total_frames = features.shape()[1];
 
         // Process in chunks
@@ -314,7 +314,7 @@ impl Sortformer {
             return Ok(vec![]);
         }
 
-        let features = self.extract_mel_features(audio_16k_mono);
+        let features = self.extract_mel_features(audio_16k_mono)?;
         let total_frames = features.shape()[1];
 
         let chunk_stride = CHUNK_LEN * SUBSAMPLING;
@@ -910,7 +910,7 @@ impl Sortformer {
             .collect()
     }
 
-    fn stft(audio: &[f32]) -> Array2<f32> {
+    fn stft(audio: &[f32]) -> Result<Array2<f32>> {
         let mut planner = RealFftPlanner::<f32>::new();
         let r2c = planner.plan_fft_forward(N_FFT);
 
@@ -949,7 +949,7 @@ impl Sortformer {
             }
 
             r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
-                .expect("realfft process failed");
+                .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
 
             for k in 0..freq_bins {
                 // Power spectrum (magnitude^2) - NeMo uses mag_power=2.0
@@ -957,10 +957,10 @@ impl Sortformer {
             }
         }
 
-        spectrogram
+        Ok(spectrogram)
     }
 
-    fn extract_mel_features(&self, audio: &[f32]) -> Array3<f32> {
+    fn extract_mel_features(&self, audio: &[f32]) -> Result<Array3<f32>> {
         // 1. Add dither (small random noise to prevent log(0))
         // NeMo uses dither=1e-5, but for determinism we skip random noise
         // The log_zero_guard handles zero values
@@ -969,7 +969,7 @@ impl Sortformer {
         let preemphasized = Self::apply_preemphasis(audio);
 
         // 3. STFT
-        let spectrogram = Self::stft(&preemphasized);
+        let spectrogram = Self::stft(&preemphasized)?;
 
         // 4. Apply mel filterbank (with Slaney normalization)
         let mel_spec = self.mel_basis.dot(&spectrogram);
@@ -979,7 +979,7 @@ impl Sortformer {
         let log_mel_spec = mel_spec.mapv(|x| (x + LOG_ZERO_GUARD).ln());
 
         // Transpose to (batch, time, features) - NeMo outputs (B, D, T), model expects (B, T, D)
-        log_mel_spec.t().to_owned().insert_axis(Axis(0))
+        Ok(log_mel_spec.t().to_owned().insert_axis(Axis(0)))
     }
 }
 
@@ -997,7 +997,7 @@ mod tests {
     fn stft_concentrates_power_at_expected_bin() {
         // 1kHz sine at 16kHz sample rate, 1 second
         let audio = sine_wave(1000.0, SAMPLE_RATE, SAMPLE_RATE);
-        let spec = Sortformer::stft(&audio);
+        let spec = Sortformer::stft(&audio).unwrap();
 
         // Expected bin: 1000 * N_FFT / SAMPLE_RATE = 1000 * 512 / 16000 = 32
         let expected_bin = 32;
@@ -1029,7 +1029,7 @@ mod tests {
     #[test]
     fn stft_output_shape_is_correct() {
         let audio = vec![0.0f32; SAMPLE_RATE]; // 1 second
-        let spec = Sortformer::stft(&audio);
+        let spec = Sortformer::stft(&audio).unwrap();
 
         let freq_bins = N_FFT / 2 + 1;
         assert_eq!(spec.shape()[0], freq_bins);

@@ -45,7 +45,12 @@ fn hann_window(window_length: usize) -> Vec<f32> {
 // on correctly computed spectrograms. Naive DFT produces wrong frequency bins
 // and the model outputs all blank tokens. realfft (real-valued FFT wrapper around
 // RustFFT) gives us O(n log n) performance and numerically correct results.
-pub fn stft(audio: &[f32], n_fft: usize, hop_length: usize, win_length: usize) -> Array2<f32> {
+pub fn stft(
+    audio: &[f32],
+    n_fft: usize,
+    hop_length: usize,
+    win_length: usize,
+) -> Result<Array2<f32>> {
     use realfft::RealFftPlanner;
 
     let pad_amount = n_fft / 2;
@@ -73,14 +78,14 @@ pub fn stft(audio: &[f32], n_fft: usize, hop_length: usize, win_length: usize) -
         }
 
         r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
-            .expect("realfft process failed");
+            .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
 
         for k in 0..freq_bins {
             spectrogram[[k, frame_idx]] = output[k].norm_sqr();
         }
     }
 
-    spectrogram
+    Ok(spectrogram)
 }
 
 // Slaney mel scale (again librosa)
@@ -180,7 +185,7 @@ pub fn extract_features_raw(
 
     audio = apply_preemphasis(&audio, config.preemphasis);
 
-    let spectrogram = stft(&audio, config.n_fft, config.hop_length, config.win_length);
+    let spectrogram = stft(&audio, config.n_fft, config.hop_length, config.win_length)?;
 
     let mel_filterbank =
         create_mel_filterbank(config.n_fft, config.feature_size, config.sampling_rate);
@@ -230,7 +235,7 @@ mod tests {
         let sample_rate = 16000;
         let audio = sine_wave(1000.0, sample_rate, sample_rate);
 
-        let spec = stft(&audio, n_fft, hop_length, win_length);
+        let spec = stft(&audio, n_fft, hop_length, win_length).unwrap();
 
         // Expected bin for 1kHz: freq_hz * n_fft / sample_rate = 1000 * 512 / 16000 = 32
         let expected_bin = 32;
@@ -267,7 +272,7 @@ mod tests {
         let win_length = 400;
         let audio = vec![0.0f32; 16000]; // 1 second of silence
 
-        let spec = stft(&audio, n_fft, hop_length, win_length);
+        let spec = stft(&audio, n_fft, hop_length, win_length).unwrap();
 
         let freq_bins = n_fft / 2 + 1;
         assert_eq!(spec.shape()[0], freq_bins);

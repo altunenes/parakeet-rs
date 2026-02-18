@@ -304,7 +304,7 @@ impl Nemotron {
     pub fn transcribe_audio(&mut self, audio: &[f32]) -> Result<String> {
         self.reset();
 
-        let mel = self.compute_mel_spectrogram(audio);
+        let mel = self.compute_mel_spectrogram(audio)?;
         let total_frames = mel.shape()[1];
 
         if total_frames == 0 {
@@ -378,7 +378,7 @@ impl Nemotron {
         }
 
         // Compute mel spectrogram over the ENTIRE audio buffer
-        let full_mel = self.compute_mel_spectrogram(&self.audio_buffer);
+        let full_mel = self.compute_mel_spectrogram(&self.audio_buffer)?;
         let total_mel_frames = full_mel.shape()[1];
 
         // Calculate how many mel frames correspond to processed audio
@@ -511,16 +511,16 @@ impl Nemotron {
     /// Compute log mel spectrogram WITHOUT normalization.
     /// I use capitals because this gave me some trouble on the Python side :(). I realized they dont use it later.
     /// so offc nemo feeding raw log-mel spectrogram values (in decibels) directly to the encoder.
-    fn compute_mel_spectrogram(&self, audio: &[f32]) -> Array2<f32> {
+    fn compute_mel_spectrogram(&self, audio: &[f32]) -> Result<Array2<f32>> {
         if audio.is_empty() {
-            return Array2::zeros((N_MELS, 0));
+            return Ok(Array2::zeros((N_MELS, 0)));
         }
 
         let preemph = Self::apply_preemphasis(audio);
-        let spec = self.stft_center(&preemph);
+        let spec = self.stft_center(&preemph)?;
         let mel = self.mel_basis.dot(&spec);
 
-        mel.mapv(|x| (x.max(0.0) + LOG_ZERO_GUARD).ln())
+        Ok(mel.mapv(|x| (x.max(0.0) + LOG_ZERO_GUARD).ln()))
     }
 
     fn apply_preemphasis(audio: &[f32]) -> Vec<f32> {
@@ -539,7 +539,7 @@ impl Nemotron {
         result
     }
 
-    fn stft_center(&self, audio: &[f32]) -> Array2<f32> {
+    fn stft_center(&self, audio: &[f32]) -> Result<Array2<f32>> {
         let mut planner = RealFftPlanner::<f32>::new();
         let r2c = planner.plan_fft_forward(N_FFT);
 
@@ -573,7 +573,7 @@ impl Nemotron {
             }
 
             r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
-                .expect("realfft process failed");
+                .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
 
             for (i, val) in output.iter().take(freq_bins).enumerate() {
                 let mag_sq = val.norm_sqr();
@@ -581,7 +581,7 @@ impl Nemotron {
             }
         }
 
-        spec
+        Ok(spec)
     }
 
     fn create_window() -> Vec<f32> {
