@@ -43,7 +43,7 @@ const SPKCACHE_LEN: usize = 188; // Speaker cache length
 const SPKCACHE_UPDATE_PERIOD: usize = 124;
 const SUBSAMPLING: usize = 8; // Audio frames -> model frames
 const EMB_DIM: usize = 512; // Embedding dimension
-const NUM_SPEAKERS: usize = 4; // Model supports 4 speakers
+pub const NUM_SPEAKERS: usize = 4; // Model supports 4 speakers
 const FRAME_DURATION: f32 = 0.08; // 80ms per frame
 
 // Cache compression params (from NeMo)
@@ -163,6 +163,17 @@ pub struct SpeakerSegment {
     pub start: f32,
     pub end: f32,
     pub speaker_id: usize,
+}
+
+/// Raw per-frame speaker activity predictions (sigmoid outputs).
+/// Used by the multitalker pipeline to derive speaker masks for the ASR encoder.
+#[derive(Debug, Clone)]
+pub struct RawDiarizationPredictions {
+    /// Per-frame speaker activity probabilities, shape [num_frames, NUM_SPEAKERS].
+    /// Values in [0.0, 1.0].
+    pub predictions: Array2<f32>,
+    /// Number of valid frames (may be <= predictions.nrows()).
+    pub num_valid_frames: usize,
 }
 
 /// Streaming Sortformer v2 speaker diarization engine
@@ -352,6 +363,65 @@ impl Sortformer {
         let segments = self.binarize(&filtered_preds);
 
         Ok(segments)
+    }
+
+    /// Streaming diarization returning raw predictions without post-processing.
+    ///
+    /// Unlike `diarize_chunk()`, this method returns the raw sigmoid outputs
+    /// (per-frame speaker activity probabilities) without median filtering or
+    /// binarisation. Used by the multitalker ASR pipeline to derive speaker
+    /// masks for the encoder.
+    ///
+    /// # Arguments
+    /// * `audio_16k_mono` - Audio chunk at 16kHz mono (any length, typically 2-30s)
+    ///
+    /// # Returns
+    /// Raw predictions with shape [num_frames, NUM_SPEAKERS], values in [0.0, 1.0]
+    pub fn diarize_chunk_raw(
+        &mut self,
+        audio_16k_mono: &[f32],
+    ) -> Result<RawDiarizationPredictions> {
+        if audio_16k_mono.is_empty() {
+            return Ok(RawDiarizationPredictions {
+                predictions: Array2::zeros((0, NUM_SPEAKERS)),
+                num_valid_frames: 0,
+            });
+        }
+
+        let features = self.extract_mel_features(audio_16k_mono)?;
+        let total_frames = features.shape()[1];
+
+        let chunk_stride = CHUNK_LEN * SUBSAMPLING;
+        let num_chunks = total_frames.div_ceil(chunk_stride);
+
+        let mut all_chunk_preds = Vec::new();
+
+        for chunk_idx in 0..num_chunks {
+            let start = chunk_idx * chunk_stride;
+            let end = (start + chunk_stride).min(total_frames);
+            let current_len = end - start;
+
+            let mut chunk_feat = features.slice(s![.., start..end, ..]).to_owned();
+
+            if current_len < chunk_stride {
+                let mut padded = Array3::zeros((1, chunk_stride, N_MELS));
+                padded
+                    .slice_mut(s![.., ..current_len, ..])
+                    .assign(&chunk_feat);
+                chunk_feat = padded;
+            }
+
+            let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
+            all_chunk_preds.push(chunk_preds);
+        }
+
+        let full_preds = Self::concat_predictions(&all_chunk_preds);
+        let num_valid_frames = full_preds.nrows();
+
+        Ok(RawDiarizationPredictions {
+            predictions: full_preds,
+            num_valid_frames,
+        })
     }
 
     /// NeMo's streaming_update with smart cache compression

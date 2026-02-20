@@ -25,6 +25,10 @@ path = "examples/raw.rs"
 name = "streaming"
 path = "examples/streaming.rs"
 
+[[example]]
+name = "multitalker"
+path = "examples/multitalker.rs"
+
 [dependencies]
 ort = { version = "2.0.0-rc.11", default-features = false, features = ["std", "ndarray"] }
 hound = "3.5"
@@ -50,5 +54,6 @@ openvino = ["ort/openvino"]
 webgpu = ["ort/webgpu"]
 nnapi = ["ort/nnapi"]
 sortformer = []
+multitalker = ["sortformer"]
 load-dynamic = ["ort/load-dynamic"]
 preload-dylibs = ["ort/preload-dylibs"]
