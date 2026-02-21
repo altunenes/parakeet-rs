@@ -19,6 +19,13 @@ NOTE: This example combines two NVIDIA models:
 - For more information:
 https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2
 
+Streaming config (chunk_len/fifo_len/spkcache_len):
+- Read automatically from ONNX model metadata if present (default: 124/124/188)
+- Query latency after construction: sortformer.latency() returns chunk duration in seconds
+- Override for different latency: sf.chunk_len = 62; sf.fifo_len = 62; sf.spkcache_len = 94;
+- Smaller chunks = lower latency but reduced accuracy
+- The ONNX graph uses dynamic axes, so chunk sizes work at runtime
+- NOTE: Defaults (124/124/188) match NVIDIA's training config and give best accuracy
 WARNING: Sortformer handles long audio natively (streaming), but TDT has sequence
 length limitations (~8-10 minutes max). For production use with long audio files,
 run Sortformer on the full audio for diarization, then chunk the audio into
