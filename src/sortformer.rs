@@ -36,11 +36,10 @@ const PREEMPH: f32 = 0.97;
 const LOG_ZERO_GUARD: f32 = 5.960_464_5e-8;
 const SAMPLE_RATE: usize = 16000;
 
-// Streaming constants
+// Streaming constants (defaults, overridden by ONNX metadata if present)
 const CHUNK_LEN: usize = 124; // Frames per chunk (~10s at 80ms)
 const FIFO_LEN: usize = 124; // FIFO buffer length
 const SPKCACHE_LEN: usize = 188; // Speaker cache length
-const SPKCACHE_UPDATE_PERIOD: usize = 124;
 const SUBSAMPLING: usize = 8; // Audio frames -> model frames
 const EMB_DIM: usize = 512; // Embedding dimension
 const NUM_SPEAKERS: usize = 4; // Model supports 4 speakers
@@ -169,11 +168,15 @@ pub struct SpeakerSegment {
 pub struct Sortformer {
     session: Session,
     config: DiarizationConfig,
+    // Streaming constants (read from ONNX metadata, fallback to defaults)
+    pub chunk_len: usize,
+    pub fifo_len: usize,
+    pub spkcache_len: usize,
     // Streaming state. note that, Same way as Nemo
-    spkcache: Array3<f32>,               // (1, 0..SPKCACHE_LEN, EMB_DIM)
-    spkcache_preds: Option<Array3<f32>>, // (1, 0..SPKCACHE_LEN, NUM_SPEAKERS)
-    fifo: Array3<f32>,                   // (1, 0..FIFO_LEN, EMB_DIM)
-    fifo_preds: Array3<f32>,             // (1, 0..FIFO_LEN, NUM_SPEAKERS)
+    spkcache: Array3<f32>,               // (1, 0..spkcache_len, EMB_DIM)
+    spkcache_preds: Option<Array3<f32>>, // (1, 0..spkcache_len, NUM_SPEAKERS)
+    fifo: Array3<f32>,                   // (1, 0..fifo_len, EMB_DIM)
+    fifo_preds: Array3<f32>,             // (1, 0..fifo_len, NUM_SPEAKERS)
     mean_sil_emb: Array2<f32>,           // (1, EMB_DIM)
     n_sil_frames: usize,
     // Mel filterbank (cached)
@@ -198,11 +201,33 @@ impl Sortformer {
             .apply_to_session_builder(Session::builder()?)?
             .commit_from_file(model_path.as_ref())?;
 
+        // Read streaming constants from ONNX metadata (fallback to defaults)
+        let (chunk_len, fifo_len, spkcache_len) = if let Ok(metadata) = session.metadata() {
+            let c = metadata
+                .custom("chunk_len")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(CHUNK_LEN);
+            let f = metadata
+                .custom("fifo_len")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(FIFO_LEN);
+            let s = metadata
+                .custom("spkcache_len")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(SPKCACHE_LEN);
+            (c, f, s)
+        } else {
+            (CHUNK_LEN, FIFO_LEN, SPKCACHE_LEN)
+        };
+
         let mel_basis = crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE);
 
         let mut instance = Self {
             session,
             config,
+            chunk_len,
+            fifo_len,
+            spkcache_len,
             spkcache: Array3::zeros((1, 0, EMB_DIM)),
             spkcache_preds: None,
             fifo: Array3::zeros((1, 0, EMB_DIM)),
@@ -213,6 +238,12 @@ impl Sortformer {
         };
         instance.reset_state();
         Ok(instance)
+    }
+
+    /// Streaming latency in seconds based on chunk_len.
+    /// eg. chunk_len=124 -> ~9.92s, chunk_len=3 -> ~0.24s
+    pub fn latency(&self) -> f32 {
+        self.chunk_len as f32 * FRAME_DURATION
     }
 
     /// Reset streaming state
@@ -256,7 +287,7 @@ impl Sortformer {
         let total_frames = features.shape()[1];
 
         // Process in chunks
-        let chunk_stride = CHUNK_LEN * SUBSAMPLING;
+        let chunk_stride = self.chunk_len * SUBSAMPLING;
         let num_chunks = total_frames.div_ceil(chunk_stride);
 
         let mut all_chunk_preds = Vec::new();
@@ -317,7 +348,7 @@ impl Sortformer {
         let features = self.extract_mel_features(audio_16k_mono)?;
         let total_frames = features.shape()[1];
 
-        let chunk_stride = CHUNK_LEN * SUBSAMPLING;
+        let chunk_stride = self.chunk_len * SUBSAMPLING;
         let num_chunks = total_frames.div_ceil(chunk_stride);
 
         let mut all_chunk_preds = Vec::new();
@@ -466,9 +497,9 @@ impl Sortformer {
         let fifo_len_after = self.fifo.shape()[1];
 
         // Move from FIFO to cache when FIFO exceeds limit
-        if fifo_len_after > FIFO_LEN {
-            let mut pop_out_len = SPKCACHE_UPDATE_PERIOD;
-            pop_out_len = pop_out_len.max(chunk_len.saturating_sub(FIFO_LEN) + fifo_len);
+        if fifo_len_after > self.fifo_len {
+            let mut pop_out_len = self.chunk_len;
+            pop_out_len = pop_out_len.max(chunk_len.saturating_sub(self.fifo_len) + fifo_len);
             pop_out_len = pop_out_len.min(fifo_len_after);
 
             let pop_out_embs = self.fifo.slice(s![.., ..pop_out_len, ..]).to_owned();
@@ -489,7 +520,7 @@ impl Sortformer {
             }
 
             // Smart compression when cache exceeds limit
-            if self.spkcache.shape()[1] > SPKCACHE_LEN {
+            if self.spkcache.shape()[1] > self.spkcache_len {
                 if self.spkcache_preds.is_none() {
                     // Initialize cache predictions from initial output
                     let initial_cache_preds = preds.slice(s![.., ..spkcache_len, ..]).to_owned();
@@ -540,7 +571,16 @@ impl Sortformer {
         };
 
         let n_frames = self.spkcache.shape()[1];
-        let spkcache_len_per_spk = SPKCACHE_LEN / NUM_SPEAKERS - SPKCACHE_SIL_FRAMES_PER_SPK;
+        let per_spk = self.spkcache_len / NUM_SPEAKERS;
+        if per_spk <= SPKCACHE_SIL_FRAMES_PER_SPK {
+            // truncate if cache too small for compression
+            self.spkcache = self.spkcache.slice(s![.., ..self.spkcache_len, ..]).to_owned();
+            if let Some(ref p) = self.spkcache_preds {
+                self.spkcache_preds = Some(p.slice(s![.., ..self.spkcache_len, ..]).to_owned());
+            }
+            return;
+        }
+        let spkcache_len_per_spk = per_spk - SPKCACHE_SIL_FRAMES_PER_SPK;
         let strong_boost_per_spk = (spkcache_len_per_spk as f32 * STRONG_BOOST_RATE) as usize;
         let weak_boost_per_spk = (spkcache_len_per_spk as f32 * WEAK_BOOST_RATE) as usize;
         let min_pos_scores_per_spk = (spkcache_len_per_spk as f32 * MIN_POS_SCORES_RATE) as usize;
@@ -690,10 +730,10 @@ impl Sortformer {
         // Sort by score descending to get top-K
         flat_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Take top SPKCACHE_LEN and replace invalid scores with MAX_INDEX
+        // Take top spkcache_len and replace invalid scores with MAX_INDEX
         let mut topk_flat: Vec<usize> = flat_scores
             .iter()
-            .take(SPKCACHE_LEN)
+            .take(self.spkcache_len)
             .map(|(idx, score)| {
                 if *score == f32::NEG_INFINITY {
                     MAX_INDEX
@@ -707,8 +747,8 @@ impl Sortformer {
         topk_flat.sort();
 
         // Compute is_disabled and convert to frame indices
-        let mut is_disabled = vec![false; SPKCACHE_LEN];
-        let mut frame_indices = vec![0usize; SPKCACHE_LEN];
+        let mut is_disabled = vec![false; self.spkcache_len];
+        let mut frame_indices = vec![0usize; self.spkcache_len];
 
         for (i, &flat_idx) in topk_flat.iter().enumerate() {
             if flat_idx == MAX_INDEX {
@@ -738,13 +778,13 @@ impl Sortformer {
         indices: &[usize],
         is_disabled: &[bool],
     ) -> (Array3<f32>, Array3<f32>) {
-        let mut new_embs = Array3::zeros((1, SPKCACHE_LEN, EMB_DIM));
-        let mut new_preds = Array3::zeros((1, SPKCACHE_LEN, NUM_SPEAKERS));
+        let mut new_embs = Array3::zeros((1, self.spkcache_len, EMB_DIM));
+        let mut new_preds = Array3::zeros((1, self.spkcache_len, NUM_SPEAKERS));
 
         let cache_preds = self.spkcache_preds.as_ref().unwrap();
 
         for (i, (&idx, &disabled)) in indices.iter().zip(is_disabled.iter()).enumerate() {
-            if i >= SPKCACHE_LEN {
+            if i >= self.spkcache_len {
                 break;
             }
 
