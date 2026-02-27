@@ -90,6 +90,8 @@ let segments = sortformer.diarize_chunk(&audio_chunk_16k_mono)?;
 ```
 See `examples/diarization.rs` for combining with TDT transcription.
 
+See `scripts/export_diar_sortformer.py` for exporting the model with custom streaming parameters.
+
 ## Setup
 
 **CTC**: Download from [HuggingFace](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx): `model.onnx`, `model.onnx_data`, `tokenizer.json`
