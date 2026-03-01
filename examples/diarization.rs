@@ -19,13 +19,14 @@ NOTE: This example combines two NVIDIA models:
 - For more information:
 https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2
 
-Streaming config (chunk_len/fifo_len/spkcache_len):
-- Read automatically from ONNX model metadata if present (default: 124/124/188)
-- Query latency after construction: sortformer.latency() returns chunk duration in seconds
+Streaming config (chunk_len/fifo_len/spkcache_len/right_context):
+- Read automatically from ONNX model metadata if present (default: 124/124/188/1)
+- Latency = (chunk_len + right_context) * 80ms. Default: (124+1)*80ms = 10.0s
+- right_context = extra future frames fed to attention as lookahead (predictions discarded)
 - Override for different latency: sf.chunk_len = 62; sf.fifo_len = 62; sf.spkcache_len = 94;
 - Smaller chunks = lower latency but reduced accuracy
-- The ONNX graph uses dynamic axes, so chunk sizes work at runtime
-- NOTE: Defaults (124/124/188) match NVIDIA's training config and give best accuracy
+- The ONNX graph uses dynamic axes, so all params work at runtime
+- NOTE: Defaults (124/124/188/1) match NVIDIA's training config and give best accuracy
 WARNING: Sortformer handles long audio natively (streaming), but TDT has sequence
 length limitations (~8-10 minutes max). For production use with long audio files,
 run Sortformer on the full audio for diarization, then chunk the audio into
@@ -93,6 +94,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None, // default exec config
             DiarizationConfig::callhome(),
         )?;
+
+        println!(
+            "  Config: chunk_len={}, fifo_len={}, spkcache_len={}, right_context={}",
+            sortformer.chunk_len, sortformer.fifo_len, sortformer.spkcache_len, sortformer.right_context
+        );
+        println!("  Latency: {:.2}s", sortformer.latency());
 
         // For streaming/real-time use cases (e.g. with VAD-based chunking), you can use
         // sortformer.diarize_chunk(&audio_16k_mono) which preserves internal state (FIFO,
