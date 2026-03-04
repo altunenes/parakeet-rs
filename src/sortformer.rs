@@ -351,6 +351,11 @@ impl Sortformer {
     /// Unlike `diarize()`, this method preserves internal state (FIFO, speaker cache,
     /// silence profile) across calls, enabling true streaming diarization.
     ///
+    /// For full `right_context` benefit, buffer at least
+    /// `(chunk_len + right_context) * 80ms` of audio before each call, then stride
+    /// by `chunk_len * 80ms`. Shorter buffers still work (padded with zeros) but
+    /// the lookahead sees silence instead of real future audio.
+    ///
     /// # Arguments
     /// * `audio_16k_mono` - Audio chunk at 16kHz mono (any length, typically 2-30s)
     ///
