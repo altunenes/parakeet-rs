@@ -429,18 +429,10 @@ impl Sortformer {
         while self.audio_buffer.len() >= feed_samples {
             let window = &self.audio_buffer[..feed_samples];
             let features = self.extract_mel_features(window)?;
-            let total_mel = features.shape()[1];
-            let current_len = total_mel.min(feed_size);
-
-            let chunk_feat = if current_len < feed_size {
-                let mut padded = Array3::zeros((1, feed_size, N_MELS));
-                padded
-                    .slice_mut(s![.., ..current_len, ..])
-                    .assign(&features.slice(s![.., ..current_len, ..]));
-                padded
-            } else {
-                features.slice(s![.., ..feed_size, ..]).to_owned()
-            };
+            // STFT center=True produces feed_size+1 mel frames from feed_samples audio,
+            // so we always have enough frames: just slice to feed_size...
+            let chunk_feat = features.slice(s![.., ..feed_size, ..]).to_owned();
+            let current_len = feed_size;
 
             let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
 
