@@ -49,7 +49,7 @@ pub fn process_timestamps(tokens: &[TimedToken], mode: TimestampMode) -> Vec<Tim
 }
 
 // Group tokens into words based on word boundary markers
-fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
+pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
     if tokens.is_empty() {
         return Vec::new();
     }
