@@ -91,6 +91,8 @@ let segments = sortformer.diarize_chunk(&audio_chunk_16k_mono)?;
 ```
 See `examples/diarization.rs` for combining with TDT transcription.
 
+See `examples/streaming_diarization.rs` for `diarize_chunk` usage example.
+
 See `scripts/export_diar_sortformer.py` for exporting the model with custom streaming parameters.
 
 ## Setup
