@@ -192,6 +192,9 @@ pub struct Sortformer {
     fifo_preds: Array3<f32>,             // (1, 0..fifo_len, NUM_SPEAKERS)
     mean_sil_emb: Array2<f32>,           // (1, EMB_DIM)
     n_sil_frames: usize,
+    // Buffered streaming state (used by feed/flush)
+    audio_buffer: Vec<f32>,
+    elapsed_samples: usize,
     // Mel filterbank (cached)
     mel_basis: Array2<f32>,
 }
@@ -253,6 +256,8 @@ impl Sortformer {
             fifo_preds: Array3::zeros((1, 0, NUM_SPEAKERS)),
             mean_sil_emb: Array2::zeros((1, EMB_DIM)),
             n_sil_frames: 0,
+            audio_buffer: Vec::new(),
+            elapsed_samples: 0,
             mel_basis,
         };
         instance.reset_state();
@@ -273,6 +278,8 @@ impl Sortformer {
         self.fifo_preds = Array3::zeros((1, 0, NUM_SPEAKERS));
         self.mean_sil_emb = Array2::zeros((1, EMB_DIM));
         self.n_sil_frames = 0;
+        self.audio_buffer.clear();
+        self.elapsed_samples = 0;
     }
 
     /// Main diarization entry point
@@ -394,6 +401,121 @@ impl Sortformer {
             predictions: full_preds,
             num_valid_frames,
         })
+    }
+
+    /// Feed audio samples for buffered streaming diarization.
+    ///
+    /// Buffers audio internally and runs inference only when enough data has
+    /// accumulated for a full `(chunk_len + right_context)` window. Returns
+    /// segments with **absolute** timestamps (accumulated across calls).
+    ///
+    /// Each successful inference produces `chunk_len * 80ms` worth of predictions
+    /// from exactly one `streaming_update` call — no redundant re-chunking.
+    ///
+    /// # Arguments
+    /// * `audio_16k_mono` - Audio samples at 16kHz mono (any length)
+    ///
+    /// # Returns
+    /// Speaker segments from any chunks that were ready, or empty vec if still buffering.
+    pub fn feed(&mut self, audio_16k_mono: &[f32]) -> Result<Vec<SpeakerSegment>> {
+        self.audio_buffer.extend_from_slice(audio_16k_mono);
+
+        let feed_size = (self.chunk_len + self.right_context) * SUBSAMPLING;
+        let stride_samples = self.chunk_len * SUBSAMPLING * HOP_LENGTH;
+        let feed_samples = (self.chunk_len + self.right_context) * SUBSAMPLING * HOP_LENGTH;
+
+        let mut all_segments = Vec::new();
+
+        while self.audio_buffer.len() >= feed_samples {
+            let window = &self.audio_buffer[..feed_samples];
+            let features = self.extract_mel_features(window)?;
+            let total_mel = features.shape()[1];
+            let current_len = total_mel.min(feed_size);
+
+            let chunk_feat = if current_len < feed_size {
+                let mut padded = Array3::zeros((1, feed_size, N_MELS));
+                padded
+                    .slice_mut(s![.., ..current_len, ..])
+                    .assign(&features.slice(s![.., ..current_len, ..]));
+                padded
+            } else {
+                features.slice(s![.., ..feed_size, ..]).to_owned()
+            };
+
+            let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
+
+            // Apply median filtering
+            let filtered_preds = if self.config.median_window > 1 {
+                self.median_filter(&chunk_preds)
+            } else {
+                chunk_preds
+            };
+
+            // Binarize with absolute time offset
+            let time_offset = self.elapsed_samples as f32 / SAMPLE_RATE as f32;
+            let mut segments = self.binarize(&filtered_preds);
+            let chunk_duration = self.chunk_len as f32 * FRAME_DURATION;
+            for seg in &mut segments {
+                seg.start += time_offset;
+                seg.end = (seg.end + time_offset).min(time_offset + chunk_duration);
+            }
+            segments.retain(|s| s.end > s.start);
+            all_segments.extend(segments);
+
+            // Advance: stride by chunk_len, keep right_context overlap
+            self.audio_buffer.drain(..stride_samples);
+            self.elapsed_samples += stride_samples;
+        }
+
+        Ok(all_segments)
+    }
+
+    /// Flush remaining buffered audio at end of stream.
+    ///
+    /// processes any leftover audio in the buffer with zero paddings.
+    /// we call this once when the audio stream ends to get final segments.
+    pub fn flush(&mut self) -> Result<Vec<SpeakerSegment>> {
+        if self.audio_buffer.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let feed_size = (self.chunk_len + self.right_context) * SUBSAMPLING;
+        let remaining = std::mem::take(&mut self.audio_buffer);
+
+        let features = self.extract_mel_features(&remaining)?;
+        let total_mel = features.shape()[1];
+        let current_len = total_mel.min(feed_size);
+
+        let chunk_feat = if current_len < feed_size {
+            let mut padded = Array3::zeros((1, feed_size, N_MELS));
+            padded
+                .slice_mut(s![.., ..current_len, ..])
+                .assign(&features.slice(s![.., ..current_len, ..]));
+            padded
+        } else {
+            features.slice(s![.., ..feed_size, ..]).to_owned()
+        };
+
+        let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
+
+        let filtered_preds = if self.config.median_window > 1 {
+            self.median_filter(&chunk_preds)
+        } else {
+            chunk_preds
+        };
+
+        let time_offset = self.elapsed_samples as f32 / SAMPLE_RATE as f32;
+        let audio_duration = remaining.len() as f32 / SAMPLE_RATE as f32;
+        let mut segments = self.binarize(&filtered_preds);
+        for seg in &mut segments {
+            seg.start += time_offset;
+            seg.end = (seg.end + time_offset).min(time_offset + audio_duration);
+        }
+        segments.retain(|s| s.end > s.start);
+
+        self.elapsed_samples += remaining.len();
+
+        Ok(segments)
     }
 
     /// run streaming inference over mel features, returning concatenated per chunk predictions.
