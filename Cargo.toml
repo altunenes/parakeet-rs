@@ -29,6 +29,10 @@ path = "examples/streaming.rs"
 name = "multitalker"
 path = "examples/multitalker.rs"
 
+[[example]]
+name = "streaming-diarization"
+path = "examples/streaming_diarization.rs"
+
 [dependencies]
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24"] }
 hound = "3.5"
