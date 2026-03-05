@@ -450,20 +450,21 @@ impl Sortformer {
         let features = self.extract_mel_features(audio_16k_mono)?;
         let total_frames = features.shape()[1];
 
-        let chunk_stride = CHUNK_LEN * SUBSAMPLING;
+        let chunk_stride = self.chunk_len * SUBSAMPLING;
+        let feed_size = (self.chunk_len + self.right_context) * SUBSAMPLING;
         let num_chunks = total_frames.div_ceil(chunk_stride);
 
         let mut all_chunk_preds = Vec::new();
 
         for chunk_idx in 0..num_chunks {
             let start = chunk_idx * chunk_stride;
-            let end = (start + chunk_stride).min(total_frames);
+            let end = (start + feed_size).min(total_frames);
             let current_len = end - start;
 
             let mut chunk_feat = features.slice(s![.., start..end, ..]).to_owned();
 
-            if current_len < chunk_stride {
-                let mut padded = Array3::zeros((1, chunk_stride, N_MELS));
+            if current_len < feed_size {
+                let mut padded = Array3::zeros((1, feed_size, N_MELS));
                 padded
                     .slice_mut(s![.., ..current_len, ..])
                     .assign(&chunk_feat);
