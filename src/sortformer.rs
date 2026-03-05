@@ -210,9 +210,9 @@ impl Sortformer {
     ) -> Result<Self> {
         let config_to_use = execution_config.unwrap_or_default();
 
-        let session = config_to_use
-            .apply_to_session_builder(Session::builder()?)?
-            .commit_from_file(model_path.as_ref())?;
+        let mut builder = config_to_use
+            .apply_to_session_builder(Session::builder()?)?;
+        let session = builder.commit_from_file(model_path.as_ref())?;
 
         // Read streaming constants from ONNX metadata (fallback to defaults)
         let (chunk_len, fifo_len, spkcache_len, right_context) =

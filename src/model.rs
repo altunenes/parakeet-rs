@@ -25,7 +25,7 @@ impl ParakeetModel {
         let config = ModelConfig::default();
 
         let builder = Session::builder()?;
-        let builder = exec_config.apply_to_session_builder(builder)?;
+        let mut builder = exec_config.apply_to_session_builder(builder)?;
         let session = builder.commit_from_file(model_path)?;
 
         Ok(Self { session, config })

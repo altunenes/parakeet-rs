@@ -33,9 +33,12 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<ort::Error> for Error {
-    fn from(e: ort::Error) -> Self {
-        Error::Ort(e)
+impl<R> From<ort::Error<R>> for Error
+where
+    ort::Error<R>: Into<ort::Error<()>>,
+{
+    fn from(e: ort::Error<R>) -> Self {
+        Error::Ort(e.into())
     }
 }
 
