@@ -186,7 +186,13 @@ impl MultitalkerModel {
         Ok((encoder_out, encoded_len, new_cache))
     }
 
-    /// Run decoder step (identical to NemotronModel::run_decoder).
+    /// Run RNNT decoder step.
+    ///
+    /// The ONNX layout differs from the standard NeMo export (model_nemotron.rs):
+    /// encoder_outputs is [B, T, D] (not [B, D, T]), there is no target_length
+    /// input, and states are named states_1/states_2. This matches the custom
+    /// DecoderJointExport wrapper used in export_multitalker.py.
+    ///
     /// Returns: (logits [vocab_size+1], new_state_1, new_state_2)
     pub(crate) fn run_decoder(
         &mut self,

@@ -20,8 +20,6 @@ use crate::sortformer::{Sortformer, NUM_SPEAKERS};
 use crate::timestamps::{self, TimestampMode};
 use crate::transcriber::Transcriber;
 use ndarray::{s, Array2, Array3};
-use realfft::RealFftPlanner;
-use std::f32::consts::PI;
 use std::path::Path;
 
 // Reuse the same audio constants as Nemotron (same encoder architecture)
@@ -205,7 +203,6 @@ pub struct MultitalkerASR {
     speakers: Vec<SpeakerInstance>,
     config: MultitalkerConfig,
     mel_basis: Array2<f32>,
-    window: Vec<f32>,
     audio_buffer: Vec<f32>,
     audio_processed: usize,
     chunk_idx: usize,
@@ -236,7 +233,6 @@ impl MultitalkerASR {
         )?;
 
         let mel_basis = crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE);
-        let window = Self::create_window();
 
         Ok(Self {
             model,
@@ -245,7 +241,6 @@ impl MultitalkerASR {
             speakers: Vec::new(),
             config: MultitalkerConfig::default(),
             mel_basis,
-            window,
             audio_buffer: Vec::new(),
             audio_processed: 0,
             chunk_idx: 0,
@@ -346,7 +341,11 @@ impl MultitalkerASR {
             return Ok(vec![]);
         }
 
-        // Get raw diarisation predictions from Sortformer
+        // Get raw diarisation predictions from Sortformer.
+        // NOTE: The ASR chunk (~1.12s in Normal mode) is smaller than Sortformer's
+        // internal stride (~10s). Sortformer pads the short input internally. A future
+        // improvement would decouple the two chunk rates: buffer audio for Sortformer
+        // and run ASR sub-chunks against the resulting predictions.
         let raw_preds = self.sortformer.diarize_chunk_raw(audio_chunk)?;
         let diar_preds = &raw_preds.predictions;
 
@@ -663,83 +662,17 @@ impl MultitalkerASR {
             .collect()
     }
 
+    /// Compute mel spectrogram using shared audio utilities.
     fn compute_mel_spectrogram(&self, audio: &[f32]) -> Result<Array2<f32>> {
         if audio.is_empty() {
             return Ok(Array2::zeros((N_MELS, 0)));
         }
 
-        let preemph = Self::apply_preemphasis(audio);
-        let spec = self.stft_center(&preemph)?;
+        let preemph = crate::audio::apply_preemphasis(audio, PREEMPH);
+        let spec = crate::audio::stft(&preemph, N_FFT, HOP_LENGTH, WIN_LENGTH)?;
         let mel = self.mel_basis.dot(&spec);
 
         Ok(mel.mapv(|x| (x.max(0.0) + LOG_ZERO_GUARD).ln()))
-    }
-
-    fn apply_preemphasis(audio: &[f32]) -> Vec<f32> {
-        if audio.is_empty() {
-            return Vec::new();
-        }
-
-        let mut result = Vec::with_capacity(audio.len());
-        result.push(audio[0]);
-
-        for i in 1..audio.len() {
-            let v = audio[i] - PREEMPH * audio[i - 1];
-            result.push(if v.is_finite() { v } else { 0.0 });
-        }
-
-        result
-    }
-
-    fn stft_center(&self, audio: &[f32]) -> Result<Array2<f32>> {
-        let mut planner = RealFftPlanner::<f32>::new();
-        let r2c = planner.plan_fft_forward(N_FFT);
-
-        let pad_amount = N_FFT / 2;
-        let mut padded = vec![0.0f32; pad_amount];
-        padded.extend_from_slice(audio);
-        padded.extend(std::iter::repeat_n(0.0f32, pad_amount));
-
-        let num_frames = if padded.len() >= WIN_LENGTH {
-            1 + (padded.len() - WIN_LENGTH) / HOP_LENGTH
-        } else {
-            0
-        };
-
-        let freq_bins = N_FFT / 2 + 1;
-        let mut spec = Array2::zeros((freq_bins, num_frames));
-
-        let mut input = vec![0.0f32; N_FFT];
-        let mut output = r2c.make_output_vec();
-        let mut scratch = r2c.make_scratch_vec();
-
-        for frame_idx in 0..num_frames {
-            let start = frame_idx * HOP_LENGTH;
-            if start + WIN_LENGTH > padded.len() {
-                break;
-            }
-
-            input.fill(0.0);
-            for i in 0..WIN_LENGTH {
-                input[i] = padded[start + i] * self.window[i];
-            }
-
-            r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
-                .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
-
-            for (i, val) in output.iter().take(freq_bins).enumerate() {
-                let mag_sq = val.norm_sqr();
-                spec[[i, frame_idx]] = if mag_sq.is_finite() { mag_sq } else { 0.0 };
-            }
-        }
-
-        Ok(spec)
-    }
-
-    fn create_window() -> Vec<f32> {
-        (0..WIN_LENGTH)
-            .map(|i| 0.5 - 0.5 * ((2.0 * PI * i as f32) / ((WIN_LENGTH - 1) as f32)).cos())
-            .collect()
     }
 }
 
@@ -791,18 +724,12 @@ impl Transcriber for MultitalkerASR {
         let mut chunk_idx = 0;
 
         while buffer_idx < total_frames {
-            let chunk_end = (buffer_idx + chunk_size).min(total_frames);
-            let main_len = chunk_end - buffer_idx;
-
             let expected_size = PRE_ENCODE_CACHE + chunk_size;
 
             let is_first = chunk_idx == 0;
             let mel_chunk = self.build_mel_chunk(&mel, buffer_idx, is_first, expected_size)?;
-            let chunk_length = if is_first {
-                PRE_ENCODE_CACHE + main_len
-            } else {
-                expected_size
-            };
+            // Use expected_size consistently (matches transcribe_chunk path)
+            let chunk_length = expected_size;
 
             // Single-speaker: full activity, no background
             let spk_targets = Array2::from_elem((1, chunk_length), 1.0f32);

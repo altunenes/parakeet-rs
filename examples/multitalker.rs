@@ -1,14 +1,8 @@
 /*
 Multi-talker streaming ASR with speaker-attributed transcription.
 
-This example combines:
-- Sortformer v2: Provides streaming speaker diarisation (4 speakers max)
-- Multitalker Parakeet: Speaker kernel injection for per-speaker ASR
-
-Each speaker gets an independent encoder cache and decoder state.
-The Sortformer's raw speaker activity probabilities are used as masks
-injected into the encoder, enabling per-speaker transcription even
-during overlapping speech.
+Combines Sortformer diarisation with speaker-kernel-injected ASR encoding
+to produce per-speaker transcriptions with word-level timestamps.
 
 Download models:
 - Multitalker ASR: encoder.onnx, decoder_joint.onnx, tokenizer.model
@@ -18,13 +12,7 @@ Download models:
 
 Usage:
   cargo run --release --example multitalker --features multitalker -- \
-    <audio.wav> <asr_model_dir> <sortformer.onnx> [options]
-
-Options:
-  --max-speakers N     Maximum speakers to track, 1-4 (default: 4)
-  --latency MODE       normal, low, very-low, ultra (default: normal)
-  --threshold F        Speaker activity threshold, 0.0-1.0 (default: 0.3)
-  --batch              Use non-streaming batch transcription
+    <audio.wav> <asr_model_dir> <sortformer.onnx> [max_speakers] [latency]
 
 Latency modes: normal (1.12s), low (0.56s), very-low (0.16s), ultra (0.08s)
 */
@@ -41,19 +29,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if args.len() < 4 {
         eprintln!(
-            "Usage: {} <audio.wav> <asr_model_dir> <sortformer.onnx> [options]",
+            "Usage: {} <audio.wav> <asr_model_dir> <sortformer.onnx> [max_speakers] [latency]",
             args[0]
         );
-        eprintln!();
-        eprintln!("  audio.wav        - 16kHz mono WAV file");
-        eprintln!("  asr_model_dir    - Directory with encoder.onnx, decoder_joint.onnx, tokenizer.model");
-        eprintln!("  sortformer.onnx  - Sortformer v2 ONNX model");
-        eprintln!();
-        eprintln!("Options:");
-        eprintln!("  --max-speakers N   Maximum speakers to track, 1-4 (default: 4)");
-        eprintln!("  --latency MODE     normal, low, very-low, ultra (default: normal)");
-        eprintln!("  --threshold F      Speaker activity threshold, 0.0-1.0 (default: 0.3)");
-        eprintln!("  --batch            Use non-streaming batch transcription");
         std::process::exit(1);
     }
 
@@ -61,59 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let asr_model_dir = &args[2];
     let sortformer_path = &args[3];
 
-    // Parse optional flags
-    let mut max_speakers: Option<usize> = None;
-    let mut latency_mode: Option<LatencyMode> = None;
-    let mut activity_threshold: Option<f32> = None;
-    let mut batch_mode = false;
-
-    let mut i = 4;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--max-speakers" => {
-                i += 1;
-                max_speakers = Some(
-                    args.get(i)
-                        .ok_or("--max-speakers requires a value")?
-                        .parse()
-                        .map_err(|_| format!("Invalid max_speakers: {}", args[i]))?,
-                );
-            }
-            "--latency" => {
-                i += 1;
-                let s = args.get(i).ok_or("--latency requires a value")?;
-                latency_mode = Some(match s.as_str() {
-                    "normal" => LatencyMode::Normal,
-                    "low" => LatencyMode::Low,
-                    "very-low" => LatencyMode::VeryLow,
-                    "ultra" => LatencyMode::Ultra,
-                    _ => {
-                        return Err(
-                            format!("Unknown latency mode: {s}. Use: normal, low, very-low, ultra")
-                                .into(),
-                        )
-                    }
-                });
-            }
-            "--threshold" => {
-                i += 1;
-                activity_threshold = Some(
-                    args.get(i)
-                        .ok_or("--threshold requires a value")?
-                        .parse()
-                        .map_err(|_| format!("Invalid threshold: {}", args[i]))?,
-                );
-            }
-            "--batch" => {
-                batch_mode = true;
-            }
-            other => return Err(format!("Unknown option: {other}").into()),
-        }
-        i += 1;
-    }
-
     // Load audio
-    println!("Loading audio: {audio_path}");
     let mut reader = hound::WavReader::open(audio_path)?;
     let spec = reader.spec();
 
@@ -137,81 +63,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let duration = audio.len() as f32 / 16000.0;
-    println!(
-        "Audio: {:.1}s, {} samples, {} Hz",
-        duration,
-        audio.len(),
-        spec.sample_rate
-    );
 
     // Load models
-    println!("Loading multitalker ASR model from: {asr_model_dir}");
-    println!("Loading Sortformer model from: {sortformer_path}");
     let mut model = MultitalkerASR::from_pretrained(asr_model_dir, sortformer_path, None)?;
 
-    // Apply configuration
-    if let Some(n) = max_speakers {
-        model.set_max_speakers(n);
+    if let Some(max_spk_str) = args.get(4) {
+        let max_spk: usize = max_spk_str
+            .parse()
+            .map_err(|_| format!("Invalid max_speakers: {max_spk_str}"))?;
+        model.set_max_speakers(max_spk);
     }
-    if let Some(mode) = latency_mode {
+
+    if let Some(latency_str) = args.get(5) {
+        let mode = match latency_str.as_str() {
+            "normal" => LatencyMode::Normal,
+            "low" => LatencyMode::Low,
+            "very-low" => LatencyMode::VeryLow,
+            "ultra" => LatencyMode::Ultra,
+            _ => return Err(format!("Unknown latency: {latency_str}").into()),
+        };
         model.set_latency_mode(mode);
     }
-    if let Some(t) = activity_threshold {
-        model.set_activity_threshold(t);
+
+    // Stream audio
+    let chunk_samples = model.chunk_audio_samples();
+    print!("Streaming: ");
+
+    for chunk in audio.chunks(chunk_samples) {
+        let chunk_vec = if chunk.len() < chunk_samples {
+            let mut p = chunk.to_vec();
+            p.resize(chunk_samples, 0.0);
+            p
+        } else {
+            chunk.to_vec()
+        };
+
+        let results = model.transcribe_chunk(&chunk_vec)?;
+        for r in &results {
+            print!("[Speaker {}] {}", r.speaker_id, r.text);
+            std::io::stdout().flush()?;
+        }
     }
 
-    let config = model.multitalker_config();
-    println!(
-        "Config: max_speakers={}, latency={:?} ({:.2}s chunks, {} samples/chunk), threshold={:.2}",
-        config.max_speakers,
-        config.latency_mode,
-        config.latency_mode.latency_secs(),
-        model.chunk_audio_samples(),
-        config.activity_threshold,
-    );
-
-    if batch_mode {
-        // Non-streaming: process all audio at once
-        println!("\nBatch transcription:");
-        println!("{}", "=".repeat(60));
-
-        let transcripts = model.transcribe_audio_multitalker(&audio)?;
-        print_transcripts(&transcripts);
-    } else {
-        // Streaming: process chunk by chunk
-        let chunk_samples = model.chunk_audio_samples();
-        println!("\nStreaming ({chunk_samples} samples per chunk):");
-        println!("{}", "=".repeat(60));
-
-        for chunk in audio.chunks(chunk_samples) {
-            let chunk_vec = if chunk.len() < chunk_samples {
-                let mut p = chunk.to_vec();
-                p.resize(chunk_samples, 0.0);
-                p
-            } else {
-                chunk.to_vec()
-            };
-
-            let results = model.transcribe_chunk(&chunk_vec)?;
-            for r in &results {
-                println!("[Speaker {}] {}", r.speaker_id, r.text);
-                std::io::stdout().flush()?;
-            }
+    // Flush with silence
+    let flush_chunk = vec![0.0f32; chunk_samples];
+    for _ in 0..3 {
+        let results = model.transcribe_chunk(&flush_chunk)?;
+        for r in &results {
+            print!("[Speaker {}] {}", r.speaker_id, r.text);
         }
+    }
 
-        // Flush with silence
-        let flush_chunk = vec![0.0f32; chunk_samples];
-        for _ in 0..3 {
-            let results = model.transcribe_chunk(&flush_chunk)?;
-            for r in &results {
-                println!("[Speaker {}] {}", r.speaker_id, r.text);
-            }
+    // Final transcripts with word-level timestamps
+    println!("\n\nFinal transcripts:");
+    for transcript in model.get_transcripts() {
+        println!("  Speaker {}: {}", transcript.speaker_id, transcript.text);
+        for w in &transcript.words {
+            println!("    [{:.2}s - {:.2}s] {}", w.start_secs, w.end_secs, w.word);
         }
-
-        println!("\n{}", "=".repeat(60));
-        println!("Final transcripts:");
-        let transcripts = model.get_transcripts();
-        print_transcripts(&transcripts);
     }
 
     // Tip: for readable multi-speaker output, group words into sentences
@@ -226,19 +135,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Ok(())
-}
-
-#[cfg(feature = "multitalker")]
-fn print_transcripts(transcripts: &[parakeet_rs::SpeakerTranscript]) {
-    for transcript in transcripts {
-        println!("  Speaker {}: {}", transcript.speaker_id, transcript.text);
-        for w in &transcript.words {
-            println!(
-                "    [{:.2}s - {:.2}s] {}",
-                w.start_secs, w.end_secs, w.word
-            );
-        }
-    }
 }
 
 #[cfg(not(feature = "multitalker"))]
