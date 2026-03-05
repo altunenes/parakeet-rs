@@ -301,43 +301,9 @@ impl Sortformer {
         // Reset state for new audio
         self.reset_state();
 
-        // Extract mel features (B, T, D)
+        // Extract mel features and run streaming inference
         let features = self.extract_mel_features(&audio)?;
-        let total_frames = features.shape()[1];
-
-        // Process in chunks
-        // Stride = chunk_len (we advance by chunk_len), but feed chunk_len + right_context
-        // frames so the attention gets lookahead. Only chunk_len predictions are kept.
-        let chunk_stride = self.chunk_len * SUBSAMPLING;
-        let feed_size = (self.chunk_len + self.right_context) * SUBSAMPLING;
-        let num_chunks = total_frames.div_ceil(chunk_stride);
-
-        let mut all_chunk_preds = Vec::new();
-
-        for chunk_idx in 0..num_chunks {
-            let start = chunk_idx * chunk_stride;
-            let end = (start + feed_size).min(total_frames);
-            let current_len = end - start;
-
-            // Extract chunk features (chunk_len + right_context worth of frames)
-            let mut chunk_feat = features.slice(s![.., start..end, ..]).to_owned();
-
-            // Pad if needed
-            if current_len < feed_size {
-                let mut padded = Array3::zeros((1, feed_size, N_MELS));
-                padded
-                    .slice_mut(s![.., ..current_len, ..])
-                    .assign(&chunk_feat);
-                chunk_feat = padded;
-            }
-
-            // Run streaming update
-            let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
-            all_chunk_preds.push(chunk_preds);
-        }
-
-        // Concatenate all predictions
-        let full_preds = Self::concat_predictions(&all_chunk_preds);
+        let full_preds = self.process_features(&features)?;
 
         // Apply median filtering
         let filtered_preds = if self.config.median_window > 1 {
@@ -378,34 +344,7 @@ impl Sortformer {
         }
 
         let features = self.extract_mel_features(audio_16k_mono)?;
-        let total_frames = features.shape()[1];
-
-        let chunk_stride = self.chunk_len * SUBSAMPLING;
-        let feed_size = (self.chunk_len + self.right_context) * SUBSAMPLING;
-        let num_chunks = total_frames.div_ceil(chunk_stride);
-
-        let mut all_chunk_preds = Vec::new();
-
-        for chunk_idx in 0..num_chunks {
-            let start = chunk_idx * chunk_stride;
-            let end = (start + feed_size).min(total_frames);
-            let current_len = end - start;
-
-            let mut chunk_feat = features.slice(s![.., start..end, ..]).to_owned();
-
-            if current_len < feed_size {
-                let mut padded = Array3::zeros((1, feed_size, N_MELS));
-                padded
-                    .slice_mut(s![.., ..current_len, ..])
-                    .assign(&chunk_feat);
-                chunk_feat = padded;
-            }
-
-            let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
-            all_chunk_preds.push(chunk_preds);
-        }
-
-        let full_preds = Self::concat_predictions(&all_chunk_preds);
+        let full_preds = self.process_features(&features)?;
 
         let filtered_preds = if self.config.median_window > 1 {
             self.median_filter(&full_preds)
@@ -448,8 +387,19 @@ impl Sortformer {
         }
 
         let features = self.extract_mel_features(audio_16k_mono)?;
-        let total_frames = features.shape()[1];
+        let full_preds = self.process_features(&features)?;
+        let num_valid_frames = full_preds.nrows();
 
+        Ok(RawDiarizationPredictions {
+            predictions: full_preds,
+            num_valid_frames,
+        })
+    }
+
+    /// run streaming inference over mel features, returning concatenated per chunk predictions.
+    /// note: this shared by `diarize`, `diarize_chunk`, and `diarize_chunk_raw`.
+    fn process_features(&mut self, features: &Array3<f32>) -> Result<Array2<f32>> {
+        let total_frames = features.shape()[1];
         let chunk_stride = self.chunk_len * SUBSAMPLING;
         let feed_size = (self.chunk_len + self.right_context) * SUBSAMPLING;
         let num_chunks = total_frames.div_ceil(chunk_stride);
@@ -475,13 +425,7 @@ impl Sortformer {
             all_chunk_preds.push(chunk_preds);
         }
 
-        let full_preds = Self::concat_predictions(&all_chunk_preds);
-        let num_valid_frames = full_preds.nrows();
-
-        Ok(RawDiarizationPredictions {
-            predictions: full_preds,
-            num_valid_frames,
-        })
+        Ok(Self::concat_predictions(&all_chunk_preds))
     }
 
     /// NeMo's streaming_update with smart cache compression
