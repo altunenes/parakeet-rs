@@ -157,11 +157,19 @@ impl DiarizationConfig {
     }
 }
 
-/// Speaker segment with start time, end time, and speaker ID
+/// Speaker segment with start/end as sample offsets at 16 kHz, and speaker ID.
+///
+///
+/// ```rust,ignore
+/// let secs = seg.start as f64 / 16_000.0;
+/// let nanos = seg.start as u64 * 1_000_000_000 / 16_000;
+/// ```
 #[derive(Debug, Clone)]
 pub struct SpeakerSegment {
-    pub start: f32,
-    pub end: f32,
+    /// Start position in samples at 16 kHz
+    pub start: u64,
+    /// End position in samples at 16 kHz
+    pub end: u64,
     pub speaker_id: usize,
 }
 
@@ -319,11 +327,11 @@ impl Sortformer {
             full_preds
         };
 
-        // Binarize to segments and clip
-        let audio_duration = audio.len() as f32 / SAMPLE_RATE as f32;
+        // Binarize to segments and clip to audio length
+        let audio_samples = audio.len() as u64;
         let mut segments = self.binarize(&filtered_preds);
         for seg in &mut segments {
-            seg.end = seg.end.min(audio_duration);
+            seg.end = seg.end.min(audio_samples);
         }
         segments.retain(|s| s.end > s.start);
 
@@ -344,7 +352,7 @@ impl Sortformer {
     /// * `audio_16k_mono` - Audio chunk at 16kHz mono (any length, typically 2-30s)
     ///
     /// # Returns
-    /// Speaker segments with timestamps relative to this chunk (starting at 0.0)
+    /// Speaker segments with sample offsets relative to this chunk (starting at 0)
     pub fn diarize_chunk(&mut self, audio_16k_mono: &[f32]) -> Result<Vec<SpeakerSegment>> {
         if audio_16k_mono.is_empty() {
             return Ok(vec![]);
@@ -359,11 +367,11 @@ impl Sortformer {
             full_preds
         };
 
-        // clipping audio dur.
-        let audio_duration = audio_16k_mono.len() as f32 / SAMPLE_RATE as f32;
+        // Clip to audio length in samples
+        let audio_samples = audio_16k_mono.len() as u64;
         let mut segments = self.binarize(&filtered_preds);
         for seg in &mut segments {
-            seg.end = seg.end.min(audio_duration);
+            seg.end = seg.end.min(audio_samples);
         }
         segments.retain(|s| s.end > s.start);
 
@@ -443,13 +451,13 @@ impl Sortformer {
                 chunk_preds
             };
 
-            // Binarize with absolute time offset
-            let time_offset = self.elapsed_samples as f32 / SAMPLE_RATE as f32;
+            // Binarize with absolute sample offset
+            let sample_offset = self.elapsed_samples as u64;
+            let chunk_samples = (self.chunk_len * SUBSAMPLING * HOP_LENGTH) as u64;
             let mut segments = self.binarize(&filtered_preds);
-            let chunk_duration = self.chunk_len as f32 * FRAME_DURATION;
             for seg in &mut segments {
-                seg.start += time_offset;
-                seg.end = (seg.end + time_offset).min(time_offset + chunk_duration);
+                seg.start += sample_offset;
+                seg.end = (seg.end + sample_offset).min(sample_offset + chunk_samples);
             }
             segments.retain(|s| s.end > s.start);
             all_segments.extend(segments);
@@ -496,12 +504,12 @@ impl Sortformer {
             chunk_preds
         };
 
-        let time_offset = self.elapsed_samples as f32 / SAMPLE_RATE as f32;
-        let audio_duration = remaining.len() as f32 / SAMPLE_RATE as f32;
+        let sample_offset = self.elapsed_samples as u64;
+        let remaining_samples = remaining.len() as u64;
         let mut segments = self.binarize(&filtered_preds);
         for seg in &mut segments {
-            seg.start += time_offset;
-            seg.end = (seg.end + time_offset).min(time_offset + audio_duration);
+            seg.start += sample_offset;
+            seg.end = (seg.end + sample_offset).min(sample_offset + remaining_samples);
         }
         segments.retain(|s| s.end > s.start);
 
@@ -1028,6 +1036,13 @@ impl Sortformer {
         let mut segments = Vec::new();
         let num_frames = preds.shape()[0];
 
+        // pre cobvert cfg thresh from secs to samples
+        let pad_onset_samples = (self.config.pad_onset * SAMPLE_RATE as f32) as u64;
+        let pad_offset_samples = (self.config.pad_offset * SAMPLE_RATE as f32) as u64;
+        let min_dur_on_samples = (self.config.min_duration_on * SAMPLE_RATE as f32) as u64;
+        let min_dur_off_samples = (self.config.min_duration_off * SAMPLE_RATE as f32) as u64;
+        let samples_per_frame = (FRAME_DURATION * SAMPLE_RATE as f32) as u64;
+
         for spk in 0..NUM_SPEAKERS {
             let mut in_seg = false;
             let mut seg_start = 0;
@@ -1042,15 +1057,14 @@ impl Sortformer {
                 } else if p < self.config.offset && in_seg {
                     in_seg = false;
 
-                    // Apply padding during conversion
-                    let start_t =
-                        (seg_start as f32 * FRAME_DURATION - self.config.pad_onset).max(0.0);
-                    let end_t = t as f32 * FRAME_DURATION + self.config.pad_offset;
+                    let start_s = (seg_start as u64 * samples_per_frame)
+                        .saturating_sub(pad_onset_samples);
+                    let end_s = t as u64 * samples_per_frame + pad_offset_samples;
 
-                    if end_t - start_t >= self.config.min_duration_on {
+                    if end_s - start_s >= min_dur_on_samples {
                         temp_segments.push(SpeakerSegment {
-                            start: start_t,
-                            end: end_t,
+                            start: start_s,
+                            end: end_s,
                             speaker_id: spk,
                         });
                     }
@@ -1059,13 +1073,14 @@ impl Sortformer {
 
             // Handle segment at end
             if in_seg {
-                let start_t = (seg_start as f32 * FRAME_DURATION - self.config.pad_onset).max(0.0);
-                let end_t = num_frames as f32 * FRAME_DURATION + self.config.pad_offset;
+                let start_s = (seg_start as u64 * samples_per_frame)
+                    .saturating_sub(pad_onset_samples);
+                let end_s = num_frames as u64 * samples_per_frame + pad_offset_samples;
 
-                if end_t - start_t >= self.config.min_duration_on {
+                if end_s - start_s >= min_dur_on_samples {
                     temp_segments.push(SpeakerSegment {
-                        start: start_t,
-                        end: end_t,
+                        start: start_s,
+                        end: end_s,
                         speaker_id: spk,
                     });
                 }
@@ -1076,8 +1091,9 @@ impl Sortformer {
                 let mut filtered = vec![temp_segments[0].clone()];
                 for seg in temp_segments.into_iter().skip(1) {
                     let last = filtered.last_mut().unwrap();
-                    let gap = seg.start - last.end;
-                    if gap < self.config.min_duration_off {
+                    // saturating_sub: overlapping segments (gap<-0) always merge..
+                    let gap = seg.start.saturating_sub(last.end);
+                    if gap < min_dur_off_samples {
                         last.end = seg.end; // Merge
                     } else {
                         filtered.push(seg);
@@ -1090,7 +1106,7 @@ impl Sortformer {
         }
 
         // Sort by start time
-        segments.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap());
+        segments.sort_by_key(|s| s.start);
         segments
     }
 
