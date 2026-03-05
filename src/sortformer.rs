@@ -40,6 +40,7 @@ const SAMPLE_RATE: usize = 16000;
 const CHUNK_LEN: usize = 124; // Frames per chunk (~10s at 80ms)
 const FIFO_LEN: usize = 124; // FIFO buffer length
 const SPKCACHE_LEN: usize = 188; // Speaker cache length
+const RIGHT_CONTEXT: usize = 1; // Future frames for lookahead
 const SUBSAMPLING: usize = 8; // Audio frames -> model frames
 const EMB_DIM: usize = 512; // Embedding dimension
 pub const NUM_SPEAKERS: usize = 4; // Model supports 4 speakers
@@ -183,6 +184,7 @@ pub struct Sortformer {
     pub chunk_len: usize,
     pub fifo_len: usize,
     pub spkcache_len: usize,
+    pub right_context: usize,
     // Streaming state. note that, Same way as Nemo
     spkcache: Array3<f32>,               // (1, 0..spkcache_len, EMB_DIM)
     spkcache_preds: Option<Array3<f32>>, // (1, 0..spkcache_len, NUM_SPEAKERS)
@@ -213,23 +215,28 @@ impl Sortformer {
             .commit_from_file(model_path.as_ref())?;
 
         // Read streaming constants from ONNX metadata (fallback to defaults)
-        let (chunk_len, fifo_len, spkcache_len) = if let Ok(metadata) = session.metadata() {
-            let c = metadata
-                .custom("chunk_len")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(CHUNK_LEN);
-            let f = metadata
-                .custom("fifo_len")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(FIFO_LEN);
-            let s = metadata
-                .custom("spkcache_len")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(SPKCACHE_LEN);
-            (c, f, s)
-        } else {
-            (CHUNK_LEN, FIFO_LEN, SPKCACHE_LEN)
-        };
+        let (chunk_len, fifo_len, spkcache_len, right_context) =
+            if let Ok(metadata) = session.metadata() {
+                let c = metadata
+                    .custom("chunk_len")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(CHUNK_LEN);
+                let f = metadata
+                    .custom("fifo_len")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(FIFO_LEN);
+                let s = metadata
+                    .custom("spkcache_len")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(SPKCACHE_LEN);
+                let r = metadata
+                    .custom("right_context")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(RIGHT_CONTEXT);
+                (c, f, s, r)
+            } else {
+                (CHUNK_LEN, FIFO_LEN, SPKCACHE_LEN, RIGHT_CONTEXT)
+            };
 
         let mel_basis = crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE);
 
@@ -239,6 +246,7 @@ impl Sortformer {
             chunk_len,
             fifo_len,
             spkcache_len,
+            right_context,
             spkcache: Array3::zeros((1, 0, EMB_DIM)),
             spkcache_preds: None,
             fifo: Array3::zeros((1, 0, EMB_DIM)),
@@ -251,10 +259,10 @@ impl Sortformer {
         Ok(instance)
     }
 
-    /// Streaming latency in seconds based on chunk_len.
-    /// eg. chunk_len=124 -> ~9.92s, chunk_len=3 -> ~0.24s
+    /// Streaming latency in seconds: (chunk_len + right_context) * 80ms.
+    /// eg. chunk_len=124, right_context=1 -> 10.0s
     pub fn latency(&self) -> f32 {
-        self.chunk_len as f32 * FRAME_DURATION
+        (self.chunk_len + self.right_context) as f32 * FRAME_DURATION
     }
 
     /// Reset streaming state
@@ -298,22 +306,25 @@ impl Sortformer {
         let total_frames = features.shape()[1];
 
         // Process in chunks
+        // Stride = chunk_len (we advance by chunk_len), but feed chunk_len + right_context
+        // frames so the attention gets lookahead. Only chunk_len predictions are kept.
         let chunk_stride = self.chunk_len * SUBSAMPLING;
+        let feed_size = (self.chunk_len + self.right_context) * SUBSAMPLING;
         let num_chunks = total_frames.div_ceil(chunk_stride);
 
         let mut all_chunk_preds = Vec::new();
 
         for chunk_idx in 0..num_chunks {
             let start = chunk_idx * chunk_stride;
-            let end = (start + chunk_stride).min(total_frames);
+            let end = (start + feed_size).min(total_frames);
             let current_len = end - start;
 
-            // Extract chunk features
+            // Extract chunk features (chunk_len + right_context worth of frames)
             let mut chunk_feat = features.slice(s![.., start..end, ..]).to_owned();
 
-            // Pad last chunk if needed
-            if current_len < chunk_stride {
-                let mut padded = Array3::zeros((1, chunk_stride, N_MELS));
+            // Pad if needed
+            if current_len < feed_size {
+                let mut padded = Array3::zeros((1, feed_size, N_MELS));
                 padded
                     .slice_mut(s![.., ..current_len, ..])
                     .assign(&chunk_feat);
@@ -335,8 +346,13 @@ impl Sortformer {
             full_preds
         };
 
-        // Binarize to segments
-        let segments = self.binarize(&filtered_preds);
+        // Binarize to segments and clip
+        let audio_duration = audio.len() as f32 / SAMPLE_RATE as f32;
+        let mut segments = self.binarize(&filtered_preds);
+        for seg in &mut segments {
+            seg.end = seg.end.min(audio_duration);
+        }
+        segments.retain(|s| s.end > s.start);
 
         Ok(segments)
     }
@@ -345,6 +361,11 @@ impl Sortformer {
     ///
     /// Unlike `diarize()`, this method preserves internal state (FIFO, speaker cache,
     /// silence profile) across calls, enabling true streaming diarization.
+    ///
+    /// For full `right_context` benefit, buffer at least
+    /// `(chunk_len + right_context) * 80ms` of audio before each call, then stride
+    /// by `chunk_len * 80ms`. Shorter buffers still work (padded with zeros) but
+    /// the lookahead sees silence instead of real future audio.
     ///
     /// # Arguments
     /// * `audio_16k_mono` - Audio chunk at 16kHz mono (any length, typically 2-30s)
@@ -360,19 +381,20 @@ impl Sortformer {
         let total_frames = features.shape()[1];
 
         let chunk_stride = self.chunk_len * SUBSAMPLING;
+        let feed_size = (self.chunk_len + self.right_context) * SUBSAMPLING;
         let num_chunks = total_frames.div_ceil(chunk_stride);
 
         let mut all_chunk_preds = Vec::new();
 
         for chunk_idx in 0..num_chunks {
             let start = chunk_idx * chunk_stride;
-            let end = (start + chunk_stride).min(total_frames);
+            let end = (start + feed_size).min(total_frames);
             let current_len = end - start;
 
             let mut chunk_feat = features.slice(s![.., start..end, ..]).to_owned();
 
-            if current_len < chunk_stride {
-                let mut padded = Array3::zeros((1, chunk_stride, N_MELS));
+            if current_len < feed_size {
+                let mut padded = Array3::zeros((1, feed_size, N_MELS));
                 padded
                     .slice_mut(s![.., ..current_len, ..])
                     .assign(&chunk_feat);
@@ -391,7 +413,13 @@ impl Sortformer {
             full_preds
         };
 
-        let segments = self.binarize(&filtered_preds);
+        // clipping audio dur.
+        let audio_duration = audio_16k_mono.len() as f32 / SAMPLE_RATE as f32;
+        let mut segments = self.binarize(&filtered_preds);
+        for seg in &mut segments {
+            seg.end = seg.end.min(audio_duration);
+        }
+        segments.retain(|s| s.end > s.start);
 
         Ok(segments)
     }
@@ -544,14 +572,17 @@ impl Sortformer {
             Array2::zeros((0, NUM_SPEAKERS))
         };
 
+        // only keep chunk_len predictions/embeddings... right_context frames
+        // participaded in attenttion (__providing lookahead__) but are discarded here.
+        let keep = self.chunk_len.min(chunk_len);
         let chunk_preds = preds
             .slice(s![
                 0,
-                spkcache_len + fifo_len..spkcache_len + fifo_len + chunk_len,
+                spkcache_len + fifo_len..spkcache_len + fifo_len + keep,
                 ..
             ])
             .to_owned();
-        let chunk_embs = new_embs.slice(s![0, ..chunk_len, ..]).to_owned();
+        let chunk_embs = new_embs.slice(s![0, ..keep, ..]).to_owned();
 
         // Append chunk embeddings to FIFO
         self.fifo = Self::concat_axis1(&self.fifo, &chunk_embs.insert_axis(Axis(0)));
