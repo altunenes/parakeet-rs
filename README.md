@@ -3,7 +3,8 @@
 [![crates.io](https://img.shields.io/crates/v/parakeet-rs.svg)](https://crates.io/crates/parakeet-rs)
 
 Fast speech recognition with NVIDIA's Parakeet models via ONNX Runtime.
-Note: CoreML is unstable with this model. For Apple, use WebGPU EP (uses metal under the hood,dont confuse by its name :-). it's a native GPU standard, not only browser based) or CPU. Even CPU alone is significantly faster on my Mac M3 16GB compared to Whisper with metal! :-)
+
+Note: CoreML is unstable with this model. For Apple, use WebGPU EP (uses metal under the hood,dont confuse by its name :-). it's a native GPU standard, not only web) or CPU. But even CPU alone is significantly faster on my Mac M3 16GB compared to Whisper metal! :-)
 
 ## Models
 
