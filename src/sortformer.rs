@@ -328,10 +328,10 @@ impl Sortformer {
         };
 
         // Binarize to segments and clip to audio length
-        let audio_samples = audio.len() as u64;
+        let n_audio_samples = audio.len() as u64;
         let mut segments = self.binarize(&filtered_preds);
         for seg in &mut segments {
-            seg.end = seg.end.min(audio_samples);
+            seg.end = seg.end.min(n_audio_samples);
         }
         segments.retain(|s| s.end > s.start);
 
@@ -368,10 +368,10 @@ impl Sortformer {
         };
 
         // Clip to audio length in samples
-        let audio_samples = audio_16k_mono.len() as u64;
+        let n_audio_samples = audio_16k_mono.len() as u64;
         let mut segments = self.binarize(&filtered_preds);
         for seg in &mut segments {
-            seg.end = seg.end.min(audio_samples);
+            seg.end = seg.end.min(n_audio_samples);
         }
         segments.retain(|s| s.end > s.start);
 
