@@ -5,8 +5,8 @@ Combines Sortformer diarisation with speaker-kernel-injected ASR encoding
 to produce per-speaker transcriptions with word-level timestamps.
 
 Download models:
-- Multitalker ASR: encoder.onnx, decoder_joint.onnx, tokenizer.model
-  (exported via conversion_scripts/export_multitalker.py)
+- Multitalker ASR (int8): encoder.int8.onnx, decoder_joint.int8.onnx, tokenizer.model
+  https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8/tree/main
 - Sortformer v2: diar_streaming_sortformer_4spk-v2.onnx
   https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.onnx
 
