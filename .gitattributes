@@ -1,0 +1,2 @@
+# Export scripts are helper utilities, not part of the Rust crate.
+scripts/*.py linguist-vendored
