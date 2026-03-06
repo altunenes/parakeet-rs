@@ -117,7 +117,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for seg in &speaker_segments {
             println!(
                 "  [{:06.2}s - {:06.2}s] Speaker {}",
-                seg.start, seg.end, seg.speaker_id
+                seg.start as f64 / 16_000.0,
+                seg.end as f64 / 16_000.0,
+                seg.speaker_id
             );
         }
 
@@ -140,9 +142,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let speaker = speaker_segments
                     .iter()
                     .filter_map(|s| {
-                        // Calculate overlap between transcription and diarization segment
-                        let overlap_start = segment.start.max(s.start);
-                        let overlap_end = segment.end.min(s.end);
+                        // Convert sample offsets to seconds for overlap with TDT timestamps
+                        let s_start = s.start as f32 / 16_000.0;
+                        let s_end = s.end as f32 / 16_000.0;
+                        let overlap_start = segment.start.max(s_start);
+                        let overlap_end = segment.end.min(s_end);
                         let overlap = (overlap_end - overlap_start).max(0.0);
                         if overlap > 0.0 {
                             Some((s.speaker_id, overlap))

@@ -92,7 +92,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for seg in &segments {
                 println!(
                     "  [{:06.2}s - {:06.2}s] Speaker {}",
-                    seg.start, seg.end, seg.speaker_id
+                    seg.start as f64 / 16_000.0,
+                    seg.end as f64 / 16_000.0,
+                    seg.speaker_id
                 );
             }
             total_segments += segments.len();
@@ -103,7 +105,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for seg in &final_segments {
             println!(
                 "  [{:06.2}s - {:06.2}s] Speaker {} (flush)",
-                seg.start, seg.end, seg.speaker_id
+                seg.start as f64 / 16_000.0,
+                seg.end as f64 / 16_000.0,
+                seg.speaker_id
             );
         }
         total_segments += final_segments.len();
