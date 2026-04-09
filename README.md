@@ -165,8 +165,6 @@ let config = ExecutionConfig::new()
 - [Sortformer v2 & v2.1: Streaming speaker diarization (up to 4 speakers)](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2) NOTE: you can also download v2.1 model same way.
 - Token-level timestamps (CTC, TDT)
 
-See `examples/unified.rs` for offline transcription and the default buffered streaming profile (5.6s left context, 0.56s chunk, 0.56s right context).
-
 ## Notes
 
 - Audio: 16kHz mono WAV (16-bit PCM or 32-bit float)
