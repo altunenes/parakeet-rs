@@ -1,4 +1,4 @@
-use crate::audio::load_audio;
+use crate::audio::{self, load_audio};
 use crate::config::PreprocessorConfig;
 use crate::decoder::{TimedToken, TranscriptionResult};
 use crate::error::{Error, Result};
@@ -7,9 +7,7 @@ use crate::model_unified::{ParakeetUnifiedModel, UnifiedModelConfig};
 use crate::nemotron::SentencePieceVocab;
 use crate::timestamps::{process_timestamps, TimestampMode};
 use crate::transcriber::Transcriber;
-use ndarray::{Array2, Array3};
-use realfft::RealFftPlanner;
-use std::f64::consts::PI;
+use ndarray::Array3;
 use std::path::Path;
 
 const SAMPLE_RATE: usize = 16000;
@@ -116,8 +114,6 @@ pub struct ParakeetUnified {
     model: ParakeetUnifiedModel,
     vocab: SentencePieceVocab,
     preprocessor_config: PreprocessorConfig,
-    mel_filterbank: Array2<f64>,
-    window: Vec<f64>,
     state_1: Array3<f32>,
     state_2: Array3<f32>,
     last_token: i32,
@@ -185,8 +181,6 @@ impl ParakeetUnified {
             model,
             vocab,
             preprocessor_config,
-            mel_filterbank: Self::create_mel_filterbank(),
-            window: Self::create_window(),
             state_1: Array3::zeros((DECODER_LSTM_LAYERS, 1, DECODER_LSTM_DIM)),
             state_2: Array3::zeros((DECODER_LSTM_LAYERS, 1, DECODER_LSTM_DIM)),
             last_token: blank_id as i32,
@@ -283,7 +277,12 @@ impl ParakeetUnified {
                 break;
             }
 
-            let features = self.extract_streaming_features(window_audio)?;
+            let features = audio::extract_features_raw(
+                window_audio,
+                SAMPLE_RATE as u32,
+                1,
+                &self.preprocessor_config,
+            )?;
             let (encoded, encoded_len) = self.model.run_encoder(&features)?;
 
             let available_frames = (encoded_len as usize).min(encoded.shape()[2]);
@@ -353,10 +352,6 @@ impl ParakeetUnified {
         }
 
         (window, left_encoder_frames, chunk_encoder_frames)
-    }
-
-    fn extract_streaming_features(&self, window_audio: Vec<f32>) -> Result<Array2<f32>> {
-        self.extract_features(window_audio, SAMPLE_RATE as u32, 1)
     }
 
     fn trim_audio_buffer(&mut self) {
@@ -460,7 +455,7 @@ impl ParakeetUnified {
     ) -> Result<TranscriptionResult> {
         self.reset();
 
-        let features = self.extract_features(audio, sample_rate, channels)?;
+        let features = audio::extract_features_raw(audio, sample_rate, channels, &self.preprocessor_config)?;
         let (encoded, encoded_len) = self.model.run_encoder(&features)?;
         let frame_count = (encoded_len as usize).min(encoded.shape()[2]);
         let tokens = self.decode_encoder_frames(&encoded, 0, frame_count, 0)?;
@@ -477,184 +472,6 @@ impl ParakeetUnified {
             text,
             tokens: timed,
         })
-    }
-
-    fn extract_features(
-        &self,
-        mut audio: Vec<f32>,
-        sample_rate: u32,
-        channels: u16,
-    ) -> Result<Array2<f32>> {
-        if sample_rate != self.preprocessor_config.sampling_rate as u32 {
-            return Err(Error::Audio(format!(
-                "Audio sample rate {} doesn't match expected {}. Please resample your audio first.",
-                sample_rate, self.preprocessor_config.sampling_rate
-            )));
-        }
-
-        if channels > 1 {
-            audio = audio
-                .chunks(channels as usize)
-                .map(|chunk| chunk.iter().sum::<f32>() / channels as f32)
-                .collect();
-        }
-
-        let emphasized = Self::apply_preemphasis(&audio);
-        let spectrogram = self.stft(&emphasized)?;
-        let mel = self.mel_filterbank.dot(&spectrogram);
-        let mel_log = mel.mapv(|value| (value + 2.0f64.powi(-24)).ln());
-        let mut features = mel_log.t().mapv(|value| value as f32);
-
-        let num_frames = features.shape()[0];
-        let num_features = features.shape()[1];
-        if num_frames <= 1 {
-            return Ok(features);
-        }
-
-        for feature_idx in 0..num_features {
-            let mean = features
-                .column(feature_idx)
-                .iter()
-                .map(|&value| value as f64)
-                .sum::<f64>()
-                / num_frames as f64;
-
-            let variance = features
-                .column(feature_idx)
-                .iter()
-                .map(|&value| {
-                    let delta = value as f64 - mean;
-                    delta * delta
-                })
-                .sum::<f64>()
-                / (num_frames as f64 - 1.0);
-
-            let std = variance.sqrt() as f32 + 1e-5;
-            let mut column = features.column_mut(feature_idx);
-            for value in &mut column {
-                *value = (*value - mean as f32) / std;
-            }
-        }
-
-        Ok(features)
-    }
-
-    fn apply_preemphasis(audio: &[f32]) -> Vec<f64> {
-        if audio.is_empty() {
-            return Vec::new();
-        }
-
-        let mut result = Vec::with_capacity(audio.len());
-        result.push(audio[0] as f64);
-        for index in 1..audio.len() {
-            result.push(audio[index] as f64 - PREEMPHASIS as f64 * audio[index - 1] as f64);
-        }
-        result
-    }
-
-    fn stft(&self, audio: &[f64]) -> Result<Array2<f64>> {
-        let mut planner = RealFftPlanner::<f64>::new();
-        let r2c = planner.plan_fft_forward(N_FFT);
-
-        let pad_amount = N_FFT / 2;
-        let mut padded = vec![0.0f64; pad_amount];
-        padded.extend_from_slice(audio);
-        padded.resize(padded.len() + pad_amount, 0.0);
-
-        let num_frames = (padded.len().saturating_sub(N_FFT)) / HOP_LENGTH + 1;
-        let freq_bins = N_FFT / 2 + 1;
-        let mut spectrogram = Array2::<f64>::zeros((freq_bins, num_frames));
-
-        let mut input = vec![0.0f64; N_FFT];
-        let mut output = r2c.make_output_vec();
-        let mut scratch = r2c.make_scratch_vec();
-
-        for frame_idx in 0..num_frames {
-            let start = frame_idx * HOP_LENGTH;
-
-            input.fill(0.0);
-            let frame = &padded[start..start + WIN_LENGTH];
-            for (idx, &value) in frame.iter().enumerate() {
-                input[idx] = value * self.window[idx];
-            }
-
-            r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
-                .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
-
-            for (bin_idx, value) in output.iter().enumerate().take(freq_bins) {
-                spectrogram[[bin_idx, frame_idx]] = value.norm_sqr();
-            }
-        }
-
-        Ok(spectrogram)
-    }
-
-    fn create_window() -> Vec<f64> {
-        (0..WIN_LENGTH)
-            .map(|index| 0.5 - 0.5 * ((2.0 * PI * index as f64) / (WIN_LENGTH - 1) as f64).cos())
-            .collect()
-    }
-
-    fn create_mel_filterbank() -> Array2<f64> {
-        let freq_bins = N_FFT / 2 + 1;
-        let mut filterbank = Array2::<f64>::zeros((FEATURE_SIZE, freq_bins));
-        let fmax = SAMPLE_RATE as f64 / 2.0;
-        let mel_min = Self::hz_to_mel_slaney(0.0);
-        let mel_max = Self::hz_to_mel_slaney(fmax);
-
-        let mel_points: Vec<f64> = (0..=FEATURE_SIZE + 1)
-            .map(|index| {
-                Self::mel_to_hz_slaney(
-                    mel_min + (mel_max - mel_min) * index as f64 / (FEATURE_SIZE + 1) as f64,
-                )
-            })
-            .collect();
-
-        let fft_freqs: Vec<f64> = (0..freq_bins)
-            .map(|index| index as f64 * SAMPLE_RATE as f64 / N_FFT as f64)
-            .collect();
-        let fdiff: Vec<f64> = mel_points.windows(2).map(|window| window[1] - window[0]).collect();
-
-        for mel_idx in 0..FEATURE_SIZE {
-            for (freq_idx, &freq) in fft_freqs.iter().enumerate() {
-                let lower = (freq - mel_points[mel_idx]) / fdiff[mel_idx];
-                let upper = (mel_points[mel_idx + 2] - freq) / fdiff[mel_idx + 1];
-                filterbank[[mel_idx, freq_idx]] = 0.0f64.max(lower.min(upper));
-            }
-
-            let enorm = 2.0 / (mel_points[mel_idx + 2] - mel_points[mel_idx]);
-            for freq_idx in 0..freq_bins {
-                filterbank[[mel_idx, freq_idx]] *= enorm;
-            }
-        }
-
-        filterbank
-    }
-
-    fn hz_to_mel_slaney(hz: f64) -> f64 {
-        const F_SP: f64 = 200.0 / 3.0;
-        const MIN_LOG_HZ: f64 = 1000.0;
-        const MIN_LOG_MEL: f64 = MIN_LOG_HZ / F_SP;
-        const LOG_STEP: f64 = 0.06875177742094912;
-
-        if hz < MIN_LOG_HZ {
-            hz / F_SP
-        } else {
-            MIN_LOG_MEL + (hz / MIN_LOG_HZ).ln() / LOG_STEP
-        }
-    }
-
-    fn mel_to_hz_slaney(mel: f64) -> f64 {
-        const F_SP: f64 = 200.0 / 3.0;
-        const MIN_LOG_HZ: f64 = 1000.0;
-        const MIN_LOG_MEL: f64 = MIN_LOG_HZ / F_SP;
-        const LOG_STEP: f64 = 0.06875177742094912;
-
-        if mel < MIN_LOG_MEL {
-            mel * F_SP
-        } else {
-            MIN_LOG_HZ * ((mel - MIN_LOG_MEL) * LOG_STEP).exp()
-        }
     }
 }
 
