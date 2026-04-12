@@ -1,11 +1,11 @@
 use crate::audio::load_audio;
 use crate::config::PreprocessorConfig;
-use crate::decoder::TranscriptionResult;
+use crate::decoder::{TimedToken, TranscriptionResult};
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model_unified::{ParakeetUnifiedModel, UnifiedModelConfig};
 use crate::nemotron::SentencePieceVocab;
-use crate::timestamps::TimestampMode;
+use crate::timestamps::{process_timestamps, TimestampMode};
 use crate::transcriber::Transcriber;
 use ndarray::{Array2, Array3};
 use realfft::RealFftPlanner;
@@ -127,6 +127,7 @@ pub struct ParakeetUnified {
     buffer_start_sample: usize,
     next_chunk_start_sample: usize,
     accumulated_tokens: Vec<usize>,
+    accumulated_timed_tokens: Vec<TimedToken>,
 }
 
 impl ParakeetUnified {
@@ -195,6 +196,7 @@ impl ParakeetUnified {
             buffer_start_sample: 0,
             next_chunk_start_sample: 0,
             accumulated_tokens: Vec::new(),
+            accumulated_timed_tokens: Vec::new(),
         })
     }
 
@@ -214,6 +216,13 @@ impl ParakeetUnified {
         self.buffer_start_sample = 0;
         self.next_chunk_start_sample = 0;
         self.accumulated_tokens.clear();
+        self.accumulated_timed_tokens.clear();
+    }
+
+    pub fn get_timed_transcript(&self, mode: TimestampMode) -> TranscriptionResult {
+        let text = self.get_transcript();
+        let tokens = process_timestamps(&self.accumulated_timed_tokens, mode);
+        TranscriptionResult { text, tokens }
     }
 
     pub fn get_transcript(&self) -> String {
@@ -232,7 +241,7 @@ impl ParakeetUnified {
         sample_rate: u32,
         channels: u16,
     ) -> Result<String> {
-        self.transcribe_samples(audio, sample_rate, channels, None)
+        self.transcribe_offline(audio, sample_rate, channels, None)
             .map(|result| result.text)
     }
 
@@ -268,7 +277,6 @@ impl ParakeetUnified {
                 break;
             }
 
-            let total_received = self.buffer_start_sample + self.audio_buffer.len();
             let (window_audio, left_encoder_frames, chunk_encoder_frames) =
                 self.build_window_audio(self.next_chunk_start_sample, total_received, flush);
             if chunk_encoder_frames == 0 {
@@ -282,8 +290,14 @@ impl ParakeetUnified {
             let start_frame = left_encoder_frames.min(available_frames);
             let end_frame = (start_frame + chunk_encoder_frames).min(available_frames);
 
-            let tokens = self.decode_encoder_frames(&encoded, start_frame, end_frame)?;
-            self.accumulated_tokens.extend(tokens.iter().copied());
+            let absolute_frame_offset =
+                self.next_chunk_start_sample / (HOP_LENGTH * SUBSAMPLING_FACTOR);
+            let tokens =
+                self.decode_encoder_frames(&encoded, start_frame, end_frame, absolute_frame_offset)?;
+            self.accumulated_tokens
+                .extend(tokens.iter().map(|(id, _)| *id));
+            self.accumulated_timed_tokens
+                .extend(self.tokens_to_timed(&tokens));
             emitted.push_str(&self.decode_incremental_tokens(&tokens));
 
             self.next_chunk_start_sample += chunk_samples;
@@ -373,7 +387,8 @@ impl ParakeetUnified {
         encoder_out: &Array3<f32>,
         start_frame: usize,
         end_frame: usize,
-    ) -> Result<Vec<usize>> {
+        absolute_frame_offset: usize,
+    ) -> Result<Vec<(usize, usize)>> {
         let mut tokens = Vec::new();
         let hidden_dim = encoder_out.shape()[1];
         let end_frame = end_frame.min(encoder_out.shape()[2]);
@@ -385,6 +400,8 @@ impl ParakeetUnified {
                 .to_shape((1, hidden_dim, 1))
                 .map_err(|e| Error::Model(format!("Failed to reshape encoder frame: {e}")))?
                 .to_owned();
+
+            let absolute_frame = absolute_frame_offset + (frame_idx - start_frame);
 
             for _ in 0..MAX_SYMBOLS_PER_STEP {
                 let (token_id, new_state_1, new_state_2) = self.model.run_decoder(
@@ -398,7 +415,7 @@ impl ParakeetUnified {
                     break;
                 }
 
-                tokens.push(token_id);
+                tokens.push((token_id, absolute_frame));
                 self.last_token = token_id as i32;
                 self.state_1 = new_state_1;
                 self.state_2 = new_state_2;
@@ -408,9 +425,25 @@ impl ParakeetUnified {
         Ok(tokens)
     }
 
-    fn decode_incremental_tokens(&self, tokens: &[usize]) -> String {
+    fn encoder_frame_to_seconds(frame: usize) -> f32 {
+        (frame * SUBSAMPLING_FACTOR * HOP_LENGTH) as f32 / SAMPLE_RATE as f32
+    }
+
+    fn tokens_to_timed(&self, tokens: &[(usize, usize)]) -> Vec<TimedToken> {
+        tokens
+            .iter()
+            .filter(|(id, _)| *id < self.blank_id)
+            .map(|&(id, frame)| TimedToken {
+                text: self.vocab.decode_single(id),
+                start: Self::encoder_frame_to_seconds(frame),
+                end: Self::encoder_frame_to_seconds(frame + 1),
+            })
+            .collect()
+    }
+
+    fn decode_incremental_tokens(&self, tokens: &[(usize, usize)]) -> String {
         let mut text = String::new();
-        for &token in tokens {
+        for &(token, _) in tokens {
             if token < self.blank_id {
                 text.push_str(&self.vocab.decode_single(token));
             }
@@ -423,16 +456,27 @@ impl ParakeetUnified {
         audio: Vec<f32>,
         sample_rate: u32,
         channels: u16,
-    ) -> Result<String> {
+        mode: Option<TimestampMode>,
+    ) -> Result<TranscriptionResult> {
         self.reset();
 
         let features = self.extract_features(audio, sample_rate, channels)?;
         let (encoded, encoded_len) = self.model.run_encoder(&features)?;
         let frame_count = (encoded_len as usize).min(encoded.shape()[2]);
-        let tokens = self.decode_encoder_frames(&encoded, 0, frame_count)?;
-        self.accumulated_tokens = tokens;
+        let tokens = self.decode_encoder_frames(&encoded, 0, frame_count, 0)?;
+        self.accumulated_tokens = tokens.iter().map(|(id, _)| *id).collect();
+        self.accumulated_timed_tokens = self.tokens_to_timed(&tokens);
 
-        Ok(self.get_transcript())
+        let text = self.get_transcript();
+        let timed = match mode {
+            Some(m) => process_timestamps(&self.accumulated_timed_tokens, m),
+            None => self.accumulated_timed_tokens.clone(),
+        };
+
+        Ok(TranscriptionResult {
+            text,
+            tokens: timed,
+        })
     }
 
     fn extract_features(
@@ -620,13 +664,9 @@ impl Transcriber for ParakeetUnified {
         audio: Vec<f32>,
         sample_rate: u32,
         channels: u16,
-        _mode: Option<TimestampMode>,
+        mode: Option<TimestampMode>,
     ) -> Result<TranscriptionResult> {
-        let text = self.transcribe_offline(audio, sample_rate, channels)?;
-        Ok(TranscriptionResult {
-            text,
-            tokens: Vec::new(),
-        })
+        self.transcribe_offline(audio, sample_rate, channels, mode)
     }
 }
 
