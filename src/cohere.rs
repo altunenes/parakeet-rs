@@ -26,6 +26,13 @@ const FIRST_SPECIAL_END: i64 = 256;
 // Max output tokens before forced stop
 const MAX_DECODE_TOKENS: usize = 1024;
 
+// The 14 languages officially supported by Cohere Transcribe (cohere-transcribe-03-2026).
+// tokens.txt contains placeholder <|xx|> entries for many more language codes, but
+// only these have trained weights. See: https://docs.cohere.com/docs/transcribe
+const SUPPORTED_LANGUAGES: &[&str] = &[
+    "ar", "de", "el", "en", "es", "fr", "it", "ja", "ko", "nl", "pl", "pt", "vi", "zh",
+];
+
 /// Cohere Transcribe ASR engine.
 pub struct CohereASR {
     model: CohereModel,
@@ -220,10 +227,14 @@ impl CohereASR {
             }
             vocab[id] = token.to_string();
 
-            // Extract language tokens: <|xx|> where xx is a 2-letter ISO code
+            // Extract language tokens: <|xx|> where xx is a 2-letter ISO code.
+            // tokens.txt has placeholders for many languages but only SUPPORTED_LANGUAGES
+            // have trained weights.
             if token.starts_with("<|") && token.ends_with("|>") && token.len() == 6 {
                 let lang_code = &token[2..4];
-                lang_tokens.insert(lang_code.to_string(), id as i64);
+                if SUPPORTED_LANGUAGES.contains(&lang_code) {
+                    lang_tokens.insert(lang_code.to_string(), id as i64);
+                }
             }
         }
 
@@ -285,9 +296,10 @@ mod tests {
         let dir = std::env::temp_dir().join("cohere_test_tokens");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("tokens.txt");
+        // Include a placeholder language (<|xx|>) that should be filtered out
         std::fs::write(
             &path,
-            "<unk> 0\n<|en|> 62\n<|fr|> 70\n\u{2581}hello 512\nworld 513\n",
+            "<unk> 0\n<|en|> 62\n<|fr|> 70\n<|xx|> 80\n\u{2581}hello 512\nworld 513\n",
         )
         .unwrap();
 
@@ -297,8 +309,16 @@ mod tests {
         assert_eq!(vocab[513], "world");
         assert_eq!(lang_tokens["en"], 62);
         assert_eq!(lang_tokens["fr"], 70);
+        // Unsupported language placeholders must not appear in lang_tokens
+        assert!(!lang_tokens.contains_key("xx"));
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_supported_languages_count() {
+        // Cohere Transcribe officially ships trained weights for 14 languages
+        assert_eq!(SUPPORTED_LANGUAGES.len(), 14);
     }
 
     #[test]
