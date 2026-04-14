@@ -65,6 +65,10 @@ pub mod sortformer;
 mod model_multitalker;
 #[cfg(feature = "multitalker")]
 pub mod multitalker;
+#[cfg(feature = "cohere")]
+mod model_cohere;
+#[cfg(feature = "cohere")]
+pub mod cohere;
 mod timestamps;
 mod transcriber;
 mod vocab;
@@ -89,3 +93,6 @@ pub use parakeet_unified::{ParakeetUnified, UnifiedStreamingConfig};
 
 #[cfg(feature = "multitalker")]
 pub use multitalker::{LatencyMode, MultitalkerASR, MultitalkerConfig, SpeakerTranscript, WordTimestamp};
+
+#[cfg(feature = "cohere")]
+pub use cohere::CohereASR;
