@@ -53,10 +53,12 @@ mod model;
 mod model_eou;
 mod model_nemotron;
 mod model_tdt;
+mod model_unified;
 mod nemotron;
 mod parakeet;
 mod parakeet_eou;
 mod parakeet_tdt;
+mod parakeet_unified;
 #[cfg(feature = "sortformer")]
 pub mod sortformer;
 #[cfg(feature = "multitalker")]
@@ -80,8 +82,10 @@ pub use decoder::{ParakeetDecoder, TimedToken, TranscriptionResult};
 pub use model::ParakeetModel;
 pub use model_eou::ParakeetEOUModel;
 pub use model_nemotron::{NemotronEncoderCache, NemotronModel, NemotronModelConfig};
+pub use model_unified::{ParakeetUnifiedModel, UnifiedModelConfig};
 pub use nemotron::{Nemotron, SentencePieceVocab};
 pub use parakeet_eou::ParakeetEOU;
+pub use parakeet_unified::{ParakeetUnified, UnifiedStreamingConfig};
 
 #[cfg(feature = "multitalker")]
 pub use multitalker::{LatencyMode, MultitalkerASR, MultitalkerConfig, SpeakerTranscript, WordTimestamp};

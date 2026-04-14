@@ -128,6 +128,8 @@ See `scripts/export_diar_sortformer.py` for exporting the model with custom stre
 
 **Nemotron**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model` (*[int8](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int8) / [int4](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int4)*)
 
+**Unified**: Download from [HuggingFace](https://huggingface.co/bobNight/parakeet-unified-en-0.6b-onnx): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`
+
 **Multitalker**: Download from [HuggingFace](https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8/tree/main): `encoder.int8.onnx`, `decoder_joint.int8.onnx`, `tokenizer.model` (also needs a Sortformer model for diarization)
 
 **Diarization (Sortformer v2 & v2.1)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main): `diar_streaming_sortformer_4spk-v2.onnx` or `v2.1.onnx`.
@@ -158,6 +160,7 @@ let config = ExecutionConfig::new()
 - [TDT: Multilingual (auto lang detection)](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
 - [EOU: Streaming ASR with end-of-utterance detection](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1)
 - [Nemotron: Cache aware streaming ASR (600M params,EN only)](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b)
+- [Unified: Offline + buffered streaming RNNT ASR (600M params, EN only)](https://huggingface.co/nvidia/parakeet-unified-en-0.6b)
 - [Multitalker: Streaming multi-speaker ASR with speaker-kernel injection](https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1) ([ONNX int8](https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8))
 - [Sortformer v2 & v2.1: Streaming speaker diarization (up to 4 speakers)](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2) NOTE: you can also download v2.1 model same way.
 - Token-level timestamps (CTC, TDT)

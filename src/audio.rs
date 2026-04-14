@@ -25,6 +25,10 @@ pub fn load_audio<P: AsRef<Path>>(path: P) -> Result<(Vec<f32>, WavSpec)> {
 }
 
 pub fn apply_preemphasis(audio: &[f32], coef: f32) -> Vec<f32> {
+    if audio.is_empty() {
+        return Vec::new();
+    }
+
     let mut result = Vec::with_capacity(audio.len());
     result.push(audio[0]);
 
@@ -199,6 +203,10 @@ pub fn extract_features_raw(
     // Normalize per_feature: mean=0, std=1 with Bessel's correction (N-1)
     let num_frames = mel_spectrogram.shape()[0];
     let num_features = mel_spectrogram.shape()[1];
+
+    if num_frames <= 1 {
+        return Ok(mel_spectrogram);
+    }
 
     for feat_idx in 0..num_features {
         let mut column = mel_spectrogram.column_mut(feat_idx);
