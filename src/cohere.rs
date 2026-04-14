@@ -34,12 +34,28 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokenizers::Tokenizer;
 
-// Special token literals that drive the decoder prompt.
+// Special token literals that drive the decoder prompt. The canonical
+// prompt structure is produced by CohereAsrProcessor in transformers and
+// matches the shape model.generate() expects:
+//
+//   [▁, <|startofcontext|>, <|startoftranscript|>, <|emo:undefined|>,
+//    <|src_lang|>, <|tgt_lang|>, <|pnc|>/<|nopnc|>, <|itn|>/<|noitn|>,
+//    <|notimestamp|>, <|nodiarize|>]
+//
+// `▁` (SentencePiece word boundary) is the model's
+// `decoder_start_token_id`. Source and target languages are both the
+// same ISO code for pure transcription. Emotion and diarisation are
+// fixed to "undefined"/"no" since the model's ASR task does not use
+// them.
+const TOKEN_WORD_BOUNDARY: &str = "\u{2581}";
+const TOKEN_STARTOFCONTEXT: &str = "<|startofcontext|>";
 const TOKEN_STARTOFTRANSCRIPT: &str = "<|startoftranscript|>";
+const TOKEN_EMO_UNDEFINED: &str = "<|emo:undefined|>";
 const TOKEN_ENDOFTEXT: &str = "<|endoftext|>";
 const TOKEN_PNC: &str = "<|pnc|>";
 const TOKEN_NOPNC: &str = "<|nopnc|>";
 const TOKEN_NOTIMESTAMP: &str = "<|notimestamp|>";
+const TOKEN_NODIARIZE: &str = "<|nodiarize|>";
 const TOKEN_ITN: &str = "<|itn|>";
 const TOKEN_NOITN: &str = "<|noitn|>";
 
@@ -78,11 +94,15 @@ pub struct CohereASR {
     lang_tokens: HashMap<String, i64>,
     /// Cached prompt token ids: startoftranscript / endoftext / pnc / nopnc /
     /// notimestamp / itn / noitn.
+    decoder_start_id: i64,
+    startofcontext_id: i64,
     sot_id: i64,
+    emo_undefined_id: i64,
     eos_id: i64,
     pnc_id: i64,
     nopnc_id: i64,
     notimestamp_id: i64,
+    nodiarize_id: i64,
     itn_id: i64,
     noitn_id: i64,
     /// Maximum number of tokens to generate per `transcribe_audio` call.
@@ -141,11 +161,15 @@ impl CohereASR {
             )));
         }
 
+        let decoder_start_id = require_token(&tokenizer, TOKEN_WORD_BOUNDARY)?;
+        let startofcontext_id = require_token(&tokenizer, TOKEN_STARTOFCONTEXT)?;
         let sot_id = require_token(&tokenizer, TOKEN_STARTOFTRANSCRIPT)?;
+        let emo_undefined_id = require_token(&tokenizer, TOKEN_EMO_UNDEFINED)?;
         let eos_id = require_token(&tokenizer, TOKEN_ENDOFTEXT)?;
         let pnc_id = require_token(&tokenizer, TOKEN_PNC)?;
         let nopnc_id = require_token(&tokenizer, TOKEN_NOPNC)?;
         let notimestamp_id = require_token(&tokenizer, TOKEN_NOTIMESTAMP)?;
+        let nodiarize_id = require_token(&tokenizer, TOKEN_NODIARIZE)?;
         let itn_id = require_token(&tokenizer, TOKEN_ITN)?;
         let noitn_id = require_token(&tokenizer, TOKEN_NOITN)?;
 
@@ -167,11 +191,15 @@ impl CohereASR {
             tokenizer,
             preprocessor,
             lang_tokens,
+            decoder_start_id,
+            startofcontext_id,
             sot_id,
+            emo_undefined_id,
             eos_id,
             pnc_id,
             nopnc_id,
             notimestamp_id,
+            nodiarize_id,
             itn_id,
             noitn_id,
             max_decode_tokens: DEFAULT_MAX_DECODE_TOKENS,
@@ -241,9 +269,10 @@ impl CohereASR {
         // 2. Encoder
         let encoder_out = self.model.run_encoder(&mel_3d)?;
 
-        // 3. Build decoder prompt:
-        //    [<|startoftranscript|>, <|lang|>, <|pnc|>/<|nopnc|>,
-        //     <|notimestamp|>, <|itn|>/<|noitn|>]
+        // 3. Build the canonical Cohere decoder prompt matching what
+        //    CohereAsrProcessor in transformers produces. The source and
+        //    target language tokens are both the caller's `language` code
+        //    since this is pure transcription (no translation).
         let pnc_token = if punctuation {
             self.pnc_id
         } else {
@@ -251,11 +280,16 @@ impl CohereASR {
         };
         let itn_token = if itn { self.itn_id } else { self.noitn_id };
         let prompt = vec![
+            self.decoder_start_id,
+            self.startofcontext_id,
             self.sot_id,
+            self.emo_undefined_id,
+            lang_token,
             lang_token,
             pnc_token,
-            self.notimestamp_id,
             itn_token,
+            self.notimestamp_id,
+            self.nodiarize_id,
         ];
 
         // 4. Greedy decode loop
