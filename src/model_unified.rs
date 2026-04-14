@@ -137,7 +137,7 @@ impl ParakeetUnifiedModel {
         target_token: i32,
         state_1: &Array3<f32>,
         state_2: &Array3<f32>,
-    ) -> Result<(usize, Array3<f32>, Array3<f32>)> {
+    ) -> Result<(Array1<f32>, Array3<f32>, Array3<f32>)> {
         let targets = Array2::from_elem((1, 1), target_token);
         let target_length = Array1::from_elem(1, 1i32);
 
@@ -153,12 +153,7 @@ impl ParakeetUnifiedModel {
             .try_extract_tensor::<f32>()
             .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
 
-        let token_id = logits_data
-            .iter()
-            .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(idx, _)| idx)
-            .unwrap_or(self.config.blank_id);
+        let logits = Array1::from_vec(logits_data.to_vec());
 
         let (h_shape, h_data) = outputs["output_states_1"]
             .try_extract_tensor::<f32>()
@@ -187,6 +182,6 @@ impl ParakeetUnifiedModel {
         )
         .map_err(|e| Error::Model(format!("Failed to reshape state_2: {e}")))?;
 
-        Ok((token_id, new_state_1, new_state_2))
+        Ok((logits, new_state_1, new_state_2))
     }
 }

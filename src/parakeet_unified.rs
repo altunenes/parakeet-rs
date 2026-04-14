@@ -399,12 +399,19 @@ impl ParakeetUnified {
             let absolute_frame = absolute_frame_offset + (frame_idx - start_frame);
 
             for _ in 0..MAX_SYMBOLS_PER_STEP {
-                let (token_id, new_state_1, new_state_2) = self.model.run_decoder(
+                let (logits, new_state_1, new_state_2) = self.model.run_decoder(
                     &frame,
                     self.last_token,
                     &self.state_1,
                     &self.state_2,
                 )?;
+
+                let token_id = logits
+                    .iter()
+                    .enumerate()
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                    .map(|(idx, _)| idx)
+                    .unwrap_or(self.blank_id);
 
                 if token_id == self.blank_id {
                     break;
