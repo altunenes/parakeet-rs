@@ -1,13 +1,13 @@
 /// Shared NemotronModel — API demo.
 ///
-/// Load the model once, create two instances with independent decoder state,
-/// and feed the same audio to both to confirm deterministic output.
+/// Load the model once via [`NemotronHandle`], create two instances with
+/// independent decoder state, and feed the same audio to both to confirm
+/// deterministic output.
 ///
 /// Usage:
 ///   cargo run --release --example shared_model <model_dir> <audio.wav>
 
 use parakeet_rs::Nemotron;
-use std::sync::Arc;
 
 fn load_wav(path: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
     let mut reader = hound::WavReader::open(path)?;
@@ -29,12 +29,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    // Load the ONNX model once (~1.4 GB).
-    let (model, vocab) = Nemotron::load_model(&args[1], None)?;
+    // Load the ONNX model once (~1.4 GB) into an opaque handle.
+    let handle = Nemotron::load_model(&args[1], None)?;
 
     // Create two instances sharing the model, each with independent decoder state.
-    let mut a = Nemotron::from_shared_model(Arc::clone(&model), Arc::clone(&vocab));
-    let mut b = Nemotron::from_shared_model(Arc::clone(&model), Arc::clone(&vocab));
+    let mut a = Nemotron::from_shared_model(handle.clone());
+    let mut b = Nemotron::from_shared_model(handle);
 
     let audio = load_wav(&args[2])?;
     let chunk_size = 8960; // 560 ms at 16 kHz
