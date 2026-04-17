@@ -69,6 +69,21 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 }
 ```
 
+**Cohere Transcribe (Offline Multilingual)**: 14 languages, punctuation & ITN toggles (yes, "parakeets🦜" talk about more than just NVIDIA right?? :-P)
+```toml
+parakeet-rs = { version = "0.3", features = ["cohere"] }
+```
+```rust
+use parakeet_rs::CohereASR;
+
+let mut model = CohereASR::from_pretrained("./cohere", None)?;
+
+// audio: Vec<f32>, 16kHz mono (long-form supported)
+let text = model.transcribe_audio(&audio, "en", true, false)?; // lang, pnc, itn
+println!("{}", text);
+```
+See `examples/cohere.rs` for a runnable demo.
+
 **Multitalker (Streaming Multi-Speaker ASR)**: Speaker-attributed transcription
 ```toml
 parakeet-rs = { version = "0.3", features = ["multitalker"] }
@@ -132,6 +147,8 @@ See `scripts/export_diar_sortformer.py` for exporting the model with custom stre
 
 **Multitalker**: Download from [HuggingFace](https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8/tree/main): `encoder.int8.onnx`, `decoder_joint.int8.onnx`, `tokenizer.model` (also needs a Sortformer model for diarization)
 
+**Cohere Transcribe**: Download from [HuggingFace](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX): `encoder_model.onnx` (+ `.onnx_data*`), `decoder_model_merged.onnx` (+ `.onnx_data`), `tokenizer.json` (FP32, FP16, INT8, INT4 variants available)
+
 **Diarization (Sortformer v2 & v2.1)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main): `diar_streaming_sortformer_4spk-v2.onnx` or `v2.1.onnx`.
 
 Quantized versions available (int8). All files must be in the same directory.
@@ -162,6 +179,7 @@ let config = ExecutionConfig::new()
 - [Nemotron: Cache aware streaming ASR (600M params,EN only)](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b)
 - [Unified: Offline + buffered streaming RNNT ASR (600M params, EN only)](https://huggingface.co/nvidia/parakeet-unified-en-0.6b)
 - [Multitalker: Streaming multi-speaker ASR with speaker-kernel injection](https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1) ([ONNX int8](https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8))
+- [Cohere Transcribe: Offline multilingual ASR (14 languages, long-form supported)](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026) ([ONNX](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX))
 - [Sortformer v2 & v2.1: Streaming speaker diarization (up to 4 speakers)](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2) NOTE: you can also download v2.1 model same way.
 - Token-level timestamps (CTC, TDT)
 

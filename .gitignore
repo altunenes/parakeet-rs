@@ -10,4 +10,5 @@ DS_Store
 *.wav
 *.txt
 *.onnx.data
+*.onnx_data_*
 *.model

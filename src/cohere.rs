@@ -69,12 +69,12 @@ const MAX_DECODE_TOKENS_LIMIT: usize = 1024;
 /// covers the training range (`max_audio_clip_s = 35`).
 const DEFAULT_MAX_DECODE_TOKENS: usize = 512;
 
-/// Maximum audio duration the model was trained on, as recorded in
-/// `preprocessor_config.json` (`max_audio_clip_s`). Audio longer than this
-/// will still run but transcription quality degrades beyond the training
-/// range. Exposed via [`CohereASR::max_audio_duration_secs`] for callers
-/// that want to chunk long audio.
-const MAX_AUDIO_DURATION_SECS: f32 = 35.0;
+/// Training chunk length recorded in `preprocessor_config.json`
+/// (`max_audio_clip_s`). This is *not* a runtime limit — the official model
+/// card lists long-form transcription as a supported feature and audio well
+/// past this length transcribes fine. Exposed via
+/// [`CohereASR::training_chunk_secs`] only as informational metadata :-)
+const TRAINING_CHUNK_SECS: f32 = 35.0;
 
 // The 14 languages officially supported by Cohere Transcribe
 // (cohere-transcribe-03-2026). The tokenizer contains `<|xx|>` placeholders
@@ -84,27 +84,68 @@ const SUPPORTED_LANGUAGES: &[&str] = &[
     "ar", "de", "el", "en", "es", "fr", "it", "ja", "ko", "nl", "pl", "pt", "vi", "zh",
 ];
 
+
+struct DecoderTokens {
+    decoder_start: i64,
+    startofcontext: i64,
+    sot: i64,
+    emo_undefined: i64,
+    eos: i64,
+    pnc: i64,
+    nopnc: i64,
+    notimestamp: i64,
+    nodiarize: i64,
+    itn: i64,
+    noitn: i64,
+}
+
+impl DecoderTokens {
+    fn resolve(tokenizer: &Tokenizer) -> Result<Self> {
+        Ok(Self {
+            decoder_start: require_token(tokenizer, TOKEN_WORD_BOUNDARY)?,
+            startofcontext: require_token(tokenizer, TOKEN_STARTOFCONTEXT)?,
+            sot: require_token(tokenizer, TOKEN_STARTOFTRANSCRIPT)?,
+            emo_undefined: require_token(tokenizer, TOKEN_EMO_UNDEFINED)?,
+            eos: require_token(tokenizer, TOKEN_ENDOFTEXT)?,
+            pnc: require_token(tokenizer, TOKEN_PNC)?,
+            nopnc: require_token(tokenizer, TOKEN_NOPNC)?,
+            notimestamp: require_token(tokenizer, TOKEN_NOTIMESTAMP)?,
+            nodiarize: require_token(tokenizer, TOKEN_NODIARIZE)?,
+            itn: require_token(tokenizer, TOKEN_ITN)?,
+            noitn: require_token(tokenizer, TOKEN_NOITN)?,
+        })
+    }
+}
+
+/// Values on here are mirror from `preprocessor_config.json` in the upstream HF export. they are baked
+/// into the encoder's ONNX graph (feature_size=128, hop=160, etc.) and
+/// are not user tunable, so we hardcode them rather than requiring the
+/// file on disk. If they share onnx script, we could consider something just like we did for the sorftformer.
+fn cohere_preprocessor_config() -> PreprocessorConfig {
+    PreprocessorConfig {
+        feature_extractor_type: "CohereAsrFeatureExtractor".to_string(),
+        feature_size: N_MELS,
+        hop_length: 160,
+        n_fft: 512,
+        padding_side: "right".to_string(),
+        padding_value: 0.0,
+        preemphasis: 0.97,
+        processor_class: "CohereAsrProcessor".to_string(),
+        return_attention_mask: true,
+        sampling_rate: 16000,
+        win_length: 400,
+    }
+}
+
 /// Cohere Transcribe ASR engine.
 pub struct CohereASR {
     model: CohereModel,
     tokenizer: Tokenizer,
-    /// Mel/STFT parameters loaded from `preprocessor_config.json`.
+    /// Mel/STFT parameters (hardcoded — see [`cohere_preprocessor_config`]).
     preprocessor: PreprocessorConfig,
     /// Map of supported ISO 639-1 language code -> language token id.
     lang_tokens: HashMap<String, i64>,
-    /// Cached prompt token ids: startoftranscript / endoftext / pnc / nopnc /
-    /// notimestamp / itn / noitn.
-    decoder_start_id: i64,
-    startofcontext_id: i64,
-    sot_id: i64,
-    emo_undefined_id: i64,
-    eos_id: i64,
-    pnc_id: i64,
-    nopnc_id: i64,
-    notimestamp_id: i64,
-    nodiarize_id: i64,
-    itn_id: i64,
-    noitn_id: i64,
+    tokens: DecoderTokens,
     /// Maximum number of tokens to generate per `transcribe_audio` call.
     /// Defaults to [`DEFAULT_MAX_DECODE_TOKENS`] (512). Capped at
     /// [`MAX_DECODE_TOKENS_LIMIT`] (1024).
@@ -118,7 +159,8 @@ impl CohereASR {
     /// - one of `encoder_model[_quantized|_fp16].onnx` (+ `.onnx_data` companions)
     /// - one of `decoder_model_merged[_quantized|_fp16].onnx` (+ `.onnx_data`)
     /// - `tokenizer.json`
-    /// - `preprocessor_config.json`
+    ///
+    /// parameters are hardcoded since they are fixed by the encoder graph.
     ///
     /// This layout matches the [`onnx-community/cohere-transcribe-03-2026-ONNX`](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX)
     /// HF repository.
@@ -141,37 +183,8 @@ impl CohereASR {
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| Error::Tokenizer(format!("Failed to load tokenizer.json: {e}")))?;
 
-        let preprocessor_path = model_dir.join("preprocessor_config.json");
-        if !preprocessor_path.exists() {
-            return Err(Error::Config(format!(
-                "Missing preprocessor_config.json in {}",
-                model_dir.display()
-            )));
-        }
-        let preprocessor: PreprocessorConfig =
-            serde_json::from_str(&std::fs::read_to_string(&preprocessor_path).map_err(|e| {
-                Error::Config(format!("Failed to read preprocessor_config.json: {e}"))
-            })?)
-            .map_err(|e| Error::Config(format!("Failed to parse preprocessor_config.json: {e}")))?;
-
-        if preprocessor.feature_size != N_MELS {
-            return Err(Error::Config(format!(
-                "Cohere Transcribe expects feature_size=128, got {}",
-                preprocessor.feature_size
-            )));
-        }
-
-        let decoder_start_id = require_token(&tokenizer, TOKEN_WORD_BOUNDARY)?;
-        let startofcontext_id = require_token(&tokenizer, TOKEN_STARTOFCONTEXT)?;
-        let sot_id = require_token(&tokenizer, TOKEN_STARTOFTRANSCRIPT)?;
-        let emo_undefined_id = require_token(&tokenizer, TOKEN_EMO_UNDEFINED)?;
-        let eos_id = require_token(&tokenizer, TOKEN_ENDOFTEXT)?;
-        let pnc_id = require_token(&tokenizer, TOKEN_PNC)?;
-        let nopnc_id = require_token(&tokenizer, TOKEN_NOPNC)?;
-        let notimestamp_id = require_token(&tokenizer, TOKEN_NOTIMESTAMP)?;
-        let nodiarize_id = require_token(&tokenizer, TOKEN_NODIARIZE)?;
-        let itn_id = require_token(&tokenizer, TOKEN_ITN)?;
-        let noitn_id = require_token(&tokenizer, TOKEN_NOITN)?;
+        let preprocessor = cohere_preprocessor_config();
+        let tokens = DecoderTokens::resolve(&tokenizer)?;
 
         let mut lang_tokens = HashMap::with_capacity(SUPPORTED_LANGUAGES.len());
         for code in SUPPORTED_LANGUAGES {
@@ -191,27 +204,17 @@ impl CohereASR {
             tokenizer,
             preprocessor,
             lang_tokens,
-            decoder_start_id,
-            startofcontext_id,
-            sot_id,
-            emo_undefined_id,
-            eos_id,
-            pnc_id,
-            nopnc_id,
-            notimestamp_id,
-            nodiarize_id,
-            itn_id,
-            noitn_id,
+            tokens,
             max_decode_tokens: DEFAULT_MAX_DECODE_TOKENS,
         })
     }
 
-    /// Maximum audio duration (in seconds) the model was trained on.
-    /// Audio longer than this will still be transcribed but quality
-    /// degrades outside the training range. Callers that process long
-    /// recordings should chunk into segments of this length or shorter.
-    pub fn max_audio_duration_secs(&self) -> f32 {
-        MAX_AUDIO_DURATION_SECS
+    /// Training chunk length (in seconds) recorded in the upstream
+    /// `preprocessor_config.json`. Exposed as metadata only — the model
+    /// card lists long-form transcription as supported and audio longer
+    /// than this transcribes fine in practice.
+    pub fn training_chunk_secs(&self) -> f32 {
+        TRAINING_CHUNK_SECS
     }
 
     /// Current maximum number of tokens the decoder will emit per call.
@@ -273,23 +276,20 @@ impl CohereASR {
         //    CohereAsrProcessor in transformers produces. The source and
         //    target language tokens are both the caller's `language` code
         //    since this is pure transcription (no translation).
-        let pnc_token = if punctuation {
-            self.pnc_id
-        } else {
-            self.nopnc_id
-        };
-        let itn_token = if itn { self.itn_id } else { self.noitn_id };
+        let t = &self.tokens;
+        let pnc_token = if punctuation { t.pnc } else { t.nopnc };
+        let itn_token = if itn { t.itn } else { t.noitn };
         let prompt = vec![
-            self.decoder_start_id,
-            self.startofcontext_id,
-            self.sot_id,
-            self.emo_undefined_id,
+            t.decoder_start,
+            t.startofcontext,
+            t.sot,
+            t.emo_undefined,
             lang_token,
             lang_token,
             pnc_token,
             itn_token,
-            self.notimestamp_id,
-            self.nodiarize_id,
+            t.notimestamp,
+            t.nodiarize,
         ];
 
         // 4. Greedy decode loop
@@ -336,7 +336,7 @@ impl CohereASR {
         past_kv = new_past;
 
         let mut next_token = argmax(logits.as_slice().unwrap());
-        if next_token == self.eos_id {
+        if next_token == self.tokens.eos {
             return Ok(output_tokens);
         }
         output_tokens.push(next_token);
@@ -351,7 +351,7 @@ impl CohereASR {
             past_kv = new_past;
 
             next_token = argmax(logits.as_slice().unwrap());
-            if next_token == self.eos_id {
+            if next_token == self.tokens.eos {
                 break;
             }
             output_tokens.push(next_token);
