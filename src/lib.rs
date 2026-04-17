@@ -87,9 +87,9 @@ pub use model::ParakeetModel;
 pub use model_eou::ParakeetEOUModel;
 pub use model_nemotron::{NemotronEncoderCache, NemotronModel, NemotronModelConfig};
 pub use model_unified::{ParakeetUnifiedModel, UnifiedModelConfig};
-pub use nemotron::{Nemotron, SentencePieceVocab};
-pub use parakeet_eou::ParakeetEOU;
-pub use parakeet_unified::{ParakeetUnified, UnifiedStreamingConfig};
+pub use nemotron::{Nemotron, NemotronHandle, SentencePieceVocab};
+pub use parakeet_eou::{ParakeetEOU, ParakeetEOUHandle};
+pub use parakeet_unified::{ParakeetUnified, ParakeetUnifiedHandle, UnifiedStreamingConfig};
 
 #[cfg(feature = "multitalker")]
 pub use multitalker::{LatencyMode, MultitalkerASR, MultitalkerConfig, SpeakerTranscript, WordTimestamp};
