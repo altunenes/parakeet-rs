@@ -7,6 +7,7 @@ use std::f32::consts::PI;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 // Nemotron 0.6B model constants
 // note that those numbers are coming from offical impl. and of course my onnx export decisions.
@@ -187,9 +188,14 @@ impl SentencePieceVocab {
 
 /// Nemotron streaming ASR model (0.6B parameters).
 /// We dont apply mel normalization unlike others...
+///
+/// The ONNX model is stored behind `Arc<Mutex<>>` to allow sharing a single
+/// model (~1.4GB) across multiple instances with independent decoder state.
+/// Use [`Nemotron::from_shared_model`] to create instances that share a model,
+/// or [`Nemotron::load_model`] to load the model once and share it.
 pub struct Nemotron {
-    model: NemotronModel,
-    vocab: SentencePieceVocab,
+    model: Arc<Mutex<NemotronModel>>,
+    vocab: Arc<SentencePieceVocab>,
     encoder_cache: NemotronEncoderCache,
     state_1: Array3<f32>,
     state_2: Array3<f32>,
@@ -205,16 +211,13 @@ pub struct Nemotron {
 }
 
 impl Nemotron {
-    /// Load Nemotron model from directory.
-    ///
-    /// Required files:
-    /// - encoder.onnx + encoder.onnx.data
-    /// - decoder_joint.onnx
-    /// - tokenizer.model
-    pub fn from_pretrained<P: AsRef<Path>>(
+    /// Load the ONNX model and vocabulary from a directory, returning
+    /// shareable handles. Call this once, then pass the returned `Arc`s
+    /// to [`Nemotron::from_shared_model`] for each stream.
+    pub fn load_model<P: AsRef<Path>>(
         path: P,
         exec_config: Option<ExecutionConfig>,
-    ) -> Result<Self> {
+    ) -> Result<(Arc<Mutex<NemotronModel>>, Arc<SentencePieceVocab>)> {
         let path = path.as_ref();
 
         let vocab = SentencePieceVocab::from_file(path.join("tokenizer.model"))?;
@@ -233,6 +236,18 @@ impl Nemotron {
         let exec = exec_config.unwrap_or_default();
         let model = NemotronModel::from_pretrained(path, exec, model_config)?;
 
+        Ok((Arc::new(Mutex::new(model)), Arc::new(vocab)))
+    }
+
+    /// Create a new Nemotron instance with shared model and vocabulary.
+    ///
+    /// Each instance has independent decoder state (~7.5MB) while sharing
+    /// the expensive ONNX sessions (~1.4GB). The model Mutex is held only
+    /// during encoder/decoder inference (~20-50ms per 560ms audio chunk).
+    pub fn from_shared_model(
+        model: Arc<Mutex<NemotronModel>>,
+        vocab: Arc<SentencePieceVocab>,
+    ) -> Self {
         let encoder_cache = NemotronEncoderCache::with_dims(
             NUM_ENCODER_LAYERS,
             LEFT_CONTEXT,
@@ -240,7 +255,7 @@ impl Nemotron {
             CONV_CONTEXT,
         );
 
-        Ok(Self {
+        Self {
             model,
             vocab,
             encoder_cache,
@@ -253,7 +268,21 @@ impl Nemotron {
             audio_processed: 0,
             chunk_idx: 0,
             accumulated_tokens: Vec::new(),
-        })
+        }
+    }
+
+    /// Load Nemotron model from directory.
+    ///
+    /// Required files:
+    /// - encoder.onnx + encoder.onnx.data
+    /// - decoder_joint.onnx
+    /// - tokenizer.model
+    pub fn from_pretrained<P: AsRef<Path>>(
+        path: P,
+        exec_config: Option<ExecutionConfig>,
+    ) -> Result<Self> {
+        let (model, vocab) = Self::load_model(path, exec_config)?;
+        Ok(Self::from_shared_model(model, vocab))
     }
 
     /// Reset all state for new utterance
@@ -344,9 +373,12 @@ impl Nemotron {
 
             let chunk_length = PRE_ENCODE_CACHE + main_len;
 
-            let (encoded, enc_len, new_cache) =
-                self.model
-                    .run_encoder(&mel_chunk, chunk_length as i64, &self.encoder_cache)?;
+            let (encoded, enc_len, new_cache) = {
+                let mut model = self.model.lock().map_err(|e| {
+                    Error::Model(format!("Failed to acquire model lock: {e}"))
+                })?;
+                model.run_encoder(&mel_chunk, chunk_length as i64, &self.encoder_cache)?
+            };
             self.encoder_cache = new_cache;
 
             let new_tokens = self.decode_chunk(&encoded, enc_len as usize)?;
@@ -433,9 +465,12 @@ impl Nemotron {
         let mel_chunk = Array3::from_shape_vec((1, N_MELS, expected_size), chunk_data)
             .map_err(|e| Error::Model(format!("Failed to create mel chunk: {e}")))?;
 
-        let (encoded, enc_len, new_cache) =
-            self.model
-                .run_encoder(&mel_chunk, expected_size as i64, &self.encoder_cache)?;
+        let (encoded, enc_len, new_cache) = {
+            let mut model = self.model.lock().map_err(|e| {
+                Error::Model(format!("Failed to acquire model lock: {e}"))
+            })?;
+            model.run_encoder(&mel_chunk, expected_size as i64, &self.encoder_cache)?
+        };
         self.encoder_cache = new_cache;
 
         let tokens = self.decode_chunk(&encoded, enc_len as usize)?;
@@ -470,6 +505,12 @@ impl Nemotron {
         let hidden_dim = encoder_out.shape()[1];
         let max_symbols_per_step = 10;
 
+        // Lock the model once for the entire decode loop to minimise
+        // lock acquire/release overhead (many decoder steps per chunk).
+        let mut model = self.model.lock().map_err(|e| {
+            Error::Model(format!("Failed to acquire model lock: {e}"))
+        })?;
+
         for t in 0..enc_frames {
             let frame = encoder_out.slice(s![0, .., t]).to_owned();
             let frame = frame
@@ -478,7 +519,7 @@ impl Nemotron {
                 .to_owned();
 
             for _ in 0..max_symbols_per_step {
-                let (logits, new_state_1, new_state_2) = self.model.run_decoder(
+                let (logits, new_state_1, new_state_2) = model.run_decoder(
                     &frame,
                     self.last_token,
                     &self.state_1,
