@@ -2,10 +2,9 @@ use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model_eou::{EncoderCache, ParakeetEOUModel};
 use ndarray::{s, Array2, Array3};
-use realfft::RealFftPlanner;
 use std::collections::VecDeque;
-use std::f32::consts::PI;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 const SAMPLE_RATE: usize = 16000;
 
@@ -17,33 +16,47 @@ const PREEMPH: f32 = 0.97;
 const LOG_ZERO_GUARD: f32 = 5.960_464_5e-8;
 const FMAX: f32 = 8000.0;
 
+/// Shared handle to a loaded ParakeetEOU model.
+/// The ONNX session is loaded once and reference-counted.
+///
+/// Use [`ParakeetEOUHandle::load`] to load from disk, then
+/// [`ParakeetEOU::from_shared`] to spawn each stream with its own decoder state.
+#[derive(Clone)]
+pub struct ParakeetEOUHandle {
+    model: Arc<Mutex<ParakeetEOUModel>>,
+    tokenizer: Arc<tokenizers::Tokenizer>,
+    mel_basis: Arc<Array2<f32>>,
+    blank_id: i32,
+    eou_id: i32,
+}
+
 /// Parakeet RealTime EOU model for streaming ASR with end-of-utterance detection.
 /// Uses cache-aware streaming with audio buffering for pre-encode context.
+///
+/// For a single stream use [`ParakeetEOU::from_pretrained`]. For multiple
+/// concurrent streams sharing one loaded model, use [`ParakeetEOUHandle::load`]
+/// followed by [`ParakeetEOU::from_shared`].
 pub struct ParakeetEOU {
-    model: ParakeetEOUModel,
-    tokenizer: tokenizers::Tokenizer,
+    model: Arc<Mutex<ParakeetEOUModel>>,
+    tokenizer: Arc<tokenizers::Tokenizer>,
+    mel_basis: Arc<Array2<f32>>,
+    blank_id: i32,
+    eou_id: i32,
     encoder_cache: EncoderCache,
     state_h: Array3<f32>,
     state_c: Array3<f32>,
     last_token: Array2<i32>,
-    blank_id: i32,
-    eou_id: i32,
-    mel_basis: Array2<f32>,
-    window: Vec<f32>,
     audio_buffer: VecDeque<f32>,
     buffer_size_samples: usize,
 }
 
-impl ParakeetEOU {
-    /// Load Parakeet EOU model from path
+impl ParakeetEOUHandle {
+    /// Load the ParakeetEOU model, tokenizer, and mel filterbank from a directory.
     ///
-    /// # Arguments
-    /// * `path` - Directory containing encoder.onnx, decoder_joint.onnx, and tokenizer.json
-    /// * `config` - Optional execution configuration (defaults to CPU if None)
-    pub fn from_pretrained<P: AsRef<Path>>(
-        path: P,
-        config: Option<ExecutionConfig>,
-    ) -> Result<Self> {
+    /// Required files:
+    /// - `encoder.onnx`, `decoder_joint.onnx`
+    /// - `tokenizer.json`
+    pub fn load<P: AsRef<Path>>(path: P, config: Option<ExecutionConfig>) -> Result<Self> {
         let path = path.as_ref();
         let tokenizer_path = path.join("tokenizer.json");
         let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
@@ -59,26 +72,54 @@ impl ParakeetEOU {
 
         let exec_config = config.unwrap_or_default();
         let model = ParakeetEOUModel::from_pretrained(path, exec_config)?;
+        let mel_basis = create_mel_filterbank_htk();
 
+        Ok(Self {
+            model: Arc::new(Mutex::new(model)),
+            tokenizer: Arc::new(tokenizer),
+            mel_basis: Arc::new(mel_basis),
+            blank_id,
+            eou_id,
+        })
+    }
+}
+
+impl ParakeetEOU {
+    /// Load ParakeetEOU from a directory and return a ready-to-use instance.
+    /// Convenience wrapper for the single-stream case.
+    ///
+    /// For multiple concurrent streams sharing one loaded model, use
+    /// [`ParakeetEOUHandle::load`] + [`ParakeetEOU::from_shared`] instead.
+    pub fn from_pretrained<P: AsRef<Path>>(
+        path: P,
+        config: Option<ExecutionConfig>,
+    ) -> Result<Self> {
+        Ok(Self::from_shared(&ParakeetEOUHandle::load(path, config)?))
+    }
+
+    /// Spawn a new ParakeetEOU instance bound to a shared model.
+    ///
+    /// Each instance owns independent encoder cache / decoder state while the
+    /// expensive ONNX session is shared through the handle. The model lock is
+    /// held only during encoder/decoder inference.
+    pub fn from_shared(handle: &ParakeetEOUHandle) -> Self {
         // Buffer size: 4 seconds of audio
         // Provides long history for feature extraction context
         // Note that, I pick those "magic numbers" by looking NeMo's ring buffer approach.
-        let buffer_size_samples = SAMPLE_RATE * 4; // 4 seconds = 64000 samples
-
-        Ok(Self {
-            model,
-            tokenizer,
+        let buffer_size_samples = SAMPLE_RATE * 4;
+        Self {
+            model: Arc::clone(&handle.model),
+            tokenizer: Arc::clone(&handle.tokenizer),
+            mel_basis: Arc::clone(&handle.mel_basis),
+            blank_id: handle.blank_id,
+            eou_id: handle.eou_id,
             encoder_cache: EncoderCache::new(),
             state_h: Array3::zeros((1, 1, 640)),
             state_c: Array3::zeros((1, 1, 640)),
-            last_token: Array2::from_elem((1, 1), blank_id),
-            blank_id,
-            eou_id,
-            mel_basis: Self::create_mel_filterbank(),
-            window: Self::create_window(),
+            last_token: Array2::from_elem((1, 1), handle.blank_id),
             audio_buffer: VecDeque::with_capacity(buffer_size_samples),
             buffer_size_samples,
-        })
+        }
     }
 
     /// Transcribe a chunk of audio samples.
@@ -125,9 +166,13 @@ impl ParakeetEOU {
         let time_steps = features.shape()[2];
 
         // Encode with cache - encoder sees full buffer context
-        let (encoder_out, new_cache) =
-            self.model
-                .run_encoder(&features, time_steps as i64, &self.encoder_cache)?;
+        let (encoder_out, new_cache) = {
+            let mut model = self
+                .model
+                .lock()
+                .map_err(|e| Error::Model(format!("Failed to acquire model lock: {e}")))?;
+            model.run_encoder(&features, time_steps as i64, &self.encoder_cache)?
+        };
         self.encoder_cache = new_cache;
 
         let total_frames = encoder_out.shape()[2];
@@ -140,12 +185,18 @@ impl ParakeetEOU {
 
         let mut text_output = String::new();
 
+        // Hold the lock once across the decoder loop to avoid per-step acquire/release.
+        let mut model = self
+            .model
+            .lock()
+            .map_err(|e| Error::Model(format!("Failed to acquire model lock: {e}")))?;
+
         for t in 0..new_frames.shape()[2] {
             let current_frame = new_frames.slice(s![.., .., t..t + 1]).to_owned();
             let mut syms_added = 0;
 
             while syms_added < 5 {
-                let (logits, new_h, new_c) = self.model.run_decoder(
+                let (logits, new_h, new_c) = model.run_decoder(
                     &current_frame,
                     &self.last_token,
                     &self.state_h,
@@ -169,6 +220,7 @@ impl ParakeetEOU {
 
                 if max_idx == self.eou_id {
                     if reset_on_eou {
+                        drop(model);
                         self.reset_states();
                         return Ok(text_output + " [EOU]");
                     }
@@ -203,112 +255,54 @@ impl ParakeetEOU {
     }
 
     fn extract_mel_features(&self, audio: &[f32]) -> Result<Array3<f32>> {
-        let audio_pre = Self::apply_preemphasis(audio);
-        let spec = self.stft(&audio_pre)?;
+        let audio_pre = crate::audio::apply_preemphasis(audio, PREEMPH);
+        let spec = crate::audio::stft(&audio_pre, N_FFT, HOP_LENGTH, WIN_LENGTH)?;
         let mel = self.mel_basis.dot(&spec);
         let mel_log = mel.mapv(|x| (x.max(0.0) + LOG_ZERO_GUARD).ln());
         Ok(mel_log.insert_axis(ndarray::Axis(0)))
     }
+}
 
-    fn apply_preemphasis(audio: &[f32]) -> Vec<f32> {
-        let mut result = Vec::with_capacity(audio.len());
-        if audio.is_empty() {
-            return result;
+/// HTK mel filterbank used by Parakeet EOU. its distinct from the Slaney-scaled
+/// filterbank in [`crate::audio::create_mel_filterbank`] so please don't confuse :-).
+fn create_mel_filterbank_htk() -> Array2<f32> {
+    let num_freqs = N_FFT / 2 + 1;
+
+    let hz_to_mel = |hz: f32| 2595.0 * (1.0 + hz / 700.0).log10();
+    let mel_to_hz = |mel: f32| 700.0 * (10.0_f32.powf(mel / 2595.0) - 1.0);
+
+    let mel_min = hz_to_mel(0.0);
+    let mel_max = hz_to_mel(FMAX);
+
+    let mel_points: Vec<f32> = (0..=N_MELS + 1)
+        .map(|i| mel_to_hz(mel_min + (mel_max - mel_min) * i as f32 / (N_MELS + 1) as f32))
+        .collect();
+
+    let fft_freqs: Vec<f32> = (0..num_freqs)
+        .map(|i| (SAMPLE_RATE as f32 / N_FFT as f32) * i as f32)
+        .collect();
+
+    let mut weights = Array2::zeros((N_MELS, num_freqs));
+
+    for i in 0..N_MELS {
+        let left = mel_points[i];
+        let center = mel_points[i + 1];
+        let right = mel_points[i + 2];
+        for (j, &freq) in fft_freqs.iter().enumerate() {
+            if freq >= left && freq <= center {
+                weights[[i, j]] = (freq - left) / (center - left);
+            } else if freq > center && freq <= right {
+                weights[[i, j]] = (right - freq) / (right - center);
+            }
         }
-
-        let safe_x = |x: f32| if x.is_finite() { x } else { 0.0 };
-
-        result.push(safe_x(audio[0]));
-        for i in 1..audio.len() {
-            result.push(safe_x(audio[i]) - PREEMPH * safe_x(audio[i - 1]));
-        }
-        result
     }
 
-    fn stft(&self, audio: &[f32]) -> Result<Array2<f32>> {
-        let mut planner = RealFftPlanner::<f32>::new();
-        let r2c = planner.plan_fft_forward(N_FFT);
-
-        let pad_amount = N_FFT / 2;
-        let mut padded_audio = vec![0.0; pad_amount];
-        padded_audio.extend_from_slice(audio);
-        padded_audio.extend(std::iter::repeat_n(0.0, pad_amount));
-
-        let num_frames = 1 + (padded_audio.len().saturating_sub(WIN_LENGTH)) / HOP_LENGTH;
-        let freq_bins = N_FFT / 2 + 1;
-        let mut spec = Array2::zeros((freq_bins, num_frames));
-
-        let mut input = vec![0.0f32; N_FFT];
-        let mut output = r2c.make_output_vec();
-        let mut scratch = r2c.make_scratch_vec();
-
-        for frame_idx in 0..num_frames {
-            let start = frame_idx * HOP_LENGTH;
-            if start + WIN_LENGTH > padded_audio.len() {
-                break;
-            }
-
-            input.fill(0.0);
-            for i in 0..WIN_LENGTH {
-                input[i] = padded_audio[start + i] * self.window[i];
-            }
-
-            r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
-                .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
-
-            for (i, val) in output.iter().take(freq_bins).enumerate() {
-                let mag_sq = val.norm_sqr();
-                spec[[i, frame_idx]] = if mag_sq.is_finite() { mag_sq } else { 0.0 };
-            }
+    for i in 0..N_MELS {
+        let enorm = 2.0 / (mel_points[i + 2] - mel_points[i]);
+        for j in 0..num_freqs {
+            weights[[i, j]] *= enorm;
         }
-        Ok(spec)
     }
 
-    fn create_window() -> Vec<f32> {
-        (0..WIN_LENGTH)
-            .map(|i| 0.5 - 0.5 * ((2.0 * PI * i as f32) / ((WIN_LENGTH - 1) as f32)).cos())
-            .collect()
-    }
-
-    fn create_mel_filterbank() -> Array2<f32> {
-        let num_freqs = N_FFT / 2 + 1;
-
-        let hz_to_mel = |hz: f32| 2595.0 * (1.0 + hz / 700.0).log10();
-        let mel_to_hz = |mel: f32| 700.0 * (10.0_f32.powf(mel / 2595.0) - 1.0);
-
-        let mel_min = hz_to_mel(0.0);
-        let mel_max = hz_to_mel(FMAX);
-
-        let mel_points: Vec<f32> = (0..=N_MELS + 1)
-            .map(|i| mel_to_hz(mel_min + (mel_max - mel_min) * i as f32 / (N_MELS + 1) as f32))
-            .collect();
-
-        let fft_freqs: Vec<f32> = (0..num_freqs)
-            .map(|i| (SAMPLE_RATE as f32 / N_FFT as f32) * i as f32)
-            .collect();
-
-        let mut weights = Array2::zeros((N_MELS, num_freqs));
-
-        for i in 0..N_MELS {
-            let left = mel_points[i];
-            let center = mel_points[i + 1];
-            let right = mel_points[i + 2];
-            for (j, &freq) in fft_freqs.iter().enumerate() {
-                if freq >= left && freq <= center {
-                    weights[[i, j]] = (freq - left) / (center - left);
-                } else if freq > center && freq <= right {
-                    weights[[i, j]] = (right - freq) / (right - center);
-                }
-            }
-        }
-
-        for i in 0..N_MELS {
-            let enorm = 2.0 / (mel_points[i + 2] - mel_points[i]);
-            for j in 0..num_freqs {
-                weights[[i, j]] *= enorm;
-            }
-        }
-
-        weights
-    }
+    weights
 }
