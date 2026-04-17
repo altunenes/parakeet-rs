@@ -9,6 +9,7 @@ use crate::timestamps::{process_timestamps, TimestampMode};
 use crate::transcriber::Transcriber;
 use ndarray::Array3;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 const SAMPLE_RATE: usize = 16000;
 const FEATURE_SIZE: usize = 128;
@@ -110,10 +111,23 @@ impl UnifiedStreamingConfig {
     }
 }
 
+/// Shared handle to a loaded ParakeetUnified model.
+/// The ONNX session is loaded once and reference-counted.
+///
+/// Use [`ParakeetUnifiedHandle::load`] to load from disk, then
+/// [`ParakeetUnified::from_shared`] to spawn each stream with its own state.
+#[derive(Clone)]
+pub struct ParakeetUnifiedHandle {
+    model: Arc<Mutex<ParakeetUnifiedModel>>,
+    vocab: Arc<SentencePieceVocab>,
+    preprocessor_config: Arc<PreprocessorConfig>,
+    blank_id: usize,
+}
+
 pub struct ParakeetUnified {
-    model: ParakeetUnifiedModel,
-    vocab: SentencePieceVocab,
-    preprocessor_config: PreprocessorConfig,
+    model: Arc<Mutex<ParakeetUnifiedModel>>,
+    vocab: Arc<SentencePieceVocab>,
+    preprocessor_config: Arc<PreprocessorConfig>,
     state_1: Array3<f32>,
     state_2: Array3<f32>,
     last_token: i32,
@@ -126,26 +140,14 @@ pub struct ParakeetUnified {
     accumulated_timed_tokens: Vec<TimedToken>,
 }
 
-impl ParakeetUnified {
-    pub fn from_pretrained<P: AsRef<Path>>(
+impl ParakeetUnifiedHandle {
+    /// Load the ParakeetUnified model, vocabulary, and preprocessor config
+    /// from a directory.
+    pub fn load<P: AsRef<Path>>(
         path: P,
         exec_config: Option<ExecutionConfig>,
-    ) -> Result<Self> {
-        Self::from_pretrained_with_streaming_config(
-            path,
-            exec_config,
-            UnifiedStreamingConfig::default(),
-        )
-    }
-
-    pub fn from_pretrained_with_streaming_config<P: AsRef<Path>>(
-        path: P,
-        exec_config: Option<ExecutionConfig>,
-        streaming_config: UnifiedStreamingConfig,
     ) -> Result<Self> {
         let path = path.as_ref();
-        let streaming_config = streaming_config.validate()?;
-
         let vocab = SentencePieceVocab::from_file(path.join("tokenizer.model"))?;
         let blank_id = vocab.size();
 
@@ -178,9 +180,57 @@ impl ParakeetUnified {
         };
 
         Ok(Self {
-            model,
-            vocab,
-            preprocessor_config,
+            model: Arc::new(Mutex::new(model)),
+            vocab: Arc::new(vocab),
+            preprocessor_config: Arc::new(preprocessor_config),
+            blank_id,
+        })
+    }
+}
+
+impl ParakeetUnified {
+    pub fn from_pretrained<P: AsRef<Path>>(
+        path: P,
+        exec_config: Option<ExecutionConfig>,
+    ) -> Result<Self> {
+        Self::from_pretrained_with_streaming_config(
+            path,
+            exec_config,
+            UnifiedStreamingConfig::default(),
+        )
+    }
+
+    pub fn from_pretrained_with_streaming_config<P: AsRef<Path>>(
+        path: P,
+        exec_config: Option<ExecutionConfig>,
+        streaming_config: UnifiedStreamingConfig,
+    ) -> Result<Self> {
+        let handle = ParakeetUnifiedHandle::load(path, exec_config)?;
+        Self::from_shared_with_streaming_config(&handle, streaming_config)
+    }
+
+    /// Spawn a new ParakeetUnified instance bound to a shared model, using the
+    /// default streaming profile.
+    pub fn from_shared(handle: &ParakeetUnifiedHandle) -> Self {
+        // default config is pre-validated, so unwrap is safe
+        Self::from_shared_with_streaming_config(handle, UnifiedStreamingConfig::default())
+            .expect("default UnifiedStreamingConfig is always valid")
+    }
+
+    /// Spawn a new ParakeetUnified instance bound to a shared model with a
+    /// custom streaming profile. Each instance owns independent decoder and
+    /// audio-buffer state; the ONNX session is shared through the handle.
+    pub fn from_shared_with_streaming_config(
+        handle: &ParakeetUnifiedHandle,
+        streaming_config: UnifiedStreamingConfig,
+    ) -> Result<Self> {
+        let streaming_config = streaming_config.validate()?;
+        let blank_id = handle.blank_id;
+
+        Ok(Self {
+            model: Arc::clone(&handle.model),
+            vocab: Arc::clone(&handle.vocab),
+            preprocessor_config: Arc::clone(&handle.preprocessor_config),
             state_1: Array3::zeros((DECODER_LSTM_LAYERS, 1, DECODER_LSTM_DIM)),
             state_2: Array3::zeros((DECODER_LSTM_LAYERS, 1, DECODER_LSTM_DIM)),
             last_token: blank_id as i32,
@@ -283,7 +333,12 @@ impl ParakeetUnified {
                 1,
                 &self.preprocessor_config,
             )?;
-            let (encoded, encoded_len) = self.model.run_encoder(&features)?;
+            let (encoded, encoded_len) = {
+                let mut model = self.model.lock().map_err(|e| {
+                    Error::Model(format!("Failed to acquire model lock: {e}"))
+                })?;
+                model.run_encoder(&features)?
+            };
 
             let available_frames = (encoded_len as usize).min(encoded.shape()[2]);
             let start_frame = left_encoder_frames.min(available_frames);
@@ -388,6 +443,12 @@ impl ParakeetUnified {
         let hidden_dim = encoder_out.shape()[1];
         let end_frame = end_frame.min(encoder_out.shape()[2]);
 
+        // Hold the lock once across the decoder loop to avoid per-step acquire/release.
+        let mut model = self
+            .model
+            .lock()
+            .map_err(|e| Error::Model(format!("Failed to acquire model lock: {e}")))?;
+
         for frame_idx in start_frame..end_frame {
             let frame = encoder_out
                 .slice(ndarray::s![0, .., frame_idx])
@@ -399,7 +460,7 @@ impl ParakeetUnified {
             let absolute_frame = absolute_frame_offset + (frame_idx - start_frame);
 
             for _ in 0..MAX_SYMBOLS_PER_STEP {
-                let (logits, new_state_1, new_state_2) = self.model.run_decoder(
+                let (logits, new_state_1, new_state_2) = model.run_decoder(
                     &frame,
                     self.last_token,
                     &self.state_1,
@@ -463,7 +524,13 @@ impl ParakeetUnified {
         self.reset();
 
         let features = audio::extract_features_raw(audio, sample_rate, channels, &self.preprocessor_config)?;
-        let (encoded, encoded_len) = self.model.run_encoder(&features)?;
+        let (encoded, encoded_len) = {
+            let mut model = self
+                .model
+                .lock()
+                .map_err(|e| Error::Model(format!("Failed to acquire model lock: {e}")))?;
+            model.run_encoder(&features)?
+        };
         let frame_count = (encoded_len as usize).min(encoded.shape()[2]);
         let tokens = self.decode_encoder_frames(&encoded, 0, frame_count, 0)?;
         self.accumulated_tokens = tokens.iter().map(|(id, _)| *id).collect();
