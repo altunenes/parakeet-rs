@@ -1,6 +1,6 @@
 [package]
 name = "parakeet-rs"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2021"
 authors = ["altunenes"]
 description = "Fast ASR & Speaker Diarization with NVIDIA Parakeet via ONNX"
@@ -36,6 +36,11 @@ path = "examples/streaming_diarization.rs"
 [[example]]
 name = "shared_model"
 path = "examples/shared_model.rs"
+
+[[example]]
+name = "cohere"
+path = "examples/cohere.rs"
+required-features = ["cohere"]
 
 [dependencies]
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24"] }
