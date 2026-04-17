@@ -2,8 +2,6 @@ use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model_nemotron::{NemotronEncoderCache, NemotronModel, NemotronModelConfig};
 use ndarray::{s, Array2, Array3};
-use realfft::RealFftPlanner;
-use std::f32::consts::PI;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -186,22 +184,32 @@ impl SentencePieceVocab {
     }
 }
 
+/// Shared handle to a loaded Nemotron model.
+/// ONNX session is only loaded once and reference counted.
+///
+/// Use [`NemotronHandle::load`] to load from disk, then [`Nemotron::from_shared`]
+/// to spawn each stream with its own independent decoder state.
+#[derive(Clone)]
+pub struct NemotronHandle {
+    model: Arc<Mutex<NemotronModel>>,
+    vocab: Arc<SentencePieceVocab>,
+    mel_basis: Arc<Array2<f32>>,
+}
+
 /// Nemotron streaming ASR model (0.6B parameters).
 /// We dont apply mel normalization unlike others...
 ///
-/// The ONNX model is stored behind `Arc<Mutex<>>` to allow sharing a single
-/// model (~1.4GB) across multiple instances with independent decoder state.
-/// Use [`Nemotron::from_shared_model`] to create instances that share a model,
-/// or [`Nemotron::load_model`] to load the model once and share it.
+/// For a single stream, use [`Nemotron::from_pretrained`]. For multiple
+/// concurrent streams (e.g. mic + system audio) sharing one loaded model,
+/// use [`NemotronHandle::load`] followed by [`Nemotron::from_shared`].
 pub struct Nemotron {
     model: Arc<Mutex<NemotronModel>>,
     vocab: Arc<SentencePieceVocab>,
+    mel_basis: Arc<Array2<f32>>,
     encoder_cache: NemotronEncoderCache,
     state_1: Array3<f32>,
     state_2: Array3<f32>,
     last_token: i32,
-    mel_basis: Array2<f32>,
-    window: Vec<f32>,
     /// Raw audio sample buffer for proper mel computation
     audio_buffer: Vec<f32>,
     /// How many audio samples have been processed (converted to mel and sent to encoder)
@@ -210,14 +218,21 @@ pub struct Nemotron {
     accumulated_tokens: Vec<usize>,
 }
 
-impl Nemotron {
-    /// Load the ONNX model and vocabulary from a directory, returning
-    /// shareable handles. Call this once, then pass the returned `Arc`s
-    /// to [`Nemotron::from_shared_model`] for each stream.
-    pub fn load_model<P: AsRef<Path>>(
+impl NemotronHandle {
+    /// Load the Nemotron model and vocabulary from a directory.
+    ///
+    /// Required files in `path`:
+    /// - `encoder.onnx` + `encoder.onnx.data`
+    /// - `decoder_joint.onnx`
+    /// - `tokenizer.model`
+    ///
+    /// The returned handle is cheap to clone and can be used to spawn any
+    /// number of [`Nemotron`] instances via [`Nemotron::from_shared`], each
+    /// with its own independent decoder state.
+    pub fn load<P: AsRef<Path>>(
         path: P,
         exec_config: Option<ExecutionConfig>,
-    ) -> Result<(Arc<Mutex<NemotronModel>>, Arc<SentencePieceVocab>)> {
+    ) -> Result<Self> {
         let path = path.as_ref();
 
         let vocab = SentencePieceVocab::from_file(path.join("tokenizer.model"))?;
@@ -235,19 +250,36 @@ impl Nemotron {
 
         let exec = exec_config.unwrap_or_default();
         let model = NemotronModel::from_pretrained(path, exec, model_config)?;
+        let mel_basis = crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE);
 
-        Ok((Arc::new(Mutex::new(model)), Arc::new(vocab)))
+        Ok(Self {
+            model: Arc::new(Mutex::new(model)),
+            vocab: Arc::new(vocab),
+            mel_basis: Arc::new(mel_basis),
+        })
+    }
+}
+
+impl Nemotron {
+    /// Load Nemotron from a directory and return a ready to use instance.
+    /// Convenience wrapper for the single-stream case.
+    ///
+    /// For multiple concurrent streams sharing one loaded model, use
+    /// [`NemotronHandle::load`] + [`Nemotron::from_shared`] instead.
+    pub fn from_pretrained<P: AsRef<Path>>(
+        path: P,
+        exec_config: Option<ExecutionConfig>,
+    ) -> Result<Self> {
+        Ok(Self::from_shared(&NemotronHandle::load(path, exec_config)?))
     }
 
-    /// Create a new Nemotron instance with shared model and vocabulary.
+    /// Spawn a new Nemotron instance bound to a shared model.
     ///
-    /// Each instance has independent decoder state (~7.5MB) while sharing
-    /// the expensive ONNX sessions (~1.4GB). The model Mutex is held only
-    /// during encoder/decoder inference (~20-50ms per 560ms audio chunk).
-    pub fn from_shared_model(
-        model: Arc<Mutex<NemotronModel>>,
-        vocab: Arc<SentencePieceVocab>,
-    ) -> Self {
+    /// Each instance owns independent decoder state (~7.5 MB) while the
+    /// expensive ONNX session is shared through the handle.
+    /// The model lock is held only during encoder/decoder inference
+    /// (~20-50 ms per 560 ms audio chunk).
+    pub fn from_shared(handle: &NemotronHandle) -> Self {
         let encoder_cache = NemotronEncoderCache::with_dims(
             NUM_ENCODER_LAYERS,
             LEFT_CONTEXT,
@@ -256,33 +288,18 @@ impl Nemotron {
         );
 
         Self {
-            model,
-            vocab,
+            model: Arc::clone(&handle.model),
+            vocab: Arc::clone(&handle.vocab),
+            mel_basis: Arc::clone(&handle.mel_basis),
             encoder_cache,
             state_1: Array3::zeros((2, 1, DECODER_LSTM_DIM)),
             state_2: Array3::zeros((2, 1, DECODER_LSTM_DIM)),
             last_token: BLANK_ID as i32,
-            mel_basis: crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE),
-            window: Self::create_window(),
             audio_buffer: Vec::new(),
             audio_processed: 0,
             chunk_idx: 0,
             accumulated_tokens: Vec::new(),
         }
-    }
-
-    /// Load Nemotron model from directory.
-    ///
-    /// Required files:
-    /// - encoder.onnx + encoder.onnx.data
-    /// - decoder_joint.onnx
-    /// - tokenizer.model
-    pub fn from_pretrained<P: AsRef<Path>>(
-        path: P,
-        exec_config: Option<ExecutionConfig>,
-    ) -> Result<Self> {
-        let (model, vocab) = Self::load_model(path, exec_config)?;
-        Ok(Self::from_shared_model(model, vocab))
     }
 
     /// Reset all state for new utterance
@@ -557,77 +574,10 @@ impl Nemotron {
             return Ok(Array2::zeros((N_MELS, 0)));
         }
 
-        let preemph = Self::apply_preemphasis(audio);
-        let spec = self.stft_center(&preemph)?;
+        let preemph = crate::audio::apply_preemphasis(audio, PREEMPH);
+        let spec = crate::audio::stft(&preemph, N_FFT, HOP_LENGTH, WIN_LENGTH)?;
         let mel = self.mel_basis.dot(&spec);
 
-        Ok(mel.mapv(|x| (x.max(0.0) + LOG_ZERO_GUARD).ln()))
-    }
-
-    fn apply_preemphasis(audio: &[f32]) -> Vec<f32> {
-        if audio.is_empty() {
-            return Vec::new();
-        }
-
-        let mut result = Vec::with_capacity(audio.len());
-        result.push(audio[0]);
-
-        for i in 1..audio.len() {
-            let v = audio[i] - PREEMPH * audio[i - 1];
-            result.push(if v.is_finite() { v } else { 0.0 });
-        }
-
-        result
-    }
-
-    fn stft_center(&self, audio: &[f32]) -> Result<Array2<f32>> {
-        let mut planner = RealFftPlanner::<f32>::new();
-        let r2c = planner.plan_fft_forward(N_FFT);
-
-        let pad_amount = N_FFT / 2;
-        let mut padded = vec![0.0f32; pad_amount];
-        padded.extend_from_slice(audio);
-        padded.extend(std::iter::repeat_n(0.0f32, pad_amount));
-
-        let num_frames = if padded.len() >= WIN_LENGTH {
-            1 + (padded.len() - WIN_LENGTH) / HOP_LENGTH
-        } else {
-            0
-        };
-
-        let freq_bins = N_FFT / 2 + 1;
-        let mut spec = Array2::zeros((freq_bins, num_frames));
-
-        let mut input = vec![0.0f32; N_FFT];
-        let mut output = r2c.make_output_vec();
-        let mut scratch = r2c.make_scratch_vec();
-
-        for frame_idx in 0..num_frames {
-            let start = frame_idx * HOP_LENGTH;
-            if start + WIN_LENGTH > padded.len() {
-                break;
-            }
-
-            input.fill(0.0);
-            for i in 0..WIN_LENGTH {
-                input[i] = padded[start + i] * self.window[i];
-            }
-
-            r2c.process_with_scratch(&mut input, &mut output, &mut scratch)
-                .map_err(|e| Error::Audio(format!("FFT failed: {e}")))?;
-
-            for (i, val) in output.iter().take(freq_bins).enumerate() {
-                let mag_sq = val.norm_sqr();
-                spec[[i, frame_idx]] = if mag_sq.is_finite() { mag_sq } else { 0.0 };
-            }
-        }
-
-        Ok(spec)
-    }
-
-    fn create_window() -> Vec<f32> {
-        (0..WIN_LENGTH)
-            .map(|i| 0.5 - 0.5 * ((2.0 * PI * i as f32) / ((WIN_LENGTH - 1) as f32)).cos())
-            .collect()
+        Ok(mel.mapv(|x| (x + LOG_ZERO_GUARD).ln()))
     }
 }
