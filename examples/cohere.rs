@@ -2,7 +2,6 @@
 Cohere Transcribe ASR — offline multilingual transcription.
 
 2B parameter encoder-decoder model supporting 14 languages with inverse text norm.
-Max audio duration is ~35s (the training range); chunk longer recordings.
 
 Download the ONNX export from:
 https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX
