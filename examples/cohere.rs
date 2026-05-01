@@ -16,6 +16,24 @@ Examples:
   cargo run --release --example cohere --features cohere -- ./cohere audio.wav ja true true
 
 Languages: ar, de, el, en, es, fr, it, ja, ko, nl, pl, pt, vi, zh
+
+NOTE on long audio:
+The model was trained on clips up to 35 s. Audio longer than that still runs based on my tests.
+but transcription quality drifts past the training range, so for production
+long form useges you should split the waveform yourself and call transcribe_audio
+once per chunk.
+
+for instance `nano-cohere-transcribe` (python one) shows a energy based splitter see `split_audio_chunks_energy` and
+`get_chunk_separator` in:
+  https://github.com/Deep-unlearning/nano-cohere-transcribe/blob/main/nano_cohere_transcribe/chunk.py
+It splits at the quietest 100 ms RMS window in the last 5 s of each 35 s
+chunk and joins per-chunk text with "" for ja/zh, " " elsewhere. So its one of the 
+nice strategy for chuking. 
+
+Other valid strategies could be fixed size windows with
+overlap, or VAD driven boundaries (for instance try it with examples/diarization.rs via parakeet sortformer). I
+intentionally leave the chunking policy to the caller... pick whichever
+fits your pipeline or share your favor strategy if you find one that works well :-)
 */
 
 #[cfg(feature = "cohere")]

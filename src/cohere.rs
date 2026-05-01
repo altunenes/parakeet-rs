@@ -234,6 +234,18 @@ impl CohereASR {
     /// `punctuation` controls whether output includes punctuation and
     /// capitalisation. `itn` enables inverse text normalisation
     /// (e.g. "twenty three" -> "23").
+    ///
+    /// # Long-form audio
+    ///
+    /// The model was trained on clips up to 35 s ([`Self::training_chunk_secs`]).
+    /// Longer audio still runs but quality drifts past that range. For
+    /// long-form transcription split the waveform into <=35 s chunks
+    /// yourself and call this method once per chunk. The reference
+    /// implementation in [`nano-cohere-transcribe`](https://github.com/Deep-unlearning/nano-cohere-transcribe/blob/main/nano_cohere_transcribe/chunk.py)
+    /// splits at the quietest point in the last 5 s of each 35 s window
+    /// and joins per-chunk text with `""` for `ja`/`zh` and `" "` for
+    /// every other language. parakeet-rs deliberately leaves the
+    /// chunking policy to the caller.
     pub fn transcribe_audio(
         &mut self,
         audio: &[f32],
