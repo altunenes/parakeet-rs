@@ -1,4 +1,4 @@
-use crate::audio;
+use crate::audio::{self, FeatureCache};
 use crate::config::PreprocessorConfig;
 use crate::decoder::{ParakeetDecoder, TranscriptionResult};
 use crate::error::{Error, Result};
@@ -12,6 +12,7 @@ pub struct Parakeet {
     model: ParakeetModel,
     decoder: ParakeetDecoder,
     preprocessor_config: PreprocessorConfig,
+    feature_cache: FeatureCache,
     model_dir: PathBuf,
 }
 
@@ -75,11 +76,13 @@ impl Parakeet {
 
         let model = ParakeetModel::from_pretrained_with_config(&model_path, exec_config)?;
         let decoder = ParakeetDecoder::from_pretrained(&tokenizer_path)?;
+        let feature_cache = FeatureCache::from_config(&preprocessor_config);
 
         Ok(Self {
             model,
             decoder,
             preprocessor_config,
+            feature_cache,
             model_dir,
         })
     }
@@ -132,8 +135,13 @@ impl Transcriber for Parakeet {
         channels: u16,
         mode: Option<TimestampMode>,
     ) -> Result<TranscriptionResult> {
-        let features =
-            audio::extract_features_raw(audio, sample_rate, channels, &self.preprocessor_config)?;
+        let features = audio::extract_features_with_cache(
+            audio,
+            sample_rate,
+            channels,
+            &self.preprocessor_config,
+            &self.feature_cache,
+        )?;
         let logits = self.model.forward(features)?;
 
         let mut result = self.decoder.decode_with_timestamps(
