@@ -24,7 +24,7 @@
 //! No custom export script is needed - the `cohere_asr` model type is
 //! supported by Optimum's standard exporter.
 
-use crate::audio::extract_features_raw;
+use crate::audio::{extract_features_with_cache, FeatureCache};
 use crate::config::PreprocessorConfig;
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
@@ -143,6 +143,8 @@ pub struct CohereASR {
     tokenizer: Tokenizer,
     /// Mel/STFT parameters (hardcoded — see [`cohere_preprocessor_config`]).
     preprocessor: PreprocessorConfig,
+    /// Pre-built mel filterbank + FFT plan ->> reused across every transcribe call.
+    feature_cache: FeatureCache,
     /// Map of supported ISO 639-1 language code -> language token id.
     lang_tokens: HashMap<String, i64>,
     tokens: DecoderTokens,
@@ -184,6 +186,7 @@ impl CohereASR {
             .map_err(|e| Error::Tokenizer(format!("Failed to load tokenizer.json: {e}")))?;
 
         let preprocessor = cohere_preprocessor_config();
+        let feature_cache = FeatureCache::from_config(&preprocessor);
         let tokens = DecoderTokens::resolve(&tokenizer)?;
 
         let mut lang_tokens = HashMap::with_capacity(SUPPORTED_LANGUAGES.len());
@@ -203,6 +206,7 @@ impl CohereASR {
             model,
             tokenizer,
             preprocessor,
+            feature_cache,
             lang_tokens,
             tokens,
             max_decode_tokens: DEFAULT_MAX_DECODE_TOKENS,
@@ -273,11 +277,12 @@ impl CohereASR {
         // `as_standard_layout().to_owned()` is required because `insert_axis`
         // on a view may produce non-standard strides, but ort::TensorRef
         // needs C-contiguous memory.
-        let mel_2d = extract_features_raw(
+        let mel_2d = extract_features_with_cache(
             audio.to_vec(),
             self.preprocessor.sampling_rate as u32,
             1,
             &self.preprocessor,
+            &self.feature_cache,
         )?;
         let mel_3d = mel_2d.insert_axis(Axis(0)).as_standard_layout().to_owned();
 
