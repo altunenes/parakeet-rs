@@ -121,6 +121,7 @@ pub struct ParakeetUnifiedHandle {
     model: Arc<Mutex<ParakeetUnifiedModel>>,
     vocab: Arc<SentencePieceVocab>,
     preprocessor_config: Arc<PreprocessorConfig>,
+    feature_cache: Arc<crate::audio::FeatureCache>,
     blank_id: usize,
 }
 
@@ -128,6 +129,7 @@ pub struct ParakeetUnified {
     model: Arc<Mutex<ParakeetUnifiedModel>>,
     vocab: Arc<SentencePieceVocab>,
     preprocessor_config: Arc<PreprocessorConfig>,
+    feature_cache: Arc<crate::audio::FeatureCache>,
     state_1: Array3<f32>,
     state_2: Array3<f32>,
     last_token: i32,
@@ -179,10 +181,13 @@ impl ParakeetUnifiedHandle {
             win_length: WIN_LENGTH,
         };
 
+        let feature_cache = Arc::new(crate::audio::FeatureCache::from_config(&preprocessor_config));
+
         Ok(Self {
             model: Arc::new(Mutex::new(model)),
             vocab: Arc::new(vocab),
             preprocessor_config: Arc::new(preprocessor_config),
+            feature_cache,
             blank_id,
         })
     }
@@ -231,6 +236,7 @@ impl ParakeetUnified {
             model: Arc::clone(&handle.model),
             vocab: Arc::clone(&handle.vocab),
             preprocessor_config: Arc::clone(&handle.preprocessor_config),
+            feature_cache: Arc::clone(&handle.feature_cache),
             state_1: Array3::zeros((DECODER_LSTM_LAYERS, 1, DECODER_LSTM_DIM)),
             state_2: Array3::zeros((DECODER_LSTM_LAYERS, 1, DECODER_LSTM_DIM)),
             last_token: blank_id as i32,
@@ -327,11 +333,12 @@ impl ParakeetUnified {
                 break;
             }
 
-            let features = audio::extract_features_raw(
+            let features = audio::extract_features_with_cache(
                 window_audio,
                 SAMPLE_RATE as u32,
                 1,
                 &self.preprocessor_config,
+                &self.feature_cache,
             )?;
             let (encoded, encoded_len) = {
                 let mut model = self.model.lock().map_err(|e| {
@@ -523,7 +530,13 @@ impl ParakeetUnified {
     ) -> Result<TranscriptionResult> {
         self.reset();
 
-        let features = audio::extract_features_raw(audio, sample_rate, channels, &self.preprocessor_config)?;
+        let features = audio::extract_features_with_cache(
+            audio,
+            sample_rate,
+            channels,
+            &self.preprocessor_config,
+            &self.feature_cache,
+        )?;
         let (encoded, encoded_len) = {
             let mut model = self
                 .model
