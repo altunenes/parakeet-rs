@@ -80,6 +80,7 @@ pub use parakeet_tdt::ParakeetTDT;
 pub use timestamps::TimestampMode;
 pub use transcriber::*;
 
+pub use audio::FeatureCache;
 pub use config::{ModelConfig as ModelConfigJson, PreprocessorConfig};
 
 pub use decoder::{ParakeetDecoder, TimedToken, TranscriptionResult};

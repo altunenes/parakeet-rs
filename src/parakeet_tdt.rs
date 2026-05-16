@@ -1,4 +1,4 @@
-use crate::audio;
+use crate::audio::{self, FeatureCache};
 use crate::config::PreprocessorConfig;
 use crate::decoder::TranscriptionResult;
 use crate::decoder_tdt::ParakeetTDTDecoder;
@@ -15,6 +15,7 @@ pub struct ParakeetTDT {
     model: ParakeetTDTModel,
     decoder: ParakeetTDTDecoder,
     preprocessor_config: PreprocessorConfig,
+    feature_cache: FeatureCache,
     model_dir: PathBuf,
 }
 
@@ -68,11 +69,13 @@ impl ParakeetTDT {
 
         let model = ParakeetTDTModel::from_pretrained(path, exec_config, vocab_size)?;
         let decoder = ParakeetTDTDecoder::from_vocab(vocab);
+        let feature_cache = FeatureCache::from_config(&preprocessor_config);
 
         Ok(Self {
             model,
             decoder,
             preprocessor_config,
+            feature_cache,
             model_dir: path.to_path_buf(),
         })
     }
@@ -94,8 +97,13 @@ impl Transcriber for ParakeetTDT {
         channels: u16,
         mode: Option<TimestampMode>,
     ) -> Result<TranscriptionResult> {
-        let features =
-            audio::extract_features_raw(audio, sample_rate, channels, &self.preprocessor_config)?;
+        let features = audio::extract_features_with_cache(
+            audio,
+            sample_rate,
+            channels,
+            &self.preprocessor_config,
+            &self.feature_cache,
+        )?;
         let (tokens, frame_indices, durations) = self.model.forward(features)?;
 
         let mut result = self.decoder.decode_with_timestamps(
