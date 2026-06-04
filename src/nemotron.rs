@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
-use crate::model_nemotron::{NemotronEncoderCache, NemotronModel, NemotronModelConfig};
+use crate::model_nemotron::{NemotronEncoderCache, NemotronModel};
 use ndarray::{s, Array2, Array3};
 use std::fs::File;
 use std::io::Read;
@@ -20,20 +20,88 @@ const N_MELS: usize = 128;
 const PREEMPH: f32 = 0.97;
 const LOG_ZERO_GUARD: f32 = 5.960_464_5e-8;
 
-// Encoder arch
-const NUM_ENCODER_LAYERS: usize = 24;
-const HIDDEN_DIM: usize = 1024;
-const LEFT_CONTEXT: usize = 70;
-const CONV_CONTEXT: usize = 8;
-
-// Decoder
-const VOCAB_SIZE: usize = 1024;
-const BLANK_ID: usize = 1024;
-const DECODER_LSTM_DIM: usize = 640;
-
-// Streaming chunk config
+// Streaming chunk config (identical across English-only and multilingual variants:
+// both use chunk_size_output=7 in NeMo's streaming_cfg which corresponds to 56 mel frames).
 const CHUNK_SIZE: usize = 56;
 const PRE_ENCODE_CACHE: usize = 9;
+
+/// Language → prompt embedding index for the multilingual model. Mirrors
+/// `cfg.model_defaults.prompt_dictionary` from the .nemo. Embedded here so
+/// we don't require a sidecar `config.json` next to the ONNX files.
+///
+/// NVIDIA's model card documents 40 language-locales across 3 tiers:
+///   - **Transcription-ready (19):** en, es, fr, it, pt, nl, de, tr, ru, ar,
+///     hi, ja, ko, vi, uk (with locales).
+///   - **Broad-coverage (13):** pl, sv, cs, nb, da, bg, fi, hr, sk, zh-CN,
+///     hu, ro, et.
+///   - **Adaptation-ready (8):** el, lt, lv, mt, sl, he, th, nn — recognized
+///     by the tokenizer but need fine-tuning for production quality.
+///
+/// The full dictionary below contains additional entries because (a) several
+/// codes alias the same prompt index (`en` == `en-US`, `hi` == `hi-IN`, ...)
+/// and (b) some experimental languages (e.g. `qu-PE`, `mi-NZ`, `haw-US`)
+/// have prompt slots but are not in the model card. Using those will work
+/// but quality is not guaranteed.
+///
+/// See: https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b
+const PROMPT_DICTIONARY: &[(&str, i64)] = &[
+    ("af-ZA", 54), ("am-ET", 49), ("ar", 7), ("ar-AR", 7), ("auto", 101),
+    ("ay-BO", 81), ("az-AZ", 66), ("bg", 30), ("bg-BG", 30), ("bn-IN", 36),
+    ("cs", 22), ("cs-CZ", 22), ("da", 25), ("da-DK", 25), ("de", 9),
+    ("de-DE", 9), ("el", 21), ("el-GR", 21), ("en", 0), ("en-GB", 1),
+    ("en-US", 0), ("enGB", 1), ("es", 3), ("es-ES", 2), ("es-US", 3),
+    ("esES", 2), ("et", 60), ("et-EE", 60), ("fa-IR", 38), ("fi", 26),
+    ("fi-FI", 26), ("fr", 8), ("fr-CA", 100), ("fr-FR", 8), ("gn-PY", 82),
+    ("gu-IN", 42), ("ha-NG", 50), ("haw-US", 97), ("he-IL", 64), ("hi", 6),
+    ("hi-HI", 6), ("hi-IN", 6), ("hr", 29), ("hr-HR", 29), ("hu", 23),
+    ("hu-HU", 23), ("hy-AM", 68), ("id-ID", 34), ("ig-NG", 53), ("it", 15),
+    ("it-IT", 15), ("ja-JA", 10), ("ja-JP", 10), ("ka-GE", 67), ("km-KH", 47),
+    ("kn-IN", 43), ("ko", 14), ("ko-KO", 14), ("ko-KR", 14), ("ku-TR", 65),
+    ("ky-KG", 71), ("ln-CD", 58), ("lt", 31), ("lt-LT", 31), ("lv", 61),
+    ("lv-LV", 61), ("mi-NZ", 96), ("ml-IN", 44), ("mr-IN", 41), ("ms-MY", 35),
+    ("mt-MT", 102), ("nah-MX", 83), ("nb", 103), ("nb-NO", 103), ("ne-NP", 46),
+    ("nl", 16), ("nl-NL", 16), ("nn", 104), ("nn-NO", 104), ("no", 27),
+    ("no-NO", 27), ("ny-MW", 57), ("or-KE", 59), ("pl", 17), ("pl-PL", 17),
+    ("pt", 13), ("pt-BR", 12), ("pt-PT", 13), ("qu-PE", 80), ("ro", 20),
+    ("ro-RO", 20), ("ru", 11), ("ru-RU", 11), ("rw-RW", 55), ("si-LK", 45),
+    ("sk", 28), ("sk-SK", 28), ("sl", 62), ("sl-SI", 62), ("sm-WS", 98),
+    ("so-SO", 56), ("sv", 24), ("sv-SE", 24), ("sw-KE", 48), ("ta-IN", 39),
+    ("te-IN", 40), ("tg-TJ", 70), ("th-TH", 32), ("to-TO", 99), ("tr", 18),
+    ("tr-TR", 18), ("uk", 19), ("uk-UA", 19), ("ur-PK", 37), ("uz-UZ", 69),
+    ("vi-VN", 33), ("yo-NG", 52), ("zh-CN", 4), ("zh-TW", 5), ("zh-ZH", 4),
+    ("zu-ZA", 51),
+];
+
+/// Detect SentencePiece pieces that encode a language tag like `<en-US>` or
+/// `<en>`. The multilingual model emits these inline with text; they're
+/// stripped from the user-visible transcript.
+fn is_lang_tag(piece: &str) -> bool {
+    let bytes = piece.as_bytes();
+    if bytes.len() < 4 || bytes[0] != b'<' || bytes[bytes.len() - 1] != b'>' {
+        return false;
+    }
+    let inner = &bytes[1..bytes.len() - 1];
+    match inner.len() {
+        2 => inner[0].is_ascii_lowercase() && inner[1].is_ascii_lowercase(),
+        5 => inner[0].is_ascii_lowercase()
+            && inner[1].is_ascii_lowercase()
+            && inner[2] == b'-'
+            && inner[3].is_ascii_uppercase()
+            && inner[4].is_ascii_uppercase(),
+        _ => false,
+    }
+}
+
+/// Which Nemotron variant a handle wraps. Detected automatically from
+/// the encoder ONNX graph (multilingual exposes a `prompt_index` input).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NemotronMode {
+    /// English-only Nemotron 0.6B (vocab 1024, no language conditioning).
+    EnglishOnly,
+    /// Multilingual Nemotron 3.5 0.6B with `prompt_index` input,
+    /// vocab ~13k, supports `target_lang` selection.
+    Multilingual,
+}
 
 /// Minimal SentencePiece vocabulary loader.
 /// Parses the protobuf .model file to extract token strings.
@@ -182,6 +250,16 @@ impl SentencePieceVocab {
     pub fn size(&self) -> usize {
         self.pieces.len()
     }
+
+    /// Token IDs whose SentencePiece pieces look like language tags
+    /// (`<en-US>`, `<fr>`, ...). and ofc empty for the en only vocab.
+    pub fn lang_tag_ids(&self) -> Vec<usize> {
+        self.pieces
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| is_lang_tag(p).then_some(i))
+            .collect()
+    }
 }
 
 /// Shared handle to a loaded Nemotron model.
@@ -189,11 +267,24 @@ impl SentencePieceVocab {
 ///
 /// Use [`NemotronHandle::load`] to load from disk, then [`Nemotron::from_shared`]
 /// to spawn each stream with its own independent decoder state.
+/// Variant is auto-detected: both the en only 0.6B and the multi lang
+/// 3.5 0.6B drop into the same type.
 #[derive(Clone)]
 pub struct NemotronHandle {
     model: Arc<Mutex<NemotronModel>>,
     vocab: Arc<SentencePieceVocab>,
     mel_basis: Arc<Array2<f32>>,
+    mode: NemotronMode,
+    num_encoder_layers: usize,
+    hidden_dim: usize,
+    left_context: usize,
+    conv_context: usize,
+    decoder_lstm_dim: usize,
+    decoder_lstm_layers: usize,
+    vocab_size: usize,
+    blank_id: usize,
+    /// Empty for en. populated for multilingual with all `<xx-XX>` token ids.
+    lang_tag_ids: Arc<Vec<usize>>,
 }
 
 /// Nemotron streaming ASR model (0.6B parameters).
@@ -202,14 +293,28 @@ pub struct NemotronHandle {
 /// For a single stream, use [`Nemotron::from_pretrained`]. For multiple
 /// concurrent streams (e.g. mic + system audio) sharing one loaded model,
 /// use [`NemotronHandle::load`] followed by [`Nemotron::from_shared`].
+///
+/// For the multilingual variant call [`Nemotron::set_target_lang`] before
+/// transcribing if you know the language; otherwise it defaults to `auto`
+/// (prompt index 101) and lets the model pick.
 pub struct Nemotron {
     model: Arc<Mutex<NemotronModel>>,
     vocab: Arc<SentencePieceVocab>,
     mel_basis: Arc<Array2<f32>>,
+    mode: NemotronMode,
+    num_encoder_layers: usize,
+    hidden_dim: usize,
+    left_context: usize,
+    conv_context: usize,
+    vocab_size: usize,
+    blank_id: usize,
+    lang_tag_ids: Arc<Vec<usize>>,
     encoder_cache: NemotronEncoderCache,
     state_1: Array3<f32>,
     state_2: Array3<f32>,
     last_token: i32,
+    /// `None` for English-only mode; `Some(idx)` for multilingual.
+    prompt_index: Option<i64>,
     /// Raw audio sample buffer for proper mel computation
     audio_buffer: Vec<f32>,
     /// How many audio samples have been processed (converted to mel and sent to encoder)
@@ -236,27 +341,53 @@ impl NemotronHandle {
         let path = path.as_ref();
 
         let vocab = SentencePieceVocab::from_file(path.join("tokenizer.model"))?;
-
-        let model_config = NemotronModelConfig {
-            num_encoder_layers: NUM_ENCODER_LAYERS,
-            hidden_dim: HIDDEN_DIM,
-            left_context: LEFT_CONTEXT,
-            conv_context: CONV_CONTEXT,
-            decoder_lstm_dim: DECODER_LSTM_DIM,
-            decoder_lstm_layers: 2,
-            vocab_size: VOCAB_SIZE,
-            blank_id: BLANK_ID,
-        };
+        let vocab_size = vocab.size();
 
         let exec = exec_config.unwrap_or_default();
-        let model = NemotronModel::from_pretrained(path, exec, model_config)?;
+        let model = NemotronModel::from_pretrained(path, exec, vocab_size)?;
         let mel_basis = crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE);
+
+        let mode = if model.has_prompt {
+            NemotronMode::Multilingual
+        } else {
+            NemotronMode::EnglishOnly
+        };
+        let cfg = model.config.clone();
+        let lang_tag_ids = if mode == NemotronMode::Multilingual {
+            vocab.lang_tag_ids()
+        } else {
+            Vec::new()
+        };
 
         Ok(Self {
             model: Arc::new(Mutex::new(model)),
             vocab: Arc::new(vocab),
             mel_basis: Arc::new(mel_basis),
+            mode,
+            num_encoder_layers: cfg.num_encoder_layers,
+            hidden_dim: cfg.hidden_dim,
+            left_context: cfg.left_context,
+            conv_context: cfg.conv_context,
+            decoder_lstm_dim: cfg.decoder_lstm_dim,
+            decoder_lstm_layers: cfg.decoder_lstm_layers,
+            vocab_size: cfg.vocab_size,
+            blank_id: cfg.blank_id,
+            lang_tag_ids: Arc::new(lang_tag_ids),
         })
+    }
+
+    /// Which variant this handle wraps (auto detected at load time).
+    pub fn mode(&self) -> NemotronMode {
+        self.mode
+    }
+
+    /// Languages this model can transcribe, as accepted by
+    /// [`Nemotron::set_target_lang`]. Empty for the English-only variant.
+    pub fn available_languages(&self) -> Vec<&'static str> {
+        match self.mode {
+            NemotronMode::Multilingual => PROMPT_DICTIONARY.iter().map(|(k, _)| *k).collect(),
+            NemotronMode::EnglishOnly => Vec::new(),
+        }
     }
 }
 
@@ -279,22 +410,41 @@ impl Nemotron {
     /// expensive ONNX session is shared through the handle.
     /// The model lock is held only during encoder/decoder inference
     /// (~20-50 ms per 560 ms audio chunk).
+    ///
+    /// For the multilingual variant the new instance defaults to `auto`
+    /// (prompt index 101) — the model picks the language itself. Override
+    /// via [`Self::set_target_lang`] when you know the language; that's
+    /// strictly more accurate.
     pub fn from_shared(handle: &NemotronHandle) -> Self {
         let encoder_cache = NemotronEncoderCache::with_dims(
-            NUM_ENCODER_LAYERS,
-            LEFT_CONTEXT,
-            HIDDEN_DIM,
-            CONV_CONTEXT,
+            handle.num_encoder_layers,
+            handle.left_context,
+            handle.hidden_dim,
+            handle.conv_context,
         );
+
+        let prompt_index = match handle.mode {
+            NemotronMode::Multilingual => Some(101),
+            NemotronMode::EnglishOnly => None,
+        };
 
         Self {
             model: Arc::clone(&handle.model),
             vocab: Arc::clone(&handle.vocab),
             mel_basis: Arc::clone(&handle.mel_basis),
+            mode: handle.mode,
+            num_encoder_layers: handle.num_encoder_layers,
+            hidden_dim: handle.hidden_dim,
+            left_context: handle.left_context,
+            conv_context: handle.conv_context,
+            vocab_size: handle.vocab_size,
+            blank_id: handle.blank_id,
+            lang_tag_ids: Arc::clone(&handle.lang_tag_ids),
             encoder_cache,
-            state_1: Array3::zeros((2, 1, DECODER_LSTM_DIM)),
-            state_2: Array3::zeros((2, 1, DECODER_LSTM_DIM)),
-            last_token: BLANK_ID as i32,
+            state_1: Array3::zeros((handle.decoder_lstm_layers, 1, handle.decoder_lstm_dim)),
+            state_2: Array3::zeros((handle.decoder_lstm_layers, 1, handle.decoder_lstm_dim)),
+            last_token: handle.blank_id as i32,
+            prompt_index,
             audio_buffer: Vec::new(),
             audio_processed: 0,
             chunk_idx: 0,
@@ -302,30 +452,70 @@ impl Nemotron {
         }
     }
 
-    /// Reset all state for new utterance
+    /// Which variant this instance wraps.
+    pub fn mode(&self) -> NemotronMode {
+        self.mode
+    }
+
+    /// Set the target language for the multilingual model. Accepts any key
+    /// from [`NemotronHandle::available_languages`] (e.g. `"en-US"`, `"es-ES"`,
+    /// `"ja-JP"`, `"auto"` for language-agnostic decoding).
+    ///
+    /// **Quality note:** NVIDIA's model card documents 40 language-locales
+    /// across 3 tiers (transcription-ready, broad-coverage, adaptation-ready).
+    /// Adaptation-ready locales need fine-tuning for production quality.
+    /// The full prompt dictionary accepts additional codes (e.g. `qu-PE`,
+    /// `mi-NZ`, `haw-US`) that the model has prompt slots for but are not
+    /// in the model card — those will run, but accuracy is not guaranteed.
+    /// See: https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b
+    ///
+    /// Returns an error on the English-only variant or for an unknown language.
+    /// The new language takes effect on the next encoder call — for clean
+    /// switching mid-utterance you usually also want [`Self::reset`].
+    pub fn set_target_lang(&mut self, lang: &str) -> Result<()> {
+        if self.mode != NemotronMode::Multilingual {
+            return Err(Error::Config(
+                "set_target_lang is only available on the multilingual variant".into(),
+            ));
+        }
+        let idx = PROMPT_DICTIONARY
+            .iter()
+            .find_map(|(k, v)| (*k == lang).then_some(*v))
+            .ok_or_else(|| {
+                Error::Config(format!(
+                    "Unknown target language '{lang}'. Try one of: en-US, es-ES, de-DE, fr-FR, ja-JP, zh-CN, auto, ..."
+                ))
+            })?;
+        self.prompt_index = Some(idx);
+        Ok(())
+    }
+
+    /// Reset all state for new utterance. Preserves the configured target
+    /// language (call [`Self::set_target_lang`] again to change it).
     pub fn reset(&mut self) {
         self.encoder_cache = NemotronEncoderCache::with_dims(
-            NUM_ENCODER_LAYERS,
-            LEFT_CONTEXT,
-            HIDDEN_DIM,
-            CONV_CONTEXT,
+            self.num_encoder_layers,
+            self.left_context,
+            self.hidden_dim,
+            self.conv_context,
         );
         self.state_1.fill(0.0);
         self.state_2.fill(0.0);
-        self.last_token = BLANK_ID as i32;
+        self.last_token = self.blank_id as i32;
         self.audio_buffer.clear();
         self.audio_processed = 0;
         self.chunk_idx = 0;
         self.accumulated_tokens.clear();
     }
 
-    /// Get the full accumulated transcript
+    /// Get the full accumulated transcript. Language tag tokens (e.g. `<en-US>`)
+    /// emitted by the multilingual model are stripped.
     pub fn get_transcript(&self) -> String {
         let valid: Vec<usize> = self
             .accumulated_tokens
             .iter()
-            .filter(|&&t| t < VOCAB_SIZE)
             .copied()
+            .filter(|t| *t < self.vocab_size && !self.lang_tag_ids.contains(t))
             .collect();
         self.vocab.decode(&valid)
     }
@@ -394,7 +584,12 @@ impl Nemotron {
                 let mut model = self.model.lock().map_err(|e| {
                     Error::Model(format!("Failed to acquire model lock: {e}"))
                 })?;
-                model.run_encoder(&mel_chunk, chunk_length as i64, &self.encoder_cache)?
+                model.run_encoder(
+                    &mel_chunk,
+                    chunk_length as i64,
+                    &self.encoder_cache,
+                    self.prompt_index,
+                )?
             };
             self.encoder_cache = new_cache;
 
@@ -405,7 +600,10 @@ impl Nemotron {
             chunk_idx += 1;
         }
 
-        let valid_tokens: Vec<usize> = all_tokens.into_iter().filter(|&t| t < VOCAB_SIZE).collect();
+        let valid_tokens: Vec<usize> = all_tokens
+            .into_iter()
+            .filter(|t| *t < self.vocab_size && !self.lang_tag_ids.contains(t))
+            .collect();
 
         Ok(self.vocab.decode(&valid_tokens))
     }
@@ -486,7 +684,12 @@ impl Nemotron {
             let mut model = self.model.lock().map_err(|e| {
                 Error::Model(format!("Failed to acquire model lock: {e}"))
             })?;
-            model.run_encoder(&mel_chunk, expected_size as i64, &self.encoder_cache)?
+            model.run_encoder(
+                &mel_chunk,
+                expected_size as i64,
+                &self.encoder_cache,
+                self.prompt_index,
+            )?
         };
         self.encoder_cache = new_cache;
 
@@ -510,7 +713,7 @@ impl Nemotron {
 
         let mut result = String::new();
         for &t in &tokens {
-            if t < VOCAB_SIZE {
+            if t < self.vocab_size && !self.lang_tag_ids.contains(&t) {
                 result.push_str(&self.vocab.decode_single(t));
             }
         }
@@ -552,7 +755,7 @@ impl Nemotron {
                     }
                 }
 
-                if max_idx == BLANK_ID {
+                if max_idx == self.blank_id {
                     break;
                 }
 

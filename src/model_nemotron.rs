@@ -1,35 +1,22 @@
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use ndarray::{Array1, Array2, Array3, Array4};
-use ort::session::Session;
+use ort::session::{Session, SessionInputValue};
+use ort::value::ValueType;
+use std::borrow::Cow;
 use std::path::Path;
 
 /// Encoder cache state for Nemotron streaming inference.
+/// Shapes are model-dependent (English 0.6B uses left_context=70,
+/// multilingual 3.5 uses left_context=56) so always construct via [`NemotronEncoderCache::with_dims`].
 #[derive(Clone)]
 pub struct NemotronEncoderCache {
-    /// [24, 1, 70, 1024] - 24 layers, batch=1, 70 frame lookback, 1024 features
     pub cache_last_channel: Array4<f32>,
-    /// [24, 1, 1024, 8] - 24 layers, batch=1, 1024 features, 8 conv context
     pub cache_last_time: Array4<f32>,
-    /// [1] - current cache length
     pub cache_last_channel_len: Array1<i64>,
 }
 
-impl Default for NemotronEncoderCache {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl NemotronEncoderCache {
-    pub fn new() -> Self {
-        Self {
-            cache_last_channel: Array4::zeros((24, 1, 70, 1024)),
-            cache_last_time: Array4::zeros((24, 1, 1024, 8)),
-            cache_last_channel_len: Array1::from_vec(vec![0i64]),
-        }
-    }
-
     pub fn with_dims(
         num_layers: usize,
         left_context: usize,
@@ -45,11 +32,14 @@ impl NemotronEncoderCache {
 }
 
 /// Nemotron ONNX wrapper.
-/// we handle encoder and decoder_joint sessions separately.
+/// Encoder and decoder_joint sessions live side by side; [`Self::has_prompt`]
+/// flips on automatically when the encoder graph exposes a `prompt_index` input
+/// (the multilingual variant).
 pub struct NemotronModel {
     encoder: Session,
     decoder_joint: Session,
     pub config: NemotronModelConfig,
+    pub has_prompt: bool,
 }
 
 /// cfg for Nemotron model dims.
@@ -65,26 +55,17 @@ pub struct NemotronModelConfig {
     pub blank_id: usize,
 }
 
-impl Default for NemotronModelConfig {
-    fn default() -> Self {
-        Self {
-            num_encoder_layers: 24,
-            hidden_dim: 1024,
-            left_context: 70,
-            conv_context: 8,
-            decoder_lstm_dim: 640,
-            decoder_lstm_layers: 2,
-            vocab_size: 1024,
-            blank_id: 1024,
-        }
-    }
-}
-
 impl NemotronModel {
+    /// Load encoder + decoder/joint sessions and read all dimension info
+    /// straight from the encoder graph. `vocab_size` is supplied by the
+    /// caller (it comes from the tokenizer).
+    ///
+    /// Note that, multilang graph is identified by the presence of a
+    /// `prompt_index` input that flips [`Self::has_prompt`] on.
     pub fn from_pretrained<P: AsRef<Path>>(
         model_dir: P,
         exec_config: ExecutionConfig,
-        config: NemotronModelConfig,
+        vocab_size: usize,
     ) -> Result<Self> {
         let model_dir = model_dir.as_ref();
 
@@ -112,31 +93,75 @@ impl NemotronModel {
         let mut builder = exec_config.apply_to_session_builder(builder)?;
         let decoder_joint = builder.commit_from_file(&decoder_path)?;
 
+        let mut config = NemotronModelConfig {
+            num_encoder_layers: 24,
+            hidden_dim: 1024,
+            left_context: 70,
+            conv_context: 8,
+            decoder_lstm_dim: 640,
+            decoder_lstm_layers: 2,
+            vocab_size,
+            blank_id: vocab_size,
+        };
+
+        let mut has_prompt = false;
+        for outlet in encoder.inputs() {
+            let name = outlet.name();
+            if name == "prompt_index" {
+                has_prompt = true;
+                continue;
+            }
+            let ValueType::Tensor { shape, .. } = outlet.dtype() else { continue };
+            let dims: &[i64] = shape;
+            match name {
+                "cache_last_channel" if dims.len() == 4 => {
+                    config.num_encoder_layers = dims[0] as usize;
+                    config.left_context = dims[2] as usize;
+                    config.hidden_dim = dims[3] as usize;
+                }
+                "cache_last_time" if dims.len() == 4 => {
+                    config.conv_context = dims[3] as usize;
+                }
+                _ => {}
+            }
+        }
+
         Ok(Self {
             encoder,
             decoder_joint,
             config,
+            has_prompt,
         })
     }
 
     /// Run encoder with cache-aware streaming.
-    /// i: mel features [1, n_mels, time], cache state
-    /// o: (encoded [1, hidden_dim, time], new_cache)
+    /// `prompt_index` must be `Some(_)` for multilingual models and `None`
+    /// for eng only mistmaching will produce an ORT InvalidArgument err.
     pub fn run_encoder(
         &mut self,
         features: &Array3<f32>,
         length: i64,
         cache: &NemotronEncoderCache,
+        prompt_index: Option<i64>,
     ) -> Result<(Array3<f32>, i64, NemotronEncoderCache)> {
         let length_arr = Array1::from_vec(vec![length]);
 
-        let outputs = self.encoder.run(ort::inputs![
+        let mut inputs = ort::inputs![
             "processed_signal" => ort::value::Value::from_array(features.clone())?,
             "processed_signal_length" => ort::value::Value::from_array(length_arr)?,
             "cache_last_channel" => ort::value::Value::from_array(cache.cache_last_channel.clone())?,
             "cache_last_time" => ort::value::Value::from_array(cache.cache_last_time.clone())?,
             "cache_last_channel_len" => ort::value::Value::from_array(cache.cache_last_channel_len.clone())?
-        ])?;
+        ];
+        if let Some(idx) = prompt_index {
+            let prompt_arr = Array1::from_vec(vec![idx]);
+            inputs.push((
+                Cow::Borrowed("prompt_index"),
+                SessionInputValue::from(ort::value::Value::from_array(prompt_arr)?),
+            ));
+        }
+
+        let outputs = self.encoder.run(inputs)?;
 
         // [1, hidden_dim, time]
         let (shape, data) = outputs["encoded"]
