@@ -1,18 +1,41 @@
 /*
 Streaming ASR transcription (real-time, cache-aware stateful)
 
-Nemotron (default):
-cargo run --release --example streaming 6_speakers.wav
+Usage:
+  cargo run --release --example streaming <audio.wav>               # English Nemotron (./nemotron)
+  cargo run --release --example streaming <audio.wav> <lang>        # Multilingual Nemotron (./nemotron_multi)
+  cargo run --release --example streaming <audio.wav> eou           # EOU streaming (./fullstr)
 
-EOU:
-cargo run --release --example streaming 6_speakers.wav eou
+Examples:
+  cargo run --release --example streaming 6_speakers.wav            # English specialist
+  cargo run --release --example streaming swed.wav  sv-SE           # Swedish hint
+  cargo run --release --example streaming DENIZ.wav tr-TR           # Turkish hint
+  cargo run --release --example streaming clip.wav  auto            # let the model pick the lang
+  cargo run --release --example streaming 6_speakers.wav eou        # EOU model instead of Nemotron
+
+Any 2nd arg that is not literally `eou` is treated as a target language code
+(`en-US`, `es-ES`, `ja-JP`, `tr-TR`, `auto`, etc. see prompt_dictionary in
+src/nemotron.rs for the full list). If a lang is given, the example will load
+the multilingual model from ./nemotron_multi. With no lang, it loads the
+English-only ./nemotron.
 
 ---
 
-Nemotron (600M, 24 layers):
+Nemotron English-only (600M, 24 layers, vocab 1024):
 - Download: https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b
 - Files: encoder.onnx, encoder.onnx.data, decoder_joint.onnx, tokenizer.model
+- Expects path: ./nemotron
 - 560ms chunks
+
+Nemotron multilingual 3.5 (600M, 40 language-locales, vocab 13087):
+- 40 language-locales documented in NVIDIA's model card across 3 tiers
+  (19 transcription-ready, 13 broad-coverage, 8 adaptation-ready that need
+  fine-tuning). The prompt dictionary accepts more codes but those extras
+  are experimental and not in the model card.
+  https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b
+- Files in the same layout (encoder.onnx + .data, decoder_joint.onnx, tokenizer.model)
+- Expects path: ./nemotron_multi
+- Variant is auto-detected at load time — same `Nemotron::from_pretrained` call.
 
 EOU (120M, 17 layers):
 - Download: https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx
@@ -24,7 +47,7 @@ let reset_on_eou: bool = false;
 I must admit that this is not work very well on my real world tests :/
 */
 
-use parakeet_rs::{Nemotron, ParakeetEOU};
+use parakeet_rs::{Nemotron, NemotronMode, ParakeetEOU};
 use std::env;
 use std::io::Write;
 use std::time::Instant;
@@ -40,6 +63,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let use_eou = args.len() > 2 && args[2] == "eou";
+    // 3rd arg (if not "eou") is treated as target language for the multilingual Nemotron.
+    // Ignored for English-only model.
+    let target_lang: Option<&str> = if args.len() > 2 && args[2] != "eou" {
+        Some(args[2].as_str())
+    } else if args.len() > 3 {
+        Some(args[3].as_str())
+    } else {
+        None
+    };
 
     // Load audio
     let mut reader = hound::WavReader::open(audio_path)?;
@@ -112,9 +144,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Nemotron (default)
-    let mut model = Nemotron::from_pretrained("./nemotron", None)?;
+    // I use the lang hint as a signal here. If you bothered to pass one
+    // you obviously want the multilingual model, so I jump straight to
+    // ./nemotron_multi. With no hint, I default to the English specialist
+    // (more verbatim on English audio) and only fall back to the multilingual
+    // dir if that's the only one sitting on disk.
+    let model_dir = if target_lang.is_some() {
+        "./nemotron_multi"
+    } else if std::path::Path::new("./nemotron").is_dir() {
+        "./nemotron"
+    } else {
+        "./nemotron_multi"
+    };
+    let mut model = Nemotron::from_pretrained(model_dir, None)?;
     let chunk_size = 8960; // 560ms
+
+    match model.mode() {
+        NemotronMode::Multilingual => {
+            let lang = target_lang.unwrap_or("auto");
+            model.set_target_lang(lang)?;
+            println!("[multilingual model, target_lang={lang}]");
+        }
+        NemotronMode::EnglishOnly => {
+            if let Some(lang) = target_lang {
+                eprintln!("Warning: target_lang='{lang}' ignored, English-only model loaded");
+            }
+        }
+    }
 
     print!("Streaming: ");
 
