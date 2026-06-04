@@ -55,11 +55,22 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 }
 ```
 
-**Nemotron (Streaming)**: Cache-aware streaming ASR with punctuation
-```rust
-use parakeet_rs::Nemotron;
+**Nemotron (Streaming)**: Cache-aware streaming ASR with punctuation. Two variants share the same API — point `from_pretrained` at whatever directory holds the ONNX files and the loader auto-detects which variant it is:
 
-let mut model = Nemotron::from_pretrained("./nemotron", None)?;
+- **English-only 0.6B** — verbatim English, preserves disfluencies (`um`, `uh`). Best for transcription where every spoken word matters.
+- **Multilingual 3.5 0.6B** — [40 language-locales](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) across 3 tiers (19 transcription-ready, 13 broad-coverage, 8 that need fine-tuning to reach production quality based on the NVIDIA). Polished output (proper casing/punctuation, drops disfluencies). Same speed and size as the English-only model.
+
+```rust
+use parakeet_rs::{Nemotron, NemotronMode};
+
+let mut model = Nemotron::from_pretrained(path, None)?;
+
+// Multilingual variant: optionally pick a target language. Defaults to "auto"
+// (the model picks the language itself). Pass a specific code when you know
+// the language it's strictly more accurate. No-op when an English-only model is loaded.
+if model.mode() == NemotronMode::Multilingual {
+    model.set_target_lang("es-ES")?; // also: "ja-JP", "tr-TR", "auto", ...
+}
 
 // Process in 560ms chunks for streaming
 const CHUNK_SIZE: usize = 8960; // 560ms at 16kHz
@@ -141,7 +152,9 @@ See `scripts/export_diar_sortformer.py` for exporting the model with custom stre
 
 **EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`
 
-**Nemotron**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model` (*[int8](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int8) / [int4](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int4)*)
+**Nemotron (English-only)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model` (*[int8](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int8) / [int4](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int4)*)
+
+**Nemotron (Multilingual 3.5)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3.5-asr-streaming-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`. or export it yourself from the [base model](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) with `scripts/export_nemotron_streaming_multilingual.py`.
 
 **Unified**: Download from [HuggingFace](https://huggingface.co/bobNight/parakeet-unified-en-0.6b-onnx): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`
 
