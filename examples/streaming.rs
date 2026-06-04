@@ -28,11 +28,13 @@ Nemotron English-only (600M, 24 layers, vocab 1024):
 - 560ms chunks
 
 Nemotron multilingual 3.5 (600M, 40 language-locales, vocab 13087):
+- Download: https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3.5-asr-streaming-0.6b-onnx
+  (or export yourself from https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b
+  with scripts/export_nemotron_streaming_multilingual.py).
 - 40 language-locales documented in NVIDIA's model card across 3 tiers
   (19 transcription-ready, 13 broad-coverage, 8 adaptation-ready that need
   fine-tuning). The prompt dictionary accepts more codes but those extras
   are experimental and not in the model card.
-  https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b
 - Files in the same layout (encoder.onnx + .data, decoder_joint.onnx, tokenizer.model)
 - Expects path: ./nemotron_multi
 - Variant is auto-detected at load time — same `Nemotron::from_pretrained` call.

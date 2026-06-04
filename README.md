@@ -154,7 +154,7 @@ See `scripts/export_diar_sortformer.py` for exporting the model with custom stre
 
 **Nemotron (English-only)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model` (*[int8](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int8) / [int4](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int4)*)
 
-**Nemotron (Multilingual 3.5)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3.5-asr-streaming-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`. or export it yourself from the [base model](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) with `scripts/export_nemotron_streaming_multilingual.py`.
+**Nemotron (Multilingual 3.5)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3.5-asr-streaming-0.6b-onnx): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`. Or export it yourself from the [base model](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) with `scripts/export_nemotron_streaming_multilingual.py`.
 
 **Unified**: Download from [HuggingFace](https://huggingface.co/bobNight/parakeet-unified-en-0.6b-onnx): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`
 
