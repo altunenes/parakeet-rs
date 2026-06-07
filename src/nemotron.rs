@@ -1,6 +1,8 @@
+use crate::decoder::{TimedToken, TranscriptionResult};
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model_nemotron::{NemotronEncoderCache, NemotronModel};
+use crate::timestamps::{process_timestamps, rebuild_text, TimestampMode};
 use ndarray::{s, Array2, Array3};
 use std::fs::File;
 use std::io::Read;
@@ -24,9 +26,14 @@ const LOG_ZERO_GUARD: f32 = 5.960_464_5e-8;
 // both use chunk_size_output=7 in NeMo's streaming_cfg which corresponds to 56 mel frames).
 const CHUNK_SIZE: usize = 56;
 const PRE_ENCODE_CACHE: usize = 9;
+// FastConformer subsamples mel frames by 8x, so each encoder output frame spans
+// SUBSAMPLING_FACTOR * HOP_LENGTH audio samples (80ms at 16kHz). Used to convert
+// the encoder frame index of an emitted token into a wall-clock timestamp.
+const SUBSAMPLING_FACTOR: usize = 8;
 
 /// Token-level transcription output with its per-token log-probability.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct TokenInfo {
     /// Vocabulary id of the emitted (non-blank) token. `usize` to match the
     /// rest of this module (`decode_single`, `accumulated_tokens`, vocab ids).
@@ -36,6 +43,14 @@ pub struct TokenInfo {
     pub text: String,
     /// Log-softmax value of the chosen token over the full vocab logits.
     pub logprob: f32,
+    /// Encoder frame index at which this token was emitted (one frame spans
+    /// 80ms = `SUBSAMPLING_FACTOR * HOP_LENGTH / SAMPLE_RATE`). Used to derive
+    /// per-token timestamps. `decode_chunk_tokens` populates it chunk-local
+    /// (0-based); the offline `process_audio` path then rebases it to a global
+    /// index across the whole utterance, so `transcribe_audio_with_tokens` and
+    /// `transcribe_audio_with_timestamps` report absolute positions. The
+    /// streaming `process_chunk` path leaves it chunk-local.
+    pub local_frame: usize,
 }
 
 /// Numerically stable log-softmax value at `idx` over the full logits vector.
@@ -545,18 +560,32 @@ impl Nemotron {
 
     /// note that, offline transcription for testing/debugging and for some curious ppl :-). with following function too (transcribe_audio)
     pub fn transcribe_file<P: AsRef<Path>>(&mut self, audio_path: P) -> Result<String> {
-        let (audio, spec) = crate::audio::load_audio(audio_path)?;
+        let audio = Self::load_mono_file(audio_path)?;
+        self.transcribe_audio(&audio)
+    }
 
-        let audio = if spec.channels > 1 {
+    /// Transcribe an audio file (non-streaming) with token-level timestamps.
+    /// See [`Self::transcribe_audio_with_timestamps`] for the `mode` argument.
+    pub fn transcribe_file_with_timestamps<P: AsRef<Path>>(
+        &mut self,
+        audio_path: P,
+        mode: Option<TimestampMode>,
+    ) -> Result<TranscriptionResult> {
+        let audio = Self::load_mono_file(audio_path)?;
+        self.transcribe_audio_with_timestamps(&audio, mode)
+    }
+
+    /// Decode an audio file to mono f32 samples (averaging channels if needed).
+    fn load_mono_file<P: AsRef<Path>>(audio_path: P) -> Result<Vec<f32>> {
+        let (audio, spec) = crate::audio::load_audio(audio_path)?;
+        Ok(if spec.channels > 1 {
             audio
                 .chunks(spec.channels as usize)
                 .map(|c| c.iter().sum::<f32>() / spec.channels as f32)
                 .collect()
         } else {
             audio
-        };
-
-        self.transcribe_audio(&audio)
+        })
     }
 
     /// Transcribe audio samples (non-streaming)
@@ -578,6 +607,39 @@ impl Nemotron {
         self.process_audio(audio)
     }
 
+    /// Transcribe audio samples (non-streaming) with token-level timestamps.
+    ///
+    /// `mode` controls whether the returned `tokens` are raw model tokens,
+    /// grouped into words, or grouped into sentences (defaults to
+    /// [`TimestampMode::Tokens`]). Timing comes from the encoder frame each token
+    /// was emitted at (one frame is 80ms), so it is frame-accurate rather than
+    /// interpolated. Language-tag and out-of-vocabulary tokens are filtered out.
+    pub fn transcribe_audio_with_timestamps(
+        &mut self,
+        audio: &[f32],
+        mode: Option<TimestampMode>,
+    ) -> Result<TranscriptionResult> {
+        let frame_seconds = (SUBSAMPLING_FACTOR * HOP_LENGTH) as f32 / SAMPLE_RATE as f32;
+        let raw_tokens: Vec<TimedToken> = self
+            .process_audio(audio)?
+            .into_iter()
+            .filter(|t| t.id < self.vocab_size && !self.lang_tag_ids.contains(&t.id))
+            .map(|t| {
+                let start = t.local_frame as f32 * frame_seconds;
+                TimedToken {
+                    text: t.text,
+                    start,
+                    end: start + frame_seconds,
+                }
+            })
+            .collect();
+
+        let mode = mode.unwrap_or(TimestampMode::Tokens);
+        let tokens = process_timestamps(&raw_tokens, mode);
+        let text = rebuild_text(&tokens, mode);
+        Ok(TranscriptionResult { text, tokens })
+    }
+
     /// Shared offline decode: runs the full chunk loop and returns every
     /// emitted token. `transcribe_audio` filters + joins these into a string.
     fn process_audio(&mut self, audio: &[f32]) -> Result<Vec<TokenInfo>> {
@@ -593,6 +655,9 @@ impl Nemotron {
         let mut all_tokens: Vec<TokenInfo> = Vec::new();
         let mut buffer_idx = 0;
         let mut chunk_idx = 0;
+        // Running count of encoder frames consumed by previous chunks. Added to
+        // each token's chunk-local frame so `local_frame` becomes a global index.
+        let mut encoder_frame_base = 0usize;
 
         while buffer_idx < total_frames {
             let chunk_end = (buffer_idx + CHUNK_SIZE).min(total_frames);
@@ -636,9 +701,14 @@ impl Nemotron {
             };
             self.encoder_cache = new_cache;
 
-            let new_tokens = self.decode_chunk_tokens(&encoded, enc_len as usize)?;
+            let mut new_tokens = self.decode_chunk_tokens(&encoded, enc_len as usize)?;
+            // Rebase chunk-local frame indices onto the global timeline.
+            for token in &mut new_tokens {
+                token.local_frame += encoder_frame_base;
+            }
             all_tokens.extend(new_tokens);
 
+            encoder_frame_base += enc_len as usize;
             buffer_idx += CHUNK_SIZE;
             chunk_idx += 1;
         }
@@ -830,6 +900,7 @@ impl Nemotron {
                     id: max_idx,
                     text: self.vocab.decode_single(max_idx),
                     logprob,
+                    local_frame: t,
                 });
                 self.last_token = max_idx as i32;
                 self.state_1 = new_state_1;
@@ -863,6 +934,15 @@ mod tests {
     /// Max logit, as the decode loop computes it before calling `log_softmax_at`.
     fn max_logit(logits: &[f32]) -> f32 {
         logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max)
+    }
+
+    #[test]
+    fn frame_to_seconds_is_eighty_ms() {
+        // Guards against accidental drift in the subsampling/hop/sample-rate
+        // constants that feed per-token timestamp timing.
+        let frame_seconds = (SUBSAMPLING_FACTOR * HOP_LENGTH) as f32 / SAMPLE_RATE as f32;
+        assert!((frame_seconds - 0.08).abs() < 1e-6);
+        assert!((7.0 * frame_seconds - 0.56).abs() < 1e-6);
     }
 
     #[test]

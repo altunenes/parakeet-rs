@@ -48,6 +48,47 @@ pub fn process_timestamps(tokens: &[TimedToken], mode: TimestampMode) -> Vec<Tim
     }
 }
 
+/// Rebuild a flat transcript string from mode-grouped tokens.
+///
+/// Shared by every timestamped transcribe path so spacing/punctuation rules
+/// live in one place:
+/// - `Tokens`: concatenate raw SentencePiece pieces and trim.
+/// - `Words`: join words with single spaces, attaching standalone punctuation
+///   (".", ",", etc.) to the preceding word with no leading space.
+/// - `Sentences`: join sentence strings with single spaces.
+///
+/// Expects `tokens` to already be at the requested granularity (i.e. the output
+/// of [`process_timestamps`] for the same `mode`).
+pub fn rebuild_text(tokens: &[TimedToken], mode: TimestampMode) -> String {
+    match mode {
+        TimestampMode::Tokens => tokens
+            .iter()
+            .map(|t| t.text.as_str())
+            .collect::<String>()
+            .trim()
+            .to_string(),
+        TimestampMode::Words => {
+            let mut out = String::new();
+            for (i, word) in tokens.iter().map(|t| t.text.as_str()).enumerate() {
+                let is_standalone_punct = word.len() == 1
+                    && word
+                        .chars()
+                        .all(|c| matches!(c, '.' | ',' | '!' | '?' | ';' | ':' | ')'));
+                if i > 0 && !is_standalone_punct {
+                    out.push(' ');
+                }
+                out.push_str(word);
+            }
+            out
+        }
+        TimestampMode::Sentences => tokens
+            .iter()
+            .map(|t| t.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" "),
+    }
+}
+
 // Group tokens into words based on word boundary markers
 pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
     if tokens.is_empty() {
