@@ -5,7 +5,7 @@ use crate::decoder_tdt::ParakeetTDTDecoder;
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model_tdt::ParakeetTDTModel;
-use crate::timestamps::{process_timestamps, TimestampMode};
+use crate::timestamps::{process_timestamps, rebuild_text, TimestampMode};
 use crate::transcriber::Transcriber;
 use crate::vocab::Vocabulary;
 use std::path::{Path, PathBuf};
@@ -119,35 +119,7 @@ impl Transcriber for ParakeetTDT {
         result.tokens = process_timestamps(&result.tokens, mode);
 
         // Rebuild full text from processed tokens
-        result.text = if mode == TimestampMode::Tokens {
-            result
-                .tokens
-                .iter()
-                .map(|t| t.text.as_str())
-                .collect::<String>()
-                .trim()
-                .to_string()
-        } else if mode == TimestampMode::Words {
-            let mut out = String::new();
-            for (i, word) in result.tokens.iter().map(|t| t.text.as_str()).enumerate() {
-                let is_standalone_punct = word.len() == 1
-                    && word
-                        .chars()
-                        .all(|c| matches!(c, '.' | ',' | '!' | '?' | ';' | ':' | ')'));
-                if i > 0 && !is_standalone_punct {
-                    out.push(' ');
-                }
-                out.push_str(word);
-            }
-            out
-        } else {
-            result
-                .tokens
-                .iter()
-                .map(|t| t.text.as_str())
-                .collect::<Vec<_>>()
-                .join(" ")
-        };
+        result.text = rebuild_text(&result.tokens, mode);
 
         Ok(result)
     }
