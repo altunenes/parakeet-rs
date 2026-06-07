@@ -88,7 +88,7 @@ pub use model::ParakeetModel;
 pub use model_eou::ParakeetEOUModel;
 pub use model_nemotron::{NemotronEncoderCache, NemotronModel, NemotronModelConfig};
 pub use model_unified::{ParakeetUnifiedModel, UnifiedModelConfig};
-pub use nemotron::{Nemotron, NemotronHandle, NemotronMode, SentencePieceVocab};
+pub use nemotron::{Nemotron, NemotronHandle, NemotronMode, SentencePieceVocab, TokenInfo};
 pub use parakeet_eou::{ParakeetEOU, ParakeetEOUHandle};
 pub use parakeet_unified::{ParakeetUnified, ParakeetUnifiedHandle, UnifiedStreamingConfig};
 

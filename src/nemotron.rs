@@ -25,6 +25,29 @@ const LOG_ZERO_GUARD: f32 = 5.960_464_5e-8;
 const CHUNK_SIZE: usize = 56;
 const PRE_ENCODE_CACHE: usize = 9;
 
+/// Token-level transcription output with its per-token log-probability.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TokenInfo {
+    /// Vocabulary id of the emitted (non-blank) token. `usize` to match the
+    /// rest of this module (`decode_single`, `accumulated_tokens`, vocab ids).
+    pub id: usize,
+    /// Decoded SentencePiece piece for this id. For the multilingual variant
+    /// language-tag pieces (e.g. `<en-US>`) are returned verbatim, not stripped.
+    pub text: String,
+    /// Log-softmax value of the chosen token over the full vocab logits.
+    pub logprob: f32,
+}
+
+/// Numerically stable log-softmax value at `idx` over the full logits vector.
+///
+/// `max_logit` is the maximum logit, which the greedy decode loop already
+/// computes while taking the argmax — passing it in lets us walk the logits
+/// just once more (the exp-sum) instead of a second max pass.
+fn log_softmax_at(logits: &[f32], idx: usize, max_logit: f32) -> f32 {
+    let lse = max_logit + logits.iter().map(|x| (x - max_logit).exp()).sum::<f32>().ln();
+    logits[idx] - lse
+}
+
 /// Language → prompt embedding index for the multilingual model. Mirrors
 /// `cfg.model_defaults.prompt_dictionary` from the .nemo. Embedded here so
 /// we don't require a sidecar `config.json` next to the ONNX files.
@@ -538,16 +561,36 @@ impl Nemotron {
 
     /// Transcribe audio samples (non-streaming)
     pub fn transcribe_audio(&mut self, audio: &[f32]) -> Result<String> {
+        let tokens = self.process_audio(audio)?;
+        let valid: Vec<usize> = tokens
+            .iter()
+            .map(|t| t.id)
+            .filter(|t| *t < self.vocab_size && !self.lang_tag_ids.contains(t))
+            .collect();
+        Ok(self.vocab.decode(&valid))
+    }
+
+    /// Offline companion to [`Self::transcribe_audio`] returning per-token
+    /// information (id, decoded text, log-probability) instead of a joined
+    /// string. Every emitted token is included; language-tag tokens (e.g.
+    /// `<en-US>`) are NOT stripped, so callers can inspect or filter them.
+    pub fn transcribe_audio_with_tokens(&mut self, audio: &[f32]) -> Result<Vec<TokenInfo>> {
+        self.process_audio(audio)
+    }
+
+    /// Shared offline decode: runs the full chunk loop and returns every
+    /// emitted token. `transcribe_audio` filters + joins these into a string.
+    fn process_audio(&mut self, audio: &[f32]) -> Result<Vec<TokenInfo>> {
         self.reset();
 
         let mel = self.compute_mel_spectrogram(audio)?;
         let total_frames = mel.shape()[1];
 
         if total_frames == 0 {
-            return Ok(String::new());
+            return Ok(Vec::new());
         }
 
-        let mut all_tokens: Vec<usize> = Vec::new();
+        let mut all_tokens: Vec<TokenInfo> = Vec::new();
         let mut buffer_idx = 0;
         let mut chunk_idx = 0;
 
@@ -593,19 +636,14 @@ impl Nemotron {
             };
             self.encoder_cache = new_cache;
 
-            let new_tokens = self.decode_chunk(&encoded, enc_len as usize)?;
+            let new_tokens = self.decode_chunk_tokens(&encoded, enc_len as usize)?;
             all_tokens.extend(new_tokens);
 
             buffer_idx += CHUNK_SIZE;
             chunk_idx += 1;
         }
 
-        let valid_tokens: Vec<usize> = all_tokens
-            .into_iter()
-            .filter(|t| *t < self.vocab_size && !self.lang_tag_ids.contains(t))
-            .collect();
-
-        Ok(self.vocab.decode(&valid_tokens))
+        Ok(all_tokens)
     }
 
     /// Stream transcribe a chunk of audio (call repeatedly for real-time).
@@ -613,6 +651,31 @@ impl Nemotron {
     /// This buffers raw audio and computes mel spectrograms over the full buffer
     /// to avoid edge effects at chunk boundaries.
     pub fn transcribe_chunk(&mut self, audio_chunk: &[f32]) -> Result<String> {
+        let tokens = self.process_chunk(audio_chunk)?;
+        let mut result = String::new();
+        for t in &tokens {
+            if t.id < self.vocab_size && !self.lang_tag_ids.contains(&t.id) {
+                result.push_str(&t.text);
+            }
+        }
+        Ok(result)
+    }
+
+    /// Streaming companion to [`Self::transcribe_chunk`] returning per-token
+    /// information (id, decoded text, log-probability) instead of a joined
+    /// string. Every emitted token is included; language-tag tokens (e.g.
+    /// `<en-US>`) are NOT stripped, so callers can inspect or filter them.
+    pub fn transcribe_chunk_with_tokens(
+        &mut self,
+        audio_chunk: &[f32],
+    ) -> Result<Vec<TokenInfo>> {
+        self.process_chunk(audio_chunk)
+    }
+
+    /// Shared streaming decode: buffers audio, runs the encoder/decoder for any
+    /// ready chunk, accumulates token ids, and returns this call's emitted
+    /// tokens. `transcribe_chunk` filters + joins these into a string.
+    fn process_chunk(&mut self, audio_chunk: &[f32]) -> Result<Vec<TokenInfo>> {
         // Append raw audio to buffer
         self.audio_buffer.extend_from_slice(audio_chunk);
 
@@ -621,7 +684,7 @@ impl Nemotron {
         // For center=true padding, we need at least win_length samples to get 1 frame
         let total_audio = self.audio_buffer.len();
         if total_audio < WIN_LENGTH {
-            return Ok(String::new());
+            return Ok(Vec::new());
         }
 
         // Compute mel spectrogram over the ENTIRE audio buffer
@@ -635,7 +698,7 @@ impl Nemotron {
         // Check if we have enough NEW frames to process a chunk
         let available_new_frames = total_mel_frames.saturating_sub(processed_mel_frames);
         if available_new_frames < CHUNK_SIZE {
-            return Ok(String::new());
+            return Ok(Vec::new());
         }
 
         // Build encoder input chunk
@@ -693,8 +756,10 @@ impl Nemotron {
         };
         self.encoder_cache = new_cache;
 
-        let tokens = self.decode_chunk(&encoded, enc_len as usize)?;
-        self.accumulated_tokens.extend(&tokens);
+        let tokens = self.decode_chunk_tokens(&encoded, enc_len as usize)?;
+        // Store all emitted ids unfiltered; `get_transcript` strips lang tags
+        // and out-of-vocab ids at read time.
+        self.accumulated_tokens.extend(tokens.iter().map(|t| t.id));
 
         // Advance processed position
         self.audio_processed += CHUNK_SIZE * HOP_LENGTH;
@@ -711,16 +776,14 @@ impl Nemotron {
             self.audio_processed -= actual_remove;
         }
 
-        let mut result = String::new();
-        for &t in &tokens {
-            if t < self.vocab_size && !self.lang_tag_ids.contains(&t) {
-                result.push_str(&self.vocab.decode_single(t));
-            }
-        }
-        Ok(result)
+        Ok(tokens)
     }
 
-    fn decode_chunk(&mut self, encoder_out: &Array3<f32>, enc_frames: usize) -> Result<Vec<usize>> {
+    fn decode_chunk_tokens(
+        &mut self,
+        encoder_out: &Array3<f32>,
+        enc_frames: usize,
+    ) -> Result<Vec<TokenInfo>> {
         let mut tokens = Vec::new();
         let hidden_dim = encoder_out.shape()[1];
         let max_symbols_per_step = 10;
@@ -759,7 +822,15 @@ impl Nemotron {
                     break;
                 }
 
-                tokens.push(max_idx);
+                let logits_slice = logits
+                    .as_slice()
+                    .ok_or_else(|| Error::Model("non-contiguous logits".into()))?;
+                let logprob = log_softmax_at(logits_slice, max_idx, max_val);
+                tokens.push(TokenInfo {
+                    id: max_idx,
+                    text: self.vocab.decode_single(max_idx),
+                    logprob,
+                });
                 self.last_token = max_idx as i32;
                 self.state_1 = new_state_1;
                 self.state_2 = new_state_2;
@@ -782,5 +853,52 @@ impl Nemotron {
         let mel = self.mel_basis.dot(&spec);
 
         Ok(mel.mapv(|x| (x + LOG_ZERO_GUARD).ln()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Max logit, as the decode loop computes it before calling `log_softmax_at`.
+    fn max_logit(logits: &[f32]) -> f32 {
+        logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max)
+    }
+
+    #[test]
+    fn log_softmax_is_finite_and_non_positive() {
+        let logits = [2.0f32, -1.0, 0.5, 3.5, -4.0];
+        let m = max_logit(&logits);
+        for idx in 0..logits.len() {
+            let lp = log_softmax_at(&logits, idx, m);
+            assert!(lp.is_finite(), "logprob at {idx} must be finite");
+            assert!(lp <= 0.0, "log-probability must be <= 0, got {lp}");
+        }
+    }
+
+    #[test]
+    fn log_softmax_peaks_at_argmax() {
+        let logits = [2.0f32, -1.0, 0.5, 3.5, -4.0];
+        let m = max_logit(&logits);
+        let argmax = 3; // 3.5 is the largest
+        let best = log_softmax_at(&logits, argmax, m);
+        for idx in 0..logits.len() {
+            if idx != argmax {
+                assert!(
+                    log_softmax_at(&logits, idx, m) <= best,
+                    "no token may exceed the argmax log-probability"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn log_softmax_sums_to_one() {
+        let logits = [2.0f32, -1.0, 0.5, 3.5, -4.0];
+        let m = max_logit(&logits);
+        let total: f32 = (0..logits.len())
+            .map(|idx| log_softmax_at(&logits, idx, m).exp())
+            .sum();
+        assert!((total - 1.0).abs() < 1e-5, "probabilities must sum to 1, got {total}");
     }
 }
