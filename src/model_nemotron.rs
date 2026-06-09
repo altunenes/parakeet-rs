@@ -1,5 +1,8 @@
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
+use crate::tensor_utils::{
+    extract_1d_i64, extract_3d_f32, extract_4d_f32, extract_flat_f32, extract_scalar_i64,
+};
 use ndarray::{Array1, Array2, Array3, Array4};
 use ort::session::{Session, SessionInputValue};
 use ort::value::ValueType;
@@ -85,13 +88,8 @@ impl NemotronModel {
             )));
         }
 
-        let builder = Session::builder()?;
-        let mut builder = exec_config.apply_to_session_builder(builder)?;
-        let encoder = builder.commit_from_file(&encoder_path)?;
-
-        let builder = Session::builder()?;
-        let mut builder = exec_config.apply_to_session_builder(builder)?;
-        let decoder_joint = builder.commit_from_file(&decoder_path)?;
+        let encoder = exec_config.build_session(&encoder_path)?;
+        let decoder_joint = exec_config.build_session(&decoder_path)?;
 
         let mut config = NemotronModelConfig {
             num_encoder_layers: 24,
@@ -164,64 +162,19 @@ impl NemotronModel {
         let outputs = self.encoder.run(inputs)?;
 
         // [1, hidden_dim, time]
-        let (shape, data) = outputs["encoded"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract encoder output: {e}")))?;
-
-        let shape_dims = shape.as_ref();
-        let b = shape_dims[0] as usize;
-        let d = shape_dims[1] as usize;
-        let t = shape_dims[2] as usize;
-
-        let encoder_out = Array3::from_shape_vec((b, d, t), data.to_vec())
-            .map_err(|e| Error::Model(format!("Failed to reshape encoder output: {e}")))?;
-
-        // on here we are extracting encoded length and new cache states.. and so on...
-        let (_, enc_len_data) = outputs["encoded_len"]
-            .try_extract_tensor::<i64>()
-            .map_err(|e| Error::Model(format!("Failed to extract encoded_len: {e}")))?;
-        let encoded_len = enc_len_data[0];
-
-        let (ch_shape, ch_data) = outputs["cache_last_channel_next"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract cache_last_channel: {e}")))?;
-
-        let (tm_shape, tm_data) = outputs["cache_last_time_next"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract cache_last_time: {e}")))?;
-
-        let (len_shape, len_data) = outputs["cache_last_channel_len_next"]
-            .try_extract_tensor::<i64>()
-            .map_err(|e| Error::Model(format!("Failed to extract cache_len: {e}")))?;
+        let encoder_out = extract_3d_f32(&outputs["encoded"], "encoder output")?;
+        let encoded_len = extract_scalar_i64(&outputs["encoded_len"], "encoded_len")?;
 
         let new_cache = NemotronEncoderCache {
-            cache_last_channel: Array4::from_shape_vec(
-                (
-                    ch_shape[0] as usize,
-                    ch_shape[1] as usize,
-                    ch_shape[2] as usize,
-                    ch_shape[3] as usize,
-                ),
-                ch_data.to_vec(),
-            )
-            .map_err(|e| Error::Model(format!("Failed to reshape cache_last_channel: {e}")))?,
-
-            cache_last_time: Array4::from_shape_vec(
-                (
-                    tm_shape[0] as usize,
-                    tm_shape[1] as usize,
-                    tm_shape[2] as usize,
-                    tm_shape[3] as usize,
-                ),
-                tm_data.to_vec(),
-            )
-            .map_err(|e| Error::Model(format!("Failed to reshape cache_last_time: {e}")))?,
-
-            cache_last_channel_len: Array1::from_shape_vec(
-                len_shape[0] as usize,
-                len_data.to_vec(),
-            )
-            .map_err(|e| Error::Model(format!("Failed to reshape cache_len: {e}")))?,
+            cache_last_channel: extract_4d_f32(
+                &outputs["cache_last_channel_next"],
+                "cache_last_channel",
+            )?,
+            cache_last_time: extract_4d_f32(&outputs["cache_last_time_next"], "cache_last_time")?,
+            cache_last_channel_len: extract_1d_i64(
+                &outputs["cache_last_channel_len_next"],
+                "cache_len",
+            )?,
         };
 
         Ok((encoder_out, encoded_len, new_cache))
@@ -248,40 +201,9 @@ impl NemotronModel {
             "input_states_2" => ort::value::Value::from_array(state_2.clone())?
         ])?;
 
-        // logits for others I think you can understand by looking at the error msgs right?
-        let (_l_shape, l_data) = outputs["outputs"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
-
-        let logits = Array1::from_vec(l_data.to_vec());
-
-        let (h_shape, h_data) = outputs["output_states_1"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract state_1: {e}")))?;
-
-        let (c_shape, c_data) = outputs["output_states_2"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract state_2: {e}")))?;
-
-        let new_state_1 = Array3::from_shape_vec(
-            (
-                h_shape[0] as usize,
-                h_shape[1] as usize,
-                h_shape[2] as usize,
-            ),
-            h_data.to_vec(),
-        )
-        .map_err(|e| Error::Model(format!("Failed to reshape state_1: {e}")))?;
-
-        let new_state_2 = Array3::from_shape_vec(
-            (
-                c_shape[0] as usize,
-                c_shape[1] as usize,
-                c_shape[2] as usize,
-            ),
-            c_data.to_vec(),
-        )
-        .map_err(|e| Error::Model(format!("Failed to reshape state_2: {e}")))?;
+        let logits = extract_flat_f32(&outputs["outputs"], "logits")?;
+        let new_state_1 = extract_3d_f32(&outputs["output_states_1"], "state_1")?;
+        let new_state_2 = extract_3d_f32(&outputs["output_states_2"], "state_2")?;
 
         Ok((logits, new_state_1, new_state_2))
     }

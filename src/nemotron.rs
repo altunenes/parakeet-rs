@@ -303,8 +303,9 @@ impl SentencePieceVocab {
 /// Shared handle to a loaded Nemotron model.
 /// ONNX session is only loaded once and reference counted.
 ///
-/// Use [`NemotronHandle::load`] to load from disk, then [`Nemotron::from_shared`]
-/// to spawn each stream with its own independent decoder state.
+/// Use [`NemotronHandle::from_pretrained`] to load from disk, then
+/// [`Nemotron::from_shared`] to spawn each stream with its own independent
+/// decoder state.
 /// Variant is auto-detected: both the en only 0.6B and the multi lang
 /// 3.5 0.6B drop into the same type.
 #[derive(Clone)]
@@ -330,7 +331,7 @@ pub struct NemotronHandle {
 ///
 /// For a single stream, use [`Nemotron::from_pretrained`]. For multiple
 /// concurrent streams (e.g. mic + system audio) sharing one loaded model,
-/// use [`NemotronHandle::load`] followed by [`Nemotron::from_shared`].
+/// use [`NemotronHandle::from_pretrained`] followed by [`Nemotron::from_shared`].
 ///
 /// For the multilingual variant call [`Nemotron::set_target_lang`] before
 /// transcribing if you know the language; otherwise it defaults to `auto`
@@ -372,7 +373,7 @@ impl NemotronHandle {
     /// The returned handle is cheap to clone and can be used to spawn any
     /// number of [`Nemotron`] instances via [`Nemotron::from_shared`], each
     /// with its own independent decoder state.
-    pub fn load<P: AsRef<Path>>(
+    pub fn from_pretrained<P: AsRef<Path>>(
         path: P,
         exec_config: Option<ExecutionConfig>,
     ) -> Result<Self> {
@@ -414,6 +415,14 @@ impl NemotronHandle {
         })
     }
 
+    /// Backwards-compatible alias for [`NemotronHandle::from_pretrained`].
+    pub fn load<P: AsRef<Path>>(
+        path: P,
+        exec_config: Option<ExecutionConfig>,
+    ) -> Result<Self> {
+        Self::from_pretrained(path, exec_config)
+    }
+
     /// Which variant this handle wraps (auto detected at load time).
     pub fn mode(&self) -> NemotronMode {
         self.mode
@@ -434,12 +443,15 @@ impl Nemotron {
     /// Convenience wrapper for the single-stream case.
     ///
     /// For multiple concurrent streams sharing one loaded model, use
-    /// [`NemotronHandle::load`] + [`Nemotron::from_shared`] instead.
+    /// [`NemotronHandle::from_pretrained`] + [`Nemotron::from_shared`] instead.
     pub fn from_pretrained<P: AsRef<Path>>(
         path: P,
         exec_config: Option<ExecutionConfig>,
     ) -> Result<Self> {
-        Ok(Self::from_shared(&NemotronHandle::load(path, exec_config)?))
+        Ok(Self::from_shared(&NemotronHandle::from_pretrained(
+            path,
+            exec_config,
+        )?))
     }
 
     /// Spawn a new Nemotron instance bound to a shared model.
@@ -879,14 +891,8 @@ impl Nemotron {
                     &self.state_2,
                 )?;
 
-                let mut max_idx = 0;
-                let mut max_val = f32::NEG_INFINITY;
-                for (i, &v) in logits.iter().enumerate() {
-                    if v > max_val {
-                        max_val = v;
-                        max_idx = i;
-                    }
-                }
+                let (max_idx, max_val) =
+                    crate::tensor_utils::argmax_f32(logits.iter().copied());
 
                 if max_idx == self.blank_id {
                     break;
