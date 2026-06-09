@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
+use crate::tensor_utils::{extract_3d_f32, extract_flat_f32, extract_scalar_i64};
 use ndarray::{Array1, Array2, Array3};
 use ort::session::Session;
 use std::path::{Path, PathBuf};
@@ -41,13 +42,8 @@ impl ParakeetUnifiedModel {
         let encoder_path = Self::find_encoder(model_dir)?;
         let decoder_joint_path = Self::find_decoder_joint(model_dir)?;
 
-        let builder = Session::builder()?;
-        let mut builder = exec_config.apply_to_session_builder(builder)?;
-        let encoder = builder.commit_from_file(&encoder_path)?;
-
-        let builder = Session::builder()?;
-        let mut builder = exec_config.apply_to_session_builder(builder)?;
-        let decoder_joint = builder.commit_from_file(&decoder_joint_path)?;
+        let encoder = exec_config.build_session(&encoder_path)?;
+        let decoder_joint = exec_config.build_session(&decoder_joint_path)?;
 
         Ok(Self {
             encoder,
@@ -107,28 +103,10 @@ impl ParakeetUnifiedModel {
             "length" => ort::value::Value::from_array(input_length)?
         ))?;
 
-        let (shape, data) = outputs["outputs"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract encoder output: {e}")))?;
+        let encoder_out = extract_3d_f32(&outputs["outputs"], "encoder output")?;
+        let encoded_len = extract_scalar_i64(&outputs["encoded_lengths"], "encoder lengths")?;
 
-        let (_, lens_data) = outputs["encoded_lengths"]
-            .try_extract_tensor::<i64>()
-            .map_err(|e| Error::Model(format!("Failed to extract encoder lengths: {e}")))?;
-
-        let dims = shape.as_ref();
-        if dims.len() != 3 {
-            return Err(Error::Model(format!(
-                "Expected 3D encoder output, got shape: {dims:?}"
-            )));
-        }
-
-        let encoder_out = Array3::from_shape_vec(
-            (dims[0] as usize, dims[1] as usize, dims[2] as usize),
-            data.to_vec(),
-        )
-        .map_err(|e| Error::Model(format!("Failed to create encoder array: {e}")))?;
-
-        Ok((encoder_out, lens_data[0]))
+        Ok((encoder_out, encoded_len))
     }
 
     pub fn run_decoder(
@@ -149,38 +127,9 @@ impl ParakeetUnifiedModel {
             "input_states_2" => ort::value::Value::from_array(state_2.clone())?
         ])?;
 
-        let (_, logits_data) = outputs["outputs"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
-
-        let logits = Array1::from_vec(logits_data.to_vec());
-
-        let (h_shape, h_data) = outputs["output_states_1"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract state_1: {e}")))?;
-        let (c_shape, c_data) = outputs["output_states_2"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract state_2: {e}")))?;
-
-        let new_state_1 = Array3::from_shape_vec(
-            (
-                h_shape[0] as usize,
-                h_shape[1] as usize,
-                h_shape[2] as usize,
-            ),
-            h_data.to_vec(),
-        )
-        .map_err(|e| Error::Model(format!("Failed to reshape state_1: {e}")))?;
-
-        let new_state_2 = Array3::from_shape_vec(
-            (
-                c_shape[0] as usize,
-                c_shape[1] as usize,
-                c_shape[2] as usize,
-            ),
-            c_data.to_vec(),
-        )
-        .map_err(|e| Error::Model(format!("Failed to reshape state_2: {e}")))?;
+        let logits = extract_flat_f32(&outputs["outputs"], "logits")?;
+        let new_state_1 = extract_3d_f32(&outputs["output_states_1"], "state_1")?;
+        let new_state_2 = extract_3d_f32(&outputs["output_states_2"], "state_2")?;
 
         Ok((logits, new_state_1, new_state_2))
     }
