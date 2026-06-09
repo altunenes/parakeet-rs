@@ -69,6 +69,7 @@ pub mod multitalker;
 mod model_cohere;
 #[cfg(feature = "cohere")]
 pub mod cohere;
+mod tensor_utils;
 mod timestamps;
 mod transcriber;
 mod vocab;
