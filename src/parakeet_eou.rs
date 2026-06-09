@@ -19,7 +19,7 @@ const FMAX: f32 = 8000.0;
 /// Shared handle to a loaded ParakeetEOU model.
 /// The ONNX session is loaded once and reference-counted.
 ///
-/// Use [`ParakeetEOUHandle::load`] to load from disk, then
+/// Use [`ParakeetEOUHandle::from_pretrained`] to load from disk, then
 /// [`ParakeetEOU::from_shared`] to spawn each stream with its own decoder state.
 #[derive(Clone)]
 pub struct ParakeetEOUHandle {
@@ -34,8 +34,8 @@ pub struct ParakeetEOUHandle {
 /// Uses cache-aware streaming with audio buffering for pre-encode context.
 ///
 /// For a single stream use [`ParakeetEOU::from_pretrained`]. For multiple
-/// concurrent streams sharing one loaded model, use [`ParakeetEOUHandle::load`]
-/// followed by [`ParakeetEOU::from_shared`].
+/// concurrent streams sharing one loaded model, use
+/// [`ParakeetEOUHandle::from_pretrained`] followed by [`ParakeetEOU::from_shared`].
 pub struct ParakeetEOU {
     model: Arc<Mutex<ParakeetEOUModel>>,
     tokenizer: Arc<tokenizers::Tokenizer>,
@@ -56,7 +56,10 @@ impl ParakeetEOUHandle {
     /// Required files:
     /// - `encoder.onnx`, `decoder_joint.onnx`
     /// - `tokenizer.json`
-    pub fn load<P: AsRef<Path>>(path: P, config: Option<ExecutionConfig>) -> Result<Self> {
+    pub fn from_pretrained<P: AsRef<Path>>(
+        path: P,
+        config: Option<ExecutionConfig>,
+    ) -> Result<Self> {
         let path = path.as_ref();
         let tokenizer_path = path.join("tokenizer.json");
         let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
@@ -82,6 +85,11 @@ impl ParakeetEOUHandle {
             eou_id,
         })
     }
+
+    /// Backwards-compatible alias for [`ParakeetEOUHandle::from_pretrained`].
+    pub fn load<P: AsRef<Path>>(path: P, config: Option<ExecutionConfig>) -> Result<Self> {
+        Self::from_pretrained(path, config)
+    }
 }
 
 impl ParakeetEOU {
@@ -89,12 +97,14 @@ impl ParakeetEOU {
     /// Convenience wrapper for the single-stream case.
     ///
     /// For multiple concurrent streams sharing one loaded model, use
-    /// [`ParakeetEOUHandle::load`] + [`ParakeetEOU::from_shared`] instead.
+    /// [`ParakeetEOUHandle::from_pretrained`] + [`ParakeetEOU::from_shared`] instead.
     pub fn from_pretrained<P: AsRef<Path>>(
         path: P,
         config: Option<ExecutionConfig>,
     ) -> Result<Self> {
-        Ok(Self::from_shared(&ParakeetEOUHandle::load(path, config)?))
+        Ok(Self::from_shared(&ParakeetEOUHandle::from_pretrained(
+            path, config,
+        )?))
     }
 
     /// Spawn a new ParakeetEOU instance bound to a shared model.
@@ -205,14 +215,8 @@ impl ParakeetEOU {
 
                 let vocab = logits.slice(s![0, 0, ..]);
 
-                let mut max_idx = 0;
-                let mut max_val = f32::NEG_INFINITY;
-                for (i, &val) in vocab.iter().enumerate() {
-                    if val.is_finite() && val > max_val {
-                        max_val = val;
-                        max_idx = i as i32;
-                    }
-                }
+                let (max_idx, _) = crate::tensor_utils::argmax_f32(vocab.iter().copied());
+                let max_idx = max_idx as i32;
 
                 if max_idx == self.blank_id || max_idx == 0 {
                     break;

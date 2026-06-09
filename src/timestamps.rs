@@ -91,9 +91,9 @@ pub fn rebuild_text(tokens: &[TimedToken], mode: TimestampMode) -> String {
 
 // Group tokens into words based on word boundary markers
 pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
-    if tokens.is_empty() {
+    let Some(last_token) = tokens.last() else {
         return Vec::new();
-    }
+    };
 
     let mut words = Vec::new();
     let mut current_word_text = String::new();
@@ -168,7 +168,7 @@ pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
             words.push(TimedToken {
                 text: current_word_text,
                 start: current_word_start,
-                end: tokens.last().unwrap().end,
+                end: last_token.end,
             });
         }
     }
@@ -188,44 +188,38 @@ fn group_by_sentences(tokens: &[TimedToken]) -> Vec<TimedToken> {
     let mut current_sentence = Vec::new();
 
     for word in words {
-        current_sentence.push(word.clone());
-
         // Check if word ends with sentence terminator
         let ends_sentence =
             word.text.contains('.') || word.text.contains('?') || word.text.contains('!');
 
-        if ends_sentence {
-            let sentence_text = format_sentence(&current_sentence);
-            let start = current_sentence.first().unwrap().start;
-            let end = current_sentence.last().unwrap().end;
+        current_sentence.push(word);
 
-            if !sentence_text.is_empty() {
-                sentences.push(TimedToken {
-                    text: sentence_text,
-                    start,
-                    end,
-                });
-            }
+        if ends_sentence {
+            push_sentence(&mut sentences, &current_sentence);
             current_sentence.clear();
         }
     }
 
     // Add final sentence if exists
-    if !current_sentence.is_empty() {
-        let sentence_text = format_sentence(&current_sentence);
-        let start = current_sentence.first().unwrap().start;
-        let end = current_sentence.last().unwrap().end;
-
-        if !sentence_text.is_empty() {
-            sentences.push(TimedToken {
-                text: sentence_text,
-                start,
-                end,
-            });
-        }
-    }
+    push_sentence(&mut sentences, &current_sentence);
 
     sentences
+}
+
+// Append `words` to `sentences` as a single formatted sentence
+fn push_sentence(sentences: &mut Vec<TimedToken>, words: &[TimedToken]) {
+    let (Some(first), Some(last)) = (words.first(), words.last()) else {
+        return;
+    };
+
+    let text = format_sentence(words);
+    if !text.is_empty() {
+        sentences.push(TimedToken {
+            text,
+            start: first.start,
+            end: last.end,
+        });
+    }
 }
 
 // Join words with punctuation spacing

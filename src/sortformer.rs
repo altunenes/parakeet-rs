@@ -220,10 +220,7 @@ impl Sortformer {
         config: DiarizationConfig,
     ) -> Result<Self> {
         let config_to_use = execution_config.unwrap_or_default();
-
-        let mut builder = config_to_use
-            .apply_to_session_builder(Session::builder()?)?;
-        let session = builder.commit_from_file(model_path.as_ref())?;
+        let session = config_to_use.build_session(model_path.as_ref())?;
 
         // Read streaming constants from ONNX metadata (fallback to defaults)
         let (chunk_len, fifo_len, spkcache_len, right_context) =
@@ -1110,15 +1107,6 @@ impl Sortformer {
         segments
     }
 
-    fn apply_preemphasis(audio: &[f32]) -> Vec<f32> {
-        let mut result = Vec::with_capacity(audio.len());
-        result.push(audio[0]);
-        for i in 1..audio.len() {
-            result.push(audio[i] - PREEMPH * audio[i - 1]);
-        }
-        result
-    }
-
     fn hann_window(window_length: usize) -> Vec<f32> {
         // Librosa uses periodic window (fftbins=True): divide by N, not N-1
         (0..window_length)
@@ -1182,7 +1170,7 @@ impl Sortformer {
         // The log_zero_guard handles zero values
 
         // 2. Apply preemphasis (NeMo uses preemph=0.97)
-        let preemphasized = Self::apply_preemphasis(audio);
+        let preemphasized = crate::audio::apply_preemphasis(audio, PREEMPH);
 
         // 3. STFT
         let spectrogram = Self::stft(&preemphasized)?;

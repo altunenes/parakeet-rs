@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
+use crate::tensor_utils::{extract_1d_i64, extract_3d_f32, extract_4d_f32};
 use ndarray::{Array1, Array2, Array3, Array4};
 use ort::session::Session;
 use std::path::Path;
@@ -49,15 +50,8 @@ impl ParakeetEOUModel {
             )));
         }
 
-        // Load encoder
-        let builder = Session::builder()?;
-        let mut builder = exec_config.apply_to_session_builder(builder)?;
-        let encoder = builder.commit_from_file(&encoder_path)?;
-
-        // Load decoder
-        let builder = Session::builder()?;
-        let mut builder = exec_config.apply_to_session_builder(builder)?;
-        let decoder_joint = builder.commit_from_file(&decoder_path)?;
+        let encoder = exec_config.build_session(&encoder_path)?;
+        let decoder_joint = exec_config.build_session(&decoder_path)?;
 
         Ok(Self {
             encoder,
@@ -84,61 +78,19 @@ impl ParakeetEOUModel {
             "cache_last_channel_len" => ort::value::Value::from_array(cache.cache_last_channel_len.clone())?
         ])?;
 
-        // Extract encoder output [1, 512, T]
-        let (shape, data) = outputs["outputs"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract encoder output: {e}")))?;
+        // Extract encoder output [1, 512, T] and new cache states
+        let encoder_out = extract_3d_f32(&outputs["outputs"], "encoder output")?;
 
-        let shape_dims = shape.as_ref();
-        let b = shape_dims[0] as usize;
-        let d = shape_dims[1] as usize;
-        let t = shape_dims[2] as usize;
-
-        let encoder_out = Array3::from_shape_vec((b, d, t), data.to_vec())
-            .map_err(|e| Error::Model(format!("Failed to reshape encoder output: {e}")))?;
-
-        // Extract new cache states
-        let (ch_shape, ch_data) = outputs["new_cache_last_channel"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract cache_last_channel: {e}")))?;
-
-        let (tm_shape, tm_data) = outputs["new_cache_last_time"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract cache_last_time: {e}")))?;
-
-        let (len_shape, len_data) = outputs["new_cache_last_channel_len"]
-            .try_extract_tensor::<i64>()
-            .map_err(|e| Error::Model(format!("Failed to extract cache_len: {e}")))?;
-
-        // Build new cache with extracted shapes
         let new_cache = EncoderCache {
-            cache_last_channel: Array4::from_shape_vec(
-                (
-                    ch_shape[0] as usize,
-                    ch_shape[1] as usize,
-                    ch_shape[2] as usize,
-                    ch_shape[3] as usize,
-                ),
-                ch_data.to_vec(),
-            )
-            .map_err(|e| Error::Model(format!("Failed to reshape cache_last_channel: {e}")))?,
-
-            cache_last_time: Array4::from_shape_vec(
-                (
-                    tm_shape[0] as usize,
-                    tm_shape[1] as usize,
-                    tm_shape[2] as usize,
-                    tm_shape[3] as usize,
-                ),
-                tm_data.to_vec(),
-            )
-            .map_err(|e| Error::Model(format!("Failed to reshape cache_last_time: {e}")))?,
-
-            cache_last_channel_len: Array1::from_shape_vec(
-                len_shape[0] as usize,
-                len_data.to_vec(),
-            )
-            .map_err(|e| Error::Model(format!("Failed to reshape cache_len: {e}")))?,
+            cache_last_channel: extract_4d_f32(
+                &outputs["new_cache_last_channel"],
+                "cache_last_channel",
+            )?,
+            cache_last_time: extract_4d_f32(&outputs["new_cache_last_time"], "cache_last_time")?,
+            cache_last_channel_len: extract_1d_i64(
+                &outputs["new_cache_last_channel_len"],
+                "cache_len",
+            )?,
         };
 
         Ok((encoder_out, new_cache))
@@ -164,32 +116,18 @@ impl ParakeetEOUModel {
             "input_states_2" => ort::value::Value::from_array(state_c.clone())?
         ])?;
 
-        // 1. Extract Logits
+        // Logits: I simplify [1, 1, 1, vocab] to [1, 1, vocab]
         let (l_shape, l_data) = outputs["outputs"]
             .try_extract_tensor::<f32>()
             .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
 
-        // 2. Extract States (output_states_1, output_states_2)
-        let (_h_shape, h_data) = outputs["output_states_1"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract state h: {e}")))?;
-
-        let (_c_shape, c_data) = outputs["output_states_2"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract state c: {e}")))?;
-
-        // Reconstruct Arrays
-        // Logits: I simplify to [1, 1, vocab]
         let vocab_size = l_shape[3] as usize;
         let logits = Array3::from_shape_vec((1, 1, vocab_size), l_data.to_vec())
             .map_err(|e| Error::Model(format!("Reshape logits failed: {e}")))?;
 
         // States: [1, 1, 640]
-        let new_h = Array3::from_shape_vec((1, 1, 640), h_data.to_vec())
-            .map_err(|e| Error::Model(format!("Reshape state h failed: {e}")))?;
-
-        let new_c = Array3::from_shape_vec((1, 1, 640), c_data.to_vec())
-            .map_err(|e| Error::Model(format!("Reshape state c failed: {e}")))?;
+        let new_h = extract_3d_f32(&outputs["output_states_1"], "state h")?;
+        let new_c = extract_3d_f32(&outputs["output_states_2"], "state c")?;
 
         Ok((logits, new_h, new_c))
     }

@@ -4,7 +4,7 @@ use crate::decoder::{ParakeetDecoder, TranscriptionResult};
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 use crate::model::ParakeetModel;
-use crate::timestamps::{process_timestamps, TimestampMode};
+use crate::timestamps::{process_timestamps, rebuild_text, TimestampMode};
 use crate::transcriber::Transcriber;
 use std::path::{Path, PathBuf};
 
@@ -155,12 +155,7 @@ impl Transcriber for Parakeet {
         result.tokens = process_timestamps(&result.tokens, mode);
 
         // Rebuild full text from processed tokens to ensure consistency
-        result.text = result
-            .tokens
-            .iter()
-            .map(|t| t.text.as_str())
-            .collect::<Vec<_>>()
-            .join(" ");
+        result.text = rebuild_text(&result.tokens, mode);
 
         Ok(result)
     }

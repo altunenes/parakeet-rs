@@ -24,9 +24,7 @@ impl ParakeetModel {
         // Use default config (hardcoded constants for Parakeet-CTC-0.6b: please see: json files https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main)
         let config = ModelConfig::default();
 
-        let builder = Session::builder()?;
-        let mut builder = exec_config.apply_to_session_builder(builder)?;
-        let session = builder.commit_from_file(model_path)?;
+        let session = exec_config.build_session(model_path)?;
 
         Ok(Self { session, config })
     }
