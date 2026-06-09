@@ -421,12 +421,7 @@ fn find_ngram_repetition(tokens: &[i64], min_len: usize) -> Option<usize> {
 
 /// Greedy argmax over a slice of f32 logits.
 fn argmax(logits: &[f32]) -> i64 {
-    logits
-        .iter()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(idx, _)| idx as i64)
-        .unwrap_or(0)
+    crate::tensor_utils::argmax_f32(logits.iter().copied()).0 as i64
 }
 
 #[cfg(test)]
