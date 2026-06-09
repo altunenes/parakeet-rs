@@ -1,8 +1,9 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{fmt, rc::Rc};
 
 use crate::error::Result;
 use ort::session::builder::SessionBuilder;
+use ort::session::Session;
 
 // Hardware acceleration options. CPU is default and most reliable.
 // GPU providers (CUDA, TensorRT, MIGraphX) offer 5-10x speedup but require specific hardware.
@@ -111,6 +112,11 @@ impl ModelConfig {
     pub fn with_coreml_cache_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.coreml_cache_dir = Some(path.into());
         self
+    }
+    pub(crate) fn build_session(&self, path: &Path) -> Result<Session> {
+        let builder = Session::builder()?;
+        let mut builder = self.apply_to_session_builder(builder)?;
+        Ok(builder.commit_from_file(path)?)
     }
 
     pub(crate) fn apply_to_session_builder(
