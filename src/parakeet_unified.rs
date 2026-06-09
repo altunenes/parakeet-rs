@@ -114,7 +114,7 @@ impl UnifiedStreamingConfig {
 /// Shared handle to a loaded ParakeetUnified model.
 /// The ONNX session is loaded once and reference-counted.
 ///
-/// Use [`ParakeetUnifiedHandle::load`] to load from disk, then
+/// Use [`ParakeetUnifiedHandle::from_pretrained`] to load from disk, then
 /// [`ParakeetUnified::from_shared`] to spawn each stream with its own state.
 #[derive(Clone)]
 pub struct ParakeetUnifiedHandle {
@@ -145,7 +145,7 @@ pub struct ParakeetUnified {
 impl ParakeetUnifiedHandle {
     /// Load the ParakeetUnified model, vocabulary, and preprocessor config
     /// from a directory.
-    pub fn load<P: AsRef<Path>>(
+    pub fn from_pretrained<P: AsRef<Path>>(
         path: P,
         exec_config: Option<ExecutionConfig>,
     ) -> Result<Self> {
@@ -191,6 +191,14 @@ impl ParakeetUnifiedHandle {
             blank_id,
         })
     }
+
+    /// Backwards-compatible alias for [`ParakeetUnifiedHandle::from_pretrained`].
+    pub fn load<P: AsRef<Path>>(
+        path: P,
+        exec_config: Option<ExecutionConfig>,
+    ) -> Result<Self> {
+        Self::from_pretrained(path, exec_config)
+    }
 }
 
 impl ParakeetUnified {
@@ -210,16 +218,14 @@ impl ParakeetUnified {
         exec_config: Option<ExecutionConfig>,
         streaming_config: UnifiedStreamingConfig,
     ) -> Result<Self> {
-        let handle = ParakeetUnifiedHandle::load(path, exec_config)?;
+        let handle = ParakeetUnifiedHandle::from_pretrained(path, exec_config)?;
         Self::from_shared_with_streaming_config(&handle, streaming_config)
     }
 
     /// Spawn a new ParakeetUnified instance bound to a shared model, using the
     /// default streaming profile.
-    pub fn from_shared(handle: &ParakeetUnifiedHandle) -> Self {
-        // default config is pre-validated, so unwrap is safe
+    pub fn from_shared(handle: &ParakeetUnifiedHandle) -> Result<Self> {
         Self::from_shared_with_streaming_config(handle, UnifiedStreamingConfig::default())
-            .expect("default UnifiedStreamingConfig is always valid")
     }
 
     /// Spawn a new ParakeetUnified instance bound to a shared model with a
