@@ -42,7 +42,7 @@ fn load_wav(path: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
 }
 
 fn run_nemotron(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = NemotronHandle::load(model_dir, None)?;
+    let handle = NemotronHandle::from_pretrained(model_dir, None)?;
     let mut a = Nemotron::from_shared(&handle);
     let mut b = Nemotron::from_shared(&handle);
 
@@ -66,7 +66,7 @@ fn run_nemotron(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error
 }
 
 fn run_eou(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = ParakeetEOUHandle::load(model_dir, None)?;
+    let handle = ParakeetEOUHandle::from_pretrained(model_dir, None)?;
     let mut a = ParakeetEOU::from_shared(&handle);
     let mut b = ParakeetEOU::from_shared(&handle);
 
@@ -93,9 +93,9 @@ fn run_eou(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error::Err
 }
 
 fn run_unified(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = ParakeetUnifiedHandle::load(model_dir, None)?;
-    let mut a = ParakeetUnified::from_shared(&handle);
-    let mut b = ParakeetUnified::from_shared(&handle);
+    let handle = ParakeetUnifiedHandle::from_pretrained(model_dir, None)?;
+    let mut a = ParakeetUnified::from_shared(&handle)?;
+    let mut b = ParakeetUnified::from_shared(&handle)?;
 
     let chunk_size = a.streaming_config().chunk_samples();
     for chunk_data in audio.chunks(chunk_size) {
