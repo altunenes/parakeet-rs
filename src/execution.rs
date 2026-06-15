@@ -36,6 +36,16 @@ pub enum ExecutionProvider {
     NNAPI,
 }
 
+/// Which compute units the CoreML execution provider may use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CoreMLComputeUnits {
+    All,
+    CpuAndNeuralEngine,
+    #[default]
+    CpuAndGpu,
+    CpuOnly,
+}
+
 #[derive(Clone)]
 pub struct ModelConfig {
     pub execution_provider: ExecutionProvider,
@@ -46,6 +56,7 @@ pub struct ModelConfig {
     /// recompiling the ONNX-to-CoreML conversion on each session load (~5s).
     /// Only used when execution_provider is CoreML.
     pub coreml_cache_dir: Option<PathBuf>,
+    pub coreml_compute_units: CoreMLComputeUnits,
 }
 
 impl fmt::Debug for ModelConfig {
@@ -63,6 +74,7 @@ impl fmt::Debug for ModelConfig {
                 },
             )
             .field("coreml_cache_dir", &self.coreml_cache_dir)
+            .field("coreml_compute_units", &self.coreml_compute_units)
             .finish()
     }
 }
@@ -75,6 +87,7 @@ impl Default for ModelConfig {
             inter_threads: 1,
             configure: None,
             coreml_cache_dir: None,
+            coreml_compute_units: CoreMLComputeUnits::default(),
         }
     }
 }
@@ -111,6 +124,13 @@ impl ModelConfig {
     /// Avoids ~5s recompilation on each session load.
     pub fn with_coreml_cache_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.coreml_cache_dir = Some(path.into());
+        self
+    }
+
+    /// Select which compute units the CoreML provider may use.
+    /// Defaults to [`CoreMLComputeUnits::CpuAndGpu`];
+    pub fn with_coreml_compute_units(mut self, units: CoreMLComputeUnits) -> Self {
+        self.coreml_compute_units = units;
         self
     }
     pub(crate) fn build_session(&self, path: &Path) -> Result<Session> {
@@ -159,7 +179,13 @@ impl ModelConfig {
             #[cfg(feature = "coreml")]
             ExecutionProvider::CoreML => {
                 use ort::ep::coreml::{ComputeUnits, CoreML};
-                let mut coreml = CoreML::default().with_compute_units(ComputeUnits::CPUAndGPU);
+                let units = match self.coreml_compute_units {
+                    CoreMLComputeUnits::All => ComputeUnits::All,
+                    CoreMLComputeUnits::CpuAndNeuralEngine => ComputeUnits::CPUAndNeuralEngine,
+                    CoreMLComputeUnits::CpuAndGpu => ComputeUnits::CPUAndGPU,
+                    CoreMLComputeUnits::CpuOnly => ComputeUnits::CPUOnly,
+                };
+                let mut coreml = CoreML::default().with_compute_units(units);
 
                 if let Some(cache_dir) = &self.coreml_cache_dir {
                     coreml = coreml.with_model_cache_dir(cache_dir.to_string_lossy());
