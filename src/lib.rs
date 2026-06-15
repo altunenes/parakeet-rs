@@ -75,7 +75,7 @@ mod transcriber;
 mod vocab;
 
 pub use error::{Error, Result};
-pub use execution::{ExecutionProvider, ModelConfig as ExecutionConfig};
+pub use execution::{CoreMLComputeUnits, ExecutionProvider, ModelConfig as ExecutionConfig};
 pub use parakeet::Parakeet;
 pub use parakeet_tdt::ParakeetTDT;
 pub use timestamps::TimestampMode;
