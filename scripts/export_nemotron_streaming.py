@@ -302,6 +302,17 @@ print("  Consolidating encoder weights into single file...")
 encoder_model = onnx.load(temp_encoder_path, load_external_data=True)
 final_encoder_path = os.path.join(OUTPUT_DIR, "encoder.onnx")
 
+# Stamp the latency profile into the ONNX metadata so the Rust loader can
+# pick it up per export (same pattern as export_diar_sortformer.py).
+pre_encode_cache = int(getattr(streaming_cfg, "pre_encode_cache_size", [0, 9])[1])
+encoder_model.metadata_props.append(
+    onnx.StringStringEntryProto(key="chunk_size_output_frames", value=str(chunk_size))
+)
+encoder_model.metadata_props.append(
+    onnx.StringStringEntryProto(key="pre_encode_cache", value=str(pre_encode_cache))
+)
+print(f"  Metadata: chunk_size_output_frames={chunk_size}, pre_encode_cache={pre_encode_cache}")
+
 onnx.save_model(
     encoder_model,
     final_encoder_path,
@@ -371,6 +382,7 @@ config = {
     "left_context": left_context,
     "right_context": right_context,
     "chunk_size_output_frames": chunk_size,
+    "pre_encode_cache": pre_encode_cache,
     "drop_extra_pre_encoded": drop_extra_pre_encoded,
     "num_encoder_layers": num_layers,
     "hidden_dim": hidden_dim,

@@ -97,12 +97,12 @@ impl ParakeetDecoder {
             }
 
             if Some(token_id) != prev_token {
-                if let Some(prev) = prev_token {
-                    if prev != self.pad_token_id as u32 {
-                        // End previous token
-                        if let Some(last) = result.last_mut() {
-                            last.2 = frame;
-                        }
+                if let Some(prev) = prev_token
+                    && prev != self.pad_token_id as u32
+                {
+                    // End previous token
+                    if let Some(last) = result.last_mut() {
+                        last.2 = frame;
                     }
                 }
                 // Start new token

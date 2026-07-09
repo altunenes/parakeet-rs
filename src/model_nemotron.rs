@@ -56,6 +56,11 @@ pub struct NemotronModelConfig {
     pub decoder_lstm_layers: usize,
     pub vocab_size: usize,
     pub blank_id: usize,
+    /// Encoder output frames per chunk (right_context + 1). Read from ONNX
+    /// metadata when present, otherwise 7 (the 560ms profile).
+    pub chunk_size_output_frames: usize,
+    /// Mel frames of pre encode cache per chunk. From ONNX metadata, default 9.
+    pub pre_encode_cache: usize,
 }
 
 impl NemotronModel {
@@ -100,7 +105,26 @@ impl NemotronModel {
             decoder_lstm_layers: 2,
             vocab_size,
             blank_id: vocab_size,
+            chunk_size_output_frames: 7,
+            pre_encode_cache: 9,
         };
+
+        // Latency profile from ONNX metadata
+        if let Ok(meta) = encoder.metadata() {
+            if let Some(v) = meta
+                .custom("chunk_size_output_frames")
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|v| *v > 0)
+            {
+                config.chunk_size_output_frames = v;
+            }
+            if let Some(v) = meta
+                .custom("pre_encode_cache")
+                .and_then(|v| v.parse::<usize>().ok())
+            {
+                config.pre_encode_cache = v;
+            }
+        }
 
         let mut has_prompt = false;
         for outlet in encoder.inputs() {
