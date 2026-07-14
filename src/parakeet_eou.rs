@@ -66,8 +66,8 @@ impl ParakeetEOUHandle {
             .map_err(|e| Error::Config(format!("Failed to load tokenizer: {e}")))?;
 
         let vocab_size = tokenizer.get_vocab_size(true);
-        let blank_id = (vocab_size - 1) as i32;
-        let blank_id = if blank_id < 1000 { 1026 } else { blank_id };
+        // blank is appended after vocab
+        let blank_id = vocab_size as i32;
         let eou_id = tokenizer
             .token_to_id("<EOU>")
             .map(|id| id as i32)
