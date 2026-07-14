@@ -42,6 +42,7 @@ pub struct ParakeetEOU {
     mel_basis: Arc<Array2<f32>>,
     blank_id: i32,
     eou_id: i32,
+    blank_penalty: f32,
     encoder_cache: EncoderCache,
     state_h: Array3<f32>,
     state_c: Array3<f32>,
@@ -123,6 +124,7 @@ impl ParakeetEOU {
             mel_basis: Arc::clone(&handle.mel_basis),
             blank_id: handle.blank_id,
             eou_id: handle.eou_id,
+            blank_penalty: 0.0,
             encoder_cache: EncoderCache::new(),
             state_h: Array3::zeros((1, 1, 640)),
             state_c: Array3::zeros((1, 1, 640)),
@@ -130,6 +132,11 @@ impl ParakeetEOU {
             audio_buffer: VecDeque::with_capacity(buffer_size_samples),
             buffer_size_samples,
         }
+    }
+
+    /// Blank-logit penalty: positive recovers borderline words, negative suppresses spurious emissions. Default 0.0 = off.
+    pub fn set_blank_penalty(&mut self, penalty: f32) {
+        self.blank_penalty = penalty;
     }
 
     /// Transcribe a chunk of audio samples.
@@ -206,13 +213,14 @@ impl ParakeetEOU {
             let mut syms_added = 0;
 
             while syms_added < 5 {
-                let (logits, new_h, new_c) = model.run_decoder(
+                let (mut logits, new_h, new_c) = model.run_decoder(
                     &current_frame,
                     &self.last_token,
                     &self.state_h,
                     &self.state_c,
                 )?;
 
+                apply_blank_penalty(logits.slice_mut(s![0, 0, ..]), self.blank_penalty);
                 let vocab = logits.slice(s![0, 0, ..]);
 
                 let (max_idx, _) = crate::tensor_utils::argmax_f32(vocab.iter().copied());
@@ -267,6 +275,17 @@ impl ParakeetEOU {
     }
 }
 
+/// Subtract `penalty` from the blank logit (index 1026 in the 1027-wide
+/// joint output). No-op at 0.0.
+fn apply_blank_penalty(mut vocab: ndarray::ArrayViewMut1<f32>, penalty: f32) {
+    if penalty == 0.0 {
+        return;
+    }
+    if let Some(blank_logit) = vocab.last_mut() {
+        *blank_logit -= penalty;
+    }
+}
+
 /// HTK mel filterbank used by Parakeet EOU. its distinct from the Slaney-scaled
 /// filterbank in [`crate::audio::create_mel_filterbank`] so please don't confuse :-).
 fn create_mel_filterbank_htk() -> Array2<f32> {
@@ -309,4 +328,37 @@ fn create_mel_filterbank_htk() -> Array2<f32> {
     }
 
     weights
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ndarray::aview_mut1;
+
+    // Joint output: 1026 tokenizer tokens (ids 0..=1025) + blank at 1026.
+    const LOGIT_WIDTH: usize = 1027;
+    const BLANK: usize = LOGIT_WIDTH - 1;
+    const EOB_ID: usize = 1025;
+
+    // The penalty must hit blank (1026), not <EOB> (1025), the last tokenizer token.
+    #[test]
+    fn penalty_targets_blank_not_last_tokenizer_token() {
+        let mut v = vec![-20.0; LOGIT_WIDTH];
+        v[EOB_ID] = 5.0;
+        v[BLANK] = 5.0;
+        apply_blank_penalty(aview_mut1(&mut v), 3.0);
+        assert_eq!(v[EOB_ID], 5.0);
+        assert_eq!(v[BLANK], 2.0);
+    }
+
+    // The 0.0 default must leave the logits bit-identical (feature off = stock decode).
+    #[test]
+    fn zero_penalty_is_a_no_op() {
+        let mut v = vec![-20.0; LOGIT_WIDTH];
+        v[300] = 6.5;
+        v[BLANK] = 5.0;
+        let original = v.clone();
+        apply_blank_penalty(aview_mut1(&mut v), 0.0);
+        assert_eq!(v, original);
+    }
 }
