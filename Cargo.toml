@@ -43,7 +43,7 @@ path = "examples/cohere.rs"
 required-features = ["cohere"]
 
 [dependencies]
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24"] }
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "ndarray"] }
 hound = "3.5"
 eyre = "0.6"
 ndarray = "0.17"
@@ -55,9 +55,15 @@ realfft = "3"
 [dev-dependencies]
 
 [features]
-default = ["cpu", "ort-defaults"]
+default = ["cpu", "ort-defaults", "api-28"]
 cpu = []
 ort-defaults = ["ort/default"]
+
+api-24 = ["ort/api-24"]
+api-25 = ["ort/api-25"]
+api-26 = ["ort/api-26"]
+api-27 = ["ort/api-27"]
+api-28 = ["ort/api-28"]
 cuda = ["ort/cuda"]
 tensorrt = ["ort/tensorrt"]
 coreml = ["ort/coreml"]
