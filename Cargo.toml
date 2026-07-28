@@ -55,9 +55,14 @@ realfft = "3"
 [dev-dependencies]
 
 [features]
-default = ["cpu", "ort-defaults"]
+default = ["cpu", "ort-defaults", "api-28"]
 cpu = []
 ort-defaults = ["ort/default"]
+
+api-25 = ["ort/api-25"]
+api-26 = ["ort/api-26"]
+api-27 = ["ort/api-27"]
+api-28 = ["ort/api-28"]
 cuda = ["ort/cuda"]
 tensorrt = ["ort/tensorrt"]
 coreml = ["ort/coreml"]
