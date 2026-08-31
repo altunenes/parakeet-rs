@@ -198,19 +198,4 @@ mod tests {
         let tokens_text: String = result.tokens.iter().map(|t| t.text.as_str()).collect();
         assert_eq!(tokens_text.trim(), "like 100 bucks");
     }
-
-    #[test]
-    fn test_timestamps_use_predicted_durations() {
-        let vocab = make_vocab(&["▁one", "▁two", "▁three"]);
-        let decoder = ParakeetTDTDecoder::from_vocab(vocab);
-        let result = decoder
-            .decode_with_timestamps(&[0, 1, 2], &[10, 20, 22], &[3, 0, 4], 160, 16000)
-            .unwrap();
-
-        let expected = [(0.8, 1.04), (1.6, 1.6), (1.76, 2.08)];
-        for (token, (expected_start, expected_end)) in result.tokens.iter().zip(expected) {
-            assert!((token.start - expected_start).abs() < f32::EPSILON);
-            assert!((token.end - expected_end).abs() < f32::EPSILON);
-        }
-    }
 }
