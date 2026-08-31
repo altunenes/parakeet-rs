@@ -97,9 +97,14 @@ pub fn stft_with_plan(
     padded.resize(padded.len() + pad_amount, 0.0);
 
     let window = hann_window(win_length);
-    let num_frames = (padded.len() - n_fft) / hop_length + 1;
+    // NeMo reports floor(audio_len / hop_length) valid frames. torch.stft
+    // produces one additional trailing frame, which NeMo masks out before
+    // normalization and encoding.
+    let num_frames = audio.len() / hop_length;
     let freq_bins = n_fft / 2 + 1;
     let mut spectrogram = Array2::<f32>::zeros((freq_bins, num_frames));
+    // torch.stft centers a window shorter than n_fft in the FFT buffer.
+    let window_offset = (n_fft - win_length) / 2;
 
     let mut input = vec![0.0f32; n_fft];
     let mut output = plan.make_output_vec();
@@ -109,8 +114,8 @@ pub fn stft_with_plan(
         let start = frame_idx * hop_length;
 
         input.fill(0.0);
-        for i in 0..win_length.min(padded.len() - start) {
-            input[i] = padded[start + i] * window[i];
+        for i in 0..win_length {
+            input[window_offset + i] = padded[start + window_offset + i] * window[i];
         }
 
         plan.process_with_scratch(&mut input, &mut output, &mut scratch)
@@ -326,7 +331,6 @@ mod tests {
 
         let freq_bins = n_fft / 2 + 1;
         assert_eq!(spec.shape()[0], freq_bins);
-        // num_frames = (audio_len + n_fft - n_fft) / hop_length + 1 = 16000 / 160 + 1 = 101
-        assert!(spec.shape()[1] > 0);
+        assert_eq!(spec.shape()[1], audio.len() / hop_length);
     }
 }
