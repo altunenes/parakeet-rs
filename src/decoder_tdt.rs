@@ -20,7 +20,7 @@ impl ParakeetTDTDecoder {
         &self,
         tokens: &[usize],
         frame_indices: &[usize],
-        _durations: &[usize],
+        durations: &[usize],
         hop_length: usize,
         sample_rate: usize,
     ) -> Result<TranscriptionResult> {
@@ -33,11 +33,8 @@ impl ParakeetTDTDecoder {
             if let Some(token_text) = self.vocab.id_to_text(token_id) {
                 let frame = frame_indices[i];
                 let start = (frame * encoder_stride * hop_length) as f32 / sample_rate as f32;
-                let end = if i + 1 < frame_indices.len() {
-                    (frame_indices[i + 1] * encoder_stride * hop_length) as f32 / sample_rate as f32
-                } else {
-                    start + 0.01
-                };
+                let end_frame = frame + durations[i];
+                let end = (end_frame * encoder_stride * hop_length) as f32 / sample_rate as f32;
 
                 // Handle SentencePiece format (▁ prefix for word start)
                 let mut display_text = token_text.replace('▁', " ");
@@ -200,5 +197,20 @@ mod tests {
         // Test Tokens mode
         let tokens_text: String = result.tokens.iter().map(|t| t.text.as_str()).collect();
         assert_eq!(tokens_text.trim(), "like 100 bucks");
+    }
+
+    #[test]
+    fn test_timestamps_use_predicted_durations() {
+        let vocab = make_vocab(&["▁one", "▁two", "▁three"]);
+        let decoder = ParakeetTDTDecoder::from_vocab(vocab);
+        let result = decoder
+            .decode_with_timestamps(&[0, 1, 2], &[10, 20, 22], &[3, 0, 4], 160, 16000)
+            .unwrap();
+
+        let expected = [(0.8, 1.04), (1.6, 1.6), (1.76, 2.08)];
+        for (token, (expected_start, expected_end)) in result.tokens.iter().zip(expected) {
+            assert!((token.start - expected_start).abs() < f32::EPSILON);
+            assert!((token.end - expected_end).abs() < f32::EPSILON);
+        }
     }
 }
