@@ -20,7 +20,7 @@ impl ParakeetTDTDecoder {
         &self,
         tokens: &[usize],
         frame_indices: &[usize],
-        _durations: &[usize],
+        durations: &[usize],
         hop_length: usize,
         sample_rate: usize,
     ) -> Result<TranscriptionResult> {
@@ -33,11 +33,8 @@ impl ParakeetTDTDecoder {
             if let Some(token_text) = self.vocab.id_to_text(token_id) {
                 let frame = frame_indices[i];
                 let start = (frame * encoder_stride * hop_length) as f32 / sample_rate as f32;
-                let end = if i + 1 < frame_indices.len() {
-                    (frame_indices[i + 1] * encoder_stride * hop_length) as f32 / sample_rate as f32
-                } else {
-                    start + 0.01
-                };
+                let end_frame = frame + durations[i];
+                let end = (end_frame * encoder_stride * hop_length) as f32 / sample_rate as f32;
 
                 // Handle SentencePiece format (▁ prefix for word start)
                 let mut display_text = token_text.replace('▁', " ");
