@@ -41,7 +41,9 @@ const CHUNK_LEN: usize = 124; // Frames per chunk (~10s at 80ms)
 const FIFO_LEN: usize = 124; // FIFO buffer length
 const SPKCACHE_LEN: usize = 188; // Speaker cache length
 const RIGHT_CONTEXT: usize = 1; // Future frames for lookahead
-const SUBSAMPLING: usize = 8; // Audio frames -> model frames
+/// Audio frames -> model frames. Public because it is the only way to relate `chunk_len` to the
+/// mel-frame dimension a graph is pinned to; see [`graph_window`].
+pub const SUBSAMPLING: usize = 8;
 const EMB_DIM: usize = 512; // Embedding dimension
 pub const NUM_SPEAKERS: usize = 4; // Model supports 4 speakers
 const FRAME_DURATION: f32 = 0.08; // 80ms per frame
@@ -184,9 +186,60 @@ pub struct RawDiarizationPredictions {
     pub num_valid_frames: usize,
 }
 
+/// The three input dimensions that vary over a stream: `(chunk mel frames, spkcache frames,
+/// fifo frames)`. A graph whose inputs are all fixed serves exactly one of these.
+pub type StreamingWindow = (usize, usize, usize);
+
+/// A source of sessions for streaming calls, chosen per window.
+///
+/// [`Sortformer`] owns one session. A graph with symbolic input dimensions accepts every window a
+/// stream produces; a graph with fixed dimensions accepts exactly one, which is what an execution
+/// provider that compiles a whole graph ahead of time needs. A router lets the caller serve the
+/// remaining windows from other graphs — and decide for itself which graph, when to build it and
+/// how long to keep it resident.
+///
+/// `Send` because [`Sortformer`] is, and a router becomes part of it.
+pub trait SessionRouter: Send {
+    /// The session to run this call on, or `None` to use the one [`Sortformer`] owns.
+    ///
+    /// Called once per streaming call, before inference. Returning an error fails the call.
+    fn session_for(&mut self, window: StreamingWindow) -> Result<Option<&mut Session>>;
+
+    /// How long the call on `window` spent inside ONNX. Called after every streaming call,
+    /// whichever session served it. Default: ignore.
+    fn call_finished(&mut self, window: StreamingWindow, elapsed: std::time::Duration) {
+        let _ = (window, elapsed);
+    }
+
+    /// A new stream is starting, so the windows begin again at the smallest one. Called from
+    /// [`Sortformer::reset_state`]. Default: ignore.
+    fn stream_reset(&mut self) {}
+}
+
+/// The window a graph is pinned to, or `None` if any of the three inputs still has a symbolic
+/// dimension. Read off the graph, never derived from the streaming constants.
+pub fn graph_window(session: &Session) -> Option<StreamingWindow> {
+    let dim = |name: &str| -> Option<usize> {
+        let shape = session
+            .inputs()
+            .iter()
+            .find(|i| i.name() == name)?
+            .dtype()
+            .tensor_shape()?
+            .get(1)
+            .copied()?;
+        // A pinned zero-length cache is a real window — the first call of every stream has one —
+        // so only a negative (symbolic) dimension counts as unpinned.
+        (shape >= 0).then_some(shape as usize)
+    };
+    Some((dim("chunk")?, dim("spkcache")?, dim("fifo")?))
+}
+
 /// Streaming Sortformer v2 speaker diarization engine
 pub struct Sortformer {
     session: Session,
+    /// Optional per-window session source; `session` serves every call without one.
+    router: Option<Box<dyn SessionRouter>>,
     config: DiarizationConfig,
     // Streaming constants (read from ONNX metadata, fallback to defaults)
     pub chunk_len: usize,
@@ -250,6 +303,7 @@ impl Sortformer {
 
         let mut instance = Self {
             session,
+            router: None,
             config,
             chunk_len,
             fifo_len,
@@ -275,8 +329,23 @@ impl Sortformer {
         (self.chunk_len + self.right_context) as f32 * FRAME_DURATION
     }
 
+    /// The session this instance owns, for reading the graph it was built from — see
+    /// [`graph_window`].
+    pub fn session(&self) -> &Session {
+        &self.session
+    }
+
+    /// Serve streaming calls from `router` where it offers a session, and from the one this
+    /// instance owns where it does not.
+    pub fn set_session_router(&mut self, router: Box<dyn SessionRouter>) {
+        self.router = Some(router);
+    }
+
     /// Reset streaming state
     pub fn reset_state(&mut self) {
+        if let Some(router) = self.router.as_mut() {
+            router.stream_reset();
+        }
         self.spkcache = Array3::zeros((1, 0, EMB_DIM));
         self.spkcache_preds = None;
         self.fifo = Array3::zeros((1, 0, EMB_DIM));
@@ -578,9 +647,24 @@ impl Sortformer {
         let fifo_value = ort::value::TensorRef::<f32>::from_array_view(fifo_ref.view())?;
         let fifo_lengths_value = ort::value::Value::from_array(fifo_lengths)?;
 
+        // Offer this call's window to the router, if there is one. A graph with fixed input shapes
+        // serves exactly one window, so a stream that runs on such a graph needs somewhere else to
+        // send the windows it does not cover.
+        let window = (chunk_feat.shape()[1], spkcache_len, fifo_len);
+        let routed = match self.router.as_mut() {
+            Some(router) => router.session_for(window)?,
+            None => None,
+        };
+
+        let inference_start = std::time::Instant::now();
+
         // Run ONNX inference and extract all data in a block to release borrow
         let (preds, new_embs, chunk_len) = {
-            let outputs = self.session.run(ort::inputs!(
+            let session = match routed {
+                Some(session) => session,
+                None => &mut self.session,
+            };
+            let outputs = session.run(ort::inputs!(
                 "chunk" => chunk_value,
                 "chunk_lengths" => chunk_lengths_value,
                 "spkcache" => spkcache_value,
@@ -626,6 +710,10 @@ impl Sortformer {
 
             (preds, new_embs, valid_frames)
         };
+
+        if let Some(router) = self.router.as_mut() {
+            router.call_finished(window, inference_start.elapsed());
+        }
 
         // Extract predictions for different parts
         let fifo_preds = if fifo_len > 0 {
