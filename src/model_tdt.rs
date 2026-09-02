@@ -35,6 +35,24 @@ impl ParakeetTDTModel {
         exec_config: ExecutionConfig,
         vocab_size: usize,
     ) -> Result<Self> {
+        let joint_config = exec_config.clone();
+        Self::from_pretrained_with_configs(model_dir, exec_config, joint_config, vocab_size)
+    }
+
+    /// Load a TDT model, running the encoder and the decoder/joint under separate execution
+    /// configurations.
+    ///
+    /// # Arguments
+    /// * `model_dir` - Directory containing encoder and decoder_joint ONNX files
+    /// * `exec_config` - Execution configuration for the encoder session
+    /// * `joint_config` - Execution configuration for the decoder/joint session
+    /// * `vocab_size` - Vocabulary size (number of tokens including blank)
+    pub fn from_pretrained_with_configs<P: AsRef<Path>>(
+        model_dir: P,
+        exec_config: ExecutionConfig,
+        joint_config: ExecutionConfig,
+        vocab_size: usize,
+    ) -> Result<Self> {
         let model_dir = model_dir.as_ref();
 
         // Find encoder and decoder_joint files
@@ -44,7 +62,7 @@ impl ParakeetTDTModel {
         let config = TDTModelConfig::new(vocab_size);
 
         let encoder = exec_config.build_session(&encoder_path)?;
-        let decoder_joint = exec_config.build_session(&decoder_joint_path)?;
+        let decoder_joint = joint_config.build_session(&decoder_joint_path)?;
 
         Ok(Self {
             encoder,
