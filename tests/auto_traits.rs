@@ -1,3 +1,5 @@
+#![cfg(feature = "sortformer")]
+
 //! A session router becomes part of Sortformer, so its bounds have to keep both auto traits.
 
 fn assert_send<T: Send>() {}
