@@ -340,9 +340,6 @@ impl Sortformer {
     /// Mel extraction and streaming inference, returning raw per-frame speaker probabilities with
     /// no post-processing applied.
     ///
-    /// Split out of [`Sortformer::diarize`] so that a different backend can supply an equivalent
-    /// `[num_frames, NUM_SPEAKERS]` matrix and reuse [`Sortformer::post_process`] unchanged.
-    ///
     /// # Returns
     /// `(predictions [num_frames, NUM_SPEAKERS], mono sample count)`
     pub fn predict_raw(
@@ -378,11 +375,7 @@ impl Sortformer {
     }
 
     /// Median-smooth and binarize raw per-frame speaker probabilities into segments, clipped to
-    /// the audio length.
-    ///
-    /// Takes the config explicitly and depends only on the `[num_frames, NUM_SPEAKERS]` matrix, so
-    /// it runs without a session and a backend that is not this ONNX one gets byte-identical
-    /// post-processing.
+    /// the audio length. Needs no session.
     pub fn post_process(
         config: &DiarizationConfig,
         preds: &Array2<f32>,
@@ -1110,8 +1103,6 @@ impl Sortformer {
     }
 
     /// Apply median filter to predictions
-    /// Takes the config explicitly rather than `&self` so [`Sortformer::post_process`] can run
-    /// without a session.
     fn median_filter(config: &DiarizationConfig, preds: &Array2<f32>) -> Array2<f32> {
         let window = config.median_window;
         let half = window / 2;
@@ -1133,8 +1124,6 @@ impl Sortformer {
     }
 
     /// Binarize predictions to segments (padding applied during thresholding)
-    /// Takes the config explicitly rather than `&self` so [`Sortformer::post_process`] can run
-    /// without a session.
     fn binarize(config: &DiarizationConfig, preds: &Array2<f32>) -> Vec<SpeakerSegment> {
         let mut segments = Vec::new();
         let num_frames = preds.shape()[0];
