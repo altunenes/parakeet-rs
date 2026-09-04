@@ -133,7 +133,8 @@ impl ModelConfig {
         self.coreml_compute_units = units;
         self
     }
-    pub(crate) fn build_session(&self, path: &Path) -> Result<Session> {
+    /// Build a session for `path` under this configuration.
+    pub fn build_session(&self, path: &Path) -> Result<Session> {
         let builder = Session::builder()?;
         let mut builder = self.apply_to_session_builder(builder)?;
         Ok(builder.commit_from_file(path)?)
