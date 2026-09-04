@@ -41,7 +41,7 @@ const CHUNK_LEN: usize = 124; // Frames per chunk (~10s at 80ms)
 const FIFO_LEN: usize = 124; // FIFO buffer length
 const SPKCACHE_LEN: usize = 188; // Speaker cache length
 const RIGHT_CONTEXT: usize = 1; // Future frames for lookahead
-const SUBSAMPLING: usize = 8; // Audio frames -> model frames
+pub const SUBSAMPLING: usize = 8; // Audio frames -> model frames
 const EMB_DIM: usize = 512; // Embedding dimension
 pub const NUM_SPEAKERS: usize = 4; // Model supports 4 speakers
 const FRAME_DURATION: f32 = 0.08; // 80ms per frame
@@ -184,9 +184,44 @@ pub struct RawDiarizationPredictions {
     pub num_valid_frames: usize,
 }
 
+/// `(chunk mel frames, spkcache frames, fifo frames)` — the input dims that vary over a stream.
+pub type StreamingWindow = (usize, usize, usize);
+
+/// Supplies a session per streaming window, for graphs with fixed input shapes.
+pub trait SessionRouter: Send + Sync {
+    /// The session for this call, or `None` to use the one [`Sortformer`] owns.
+    fn session_for(&mut self, window: StreamingWindow) -> Result<Option<&mut Session>>;
+
+    /// Time spent inside ONNX for `window`.
+    fn call_finished(&mut self, window: StreamingWindow, elapsed: std::time::Duration) {
+        let _ = (window, elapsed);
+    }
+
+    /// Called from [`Sortformer::reset_state`].
+    fn stream_reset(&mut self) {}
+}
+
+/// The window a graph is pinned to, or `None` if any input dim is symbolic.
+pub fn graph_window(session: &Session) -> Option<StreamingWindow> {
+    let dim = |name: &str| -> Option<usize> {
+        let shape = session
+            .inputs()
+            .iter()
+            .find(|i| i.name() == name)?
+            .dtype()
+            .tensor_shape()?
+            .get(1)
+            .copied()?;
+        // A zero-length cache is a real window: every stream's first call has one.
+        (shape >= 0).then_some(shape as usize)
+    };
+    Some((dim("chunk")?, dim("spkcache")?, dim("fifo")?))
+}
+
 /// Streaming Sortformer v2 speaker diarization engine
 pub struct Sortformer {
     session: Session,
+    router: Option<Box<dyn SessionRouter>>,
     config: DiarizationConfig,
     // Streaming constants (read from ONNX metadata, fallback to defaults)
     pub chunk_len: usize,
@@ -250,6 +285,7 @@ impl Sortformer {
 
         let mut instance = Self {
             session,
+            router: None,
             config,
             chunk_len,
             fifo_len,
@@ -275,8 +311,21 @@ impl Sortformer {
         (self.chunk_len + self.right_context) as f32 * FRAME_DURATION
     }
 
+    /// The session this instance owns.
+    pub fn session(&self) -> &Session {
+        &self.session
+    }
+
+    /// Route streaming calls through `router`; calls it declines run on this instance's session.
+    pub fn set_session_router(&mut self, router: Box<dyn SessionRouter>) {
+        self.router = Some(router);
+    }
+
     /// Reset streaming state
     pub fn reset_state(&mut self) {
+        if let Some(router) = self.router.as_mut() {
+            router.stream_reset();
+        }
         self.spkcache = Array3::zeros((1, 0, EMB_DIM));
         self.spkcache_preds = None;
         self.fifo = Array3::zeros((1, 0, EMB_DIM));
@@ -616,9 +665,20 @@ impl Sortformer {
         let fifo_value = ort::value::TensorRef::<f32>::from_array_view(fifo_ref.view())?;
         let fifo_lengths_value = ort::value::Value::from_array(fifo_lengths)?;
 
+        let window = (chunk_feat.shape()[1], spkcache_len, fifo_len);
+        let inference_start = self.router.is_some().then(std::time::Instant::now);
+        let routed = match self.router.as_mut() {
+            Some(router) => router.session_for(window)?,
+            None => None,
+        };
+
         // Run ONNX inference and extract all data in a block to release borrow
         let (preds, new_embs, chunk_len) = {
-            let outputs = self.session.run(ort::inputs!(
+            let session = match routed {
+                Some(session) => session,
+                None => &mut self.session,
+            };
+            let outputs = session.run(ort::inputs!(
                 "chunk" => chunk_value,
                 "chunk_lengths" => chunk_lengths_value,
                 "spkcache" => spkcache_value,
@@ -664,6 +724,10 @@ impl Sortformer {
 
             (preds, new_embs, valid_frames)
         };
+
+        if let (Some(router), Some(started)) = (self.router.as_mut(), inference_start) {
+            router.call_finished(window, started.elapsed());
+        }
 
         // Extract predictions for different parts
         let fifo_preds = if fifo_len > 0 {
