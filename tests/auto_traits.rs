@@ -1,5 +1,4 @@
-//! Sortformer is Send + Sync. A session router becomes part of it, so its trait bounds have to
-//! keep both — this fails to compile if they ever stop doing so.
+//! A session router becomes part of Sortformer, so its bounds have to keep both auto traits.
 
 fn assert_send<T: Send>() {}
 fn assert_sync<T: Sync>() {}

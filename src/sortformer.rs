@@ -41,9 +41,7 @@ const CHUNK_LEN: usize = 124; // Frames per chunk (~10s at 80ms)
 const FIFO_LEN: usize = 124; // FIFO buffer length
 const SPKCACHE_LEN: usize = 188; // Speaker cache length
 const RIGHT_CONTEXT: usize = 1; // Future frames for lookahead
-/// Audio frames -> model frames. Public because it is the only way to relate `chunk_len` to the
-/// mel-frame dimension a graph is pinned to; see [`graph_window`].
-pub const SUBSAMPLING: usize = 8;
+pub const SUBSAMPLING: usize = 8; // Audio frames -> model frames
 const EMB_DIM: usize = 512; // Embedding dimension
 pub const NUM_SPEAKERS: usize = 4; // Model supports 4 speakers
 const FRAME_DURATION: f32 = 0.08; // 80ms per frame
@@ -186,39 +184,24 @@ pub struct RawDiarizationPredictions {
     pub num_valid_frames: usize,
 }
 
-/// The three input dimensions that vary over a stream: `(chunk mel frames, spkcache frames,
-/// fifo frames)`. A graph whose inputs are all fixed serves exactly one of these.
+/// `(chunk mel frames, spkcache frames, fifo frames)` — the input dims that vary over a stream.
 pub type StreamingWindow = (usize, usize, usize);
 
-/// A source of sessions for streaming calls, chosen per window.
-///
-/// [`Sortformer`] owns one session. A graph with symbolic input dimensions accepts every window a
-/// stream produces; a graph with fixed dimensions accepts exactly one, which is what an execution
-/// provider that compiles a whole graph ahead of time needs. A router lets the caller serve the
-/// remaining windows from other graphs — and decide for itself which graph, when to build it and
-/// how long to keep it resident.
-///
-/// `Send + Sync` because [`Sortformer`] is both, and a router becomes part of it — a narrower
-/// bound here would take `Sync` away from every `Sortformer`, router or not.
+/// Supplies a session per streaming window, for graphs with fixed input shapes.
 pub trait SessionRouter: Send + Sync {
-    /// The session to run this call on, or `None` to use the one [`Sortformer`] owns.
-    ///
-    /// Called once per streaming call, before inference. Returning an error fails the call.
+    /// The session for this call, or `None` to use the one [`Sortformer`] owns.
     fn session_for(&mut self, window: StreamingWindow) -> Result<Option<&mut Session>>;
 
-    /// How long the call on `window` spent inside ONNX. Called after every streaming call,
-    /// whichever session served it. Default: ignore.
+    /// Time spent inside ONNX for `window`.
     fn call_finished(&mut self, window: StreamingWindow, elapsed: std::time::Duration) {
         let _ = (window, elapsed);
     }
 
-    /// A new stream is starting, so the windows begin again at the smallest one. Called from
-    /// [`Sortformer::reset_state`]. Default: ignore.
+    /// Called from [`Sortformer::reset_state`].
     fn stream_reset(&mut self) {}
 }
 
-/// The window a graph is pinned to, or `None` if any of the three inputs still has a symbolic
-/// dimension. Read off the graph, never derived from the streaming constants.
+/// The window a graph is pinned to, or `None` if any input dim is symbolic.
 pub fn graph_window(session: &Session) -> Option<StreamingWindow> {
     let dim = |name: &str| -> Option<usize> {
         let shape = session
@@ -229,8 +212,7 @@ pub fn graph_window(session: &Session) -> Option<StreamingWindow> {
             .tensor_shape()?
             .get(1)
             .copied()?;
-        // A pinned zero-length cache is a real window — the first call of every stream has one —
-        // so only a negative (symbolic) dimension counts as unpinned.
+        // A zero-length cache is a real window: every stream's first call has one.
         (shape >= 0).then_some(shape as usize)
     };
     Some((dim("chunk")?, dim("spkcache")?, dim("fifo")?))
@@ -239,7 +221,6 @@ pub fn graph_window(session: &Session) -> Option<StreamingWindow> {
 /// Streaming Sortformer v2 speaker diarization engine
 pub struct Sortformer {
     session: Session,
-    /// Optional per-window session source; `session` serves every call without one.
     router: Option<Box<dyn SessionRouter>>,
     config: DiarizationConfig,
     // Streaming constants (read from ONNX metadata, fallback to defaults)
@@ -330,14 +311,12 @@ impl Sortformer {
         (self.chunk_len + self.right_context) as f32 * FRAME_DURATION
     }
 
-    /// The session this instance owns, for reading the graph it was built from — see
-    /// [`graph_window`].
+    /// The session this instance owns.
     pub fn session(&self) -> &Session {
         &self.session
     }
 
-    /// Serve streaming calls from `router` where it offers a session, and from the one this
-    /// instance owns where it does not.
+    /// Route streaming calls through `router`; calls it declines run on this instance's session.
     pub fn set_session_router(&mut self, router: Box<dyn SessionRouter>) {
         self.router = Some(router);
     }
@@ -648,12 +627,7 @@ impl Sortformer {
         let fifo_value = ort::value::TensorRef::<f32>::from_array_view(fifo_ref.view())?;
         let fifo_lengths_value = ort::value::Value::from_array(fifo_lengths)?;
 
-        // Offer this call's window to the router, if there is one. A graph with fixed input shapes
-        // serves exactly one window, so a stream that runs on such a graph needs somewhere else to
-        // send the windows it does not cover.
         let window = (chunk_feat.shape()[1], spkcache_len, fifo_len);
-        // Nothing measures the call without a router to report it to, so the no-router path pays
-        // for no clock reads.
         let inference_start = self.router.is_some().then(std::time::Instant::now);
         let routed = match self.router.as_mut() {
             Some(router) => router.session_for(window)?,
