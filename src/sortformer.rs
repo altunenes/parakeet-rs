@@ -198,8 +198,9 @@ pub type StreamingWindow = (usize, usize, usize);
 /// remaining windows from other graphs — and decide for itself which graph, when to build it and
 /// how long to keep it resident.
 ///
-/// `Send` because [`Sortformer`] is, and a router becomes part of it.
-pub trait SessionRouter: Send {
+/// `Send + Sync` because [`Sortformer`] is both, and a router becomes part of it — a narrower
+/// bound here would take `Sync` away from every `Sortformer`, router or not.
+pub trait SessionRouter: Send + Sync {
     /// The session to run this call on, or `None` to use the one [`Sortformer`] owns.
     ///
     /// Called once per streaming call, before inference. Returning an error fails the call.
@@ -651,12 +652,13 @@ impl Sortformer {
         // serves exactly one window, so a stream that runs on such a graph needs somewhere else to
         // send the windows it does not cover.
         let window = (chunk_feat.shape()[1], spkcache_len, fifo_len);
+        // Nothing measures the call without a router to report it to, so the no-router path pays
+        // for no clock reads.
+        let inference_start = self.router.is_some().then(std::time::Instant::now);
         let routed = match self.router.as_mut() {
             Some(router) => router.session_for(window)?,
             None => None,
         };
-
-        let inference_start = std::time::Instant::now();
 
         // Run ONNX inference and extract all data in a block to release borrow
         let (preds, new_embs, chunk_len) = {
@@ -711,8 +713,8 @@ impl Sortformer {
             (preds, new_embs, valid_frames)
         };
 
-        if let Some(router) = self.router.as_mut() {
-            router.call_finished(window, inference_start.elapsed());
+        if let (Some(router), Some(started)) = (self.router.as_mut(), inference_start) {
+            router.call_finished(window, started.elapsed());
         }
 
         // Extract predictions for different parts
