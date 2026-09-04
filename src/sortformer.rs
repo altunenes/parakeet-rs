@@ -288,12 +288,20 @@ impl Sortformer {
     }
 
     /// Main diarization entry point
-    pub fn diarize(
+    /// Mel extraction and streaming inference, returning raw per-frame speaker probabilities with
+    /// no post-processing applied.
+    ///
+    /// Split out of [`Sortformer::diarize`] so that a different backend can supply an equivalent
+    /// `[num_frames, NUM_SPEAKERS]` matrix and reuse [`Sortformer::post_process`] unchanged.
+    ///
+    /// # Returns
+    /// `(predictions [num_frames, NUM_SPEAKERS], mono sample count)`
+    pub fn predict_raw(
         &mut self,
         mut audio: Vec<f32>,
         sample_rate: u32,
         channels: u16,
-    ) -> Result<Vec<SpeakerSegment>> {
+    ) -> Result<(Array2<f32>, u64)> {
         // Resample if needed
         if sample_rate != SAMPLE_RATE as u32 {
             return Err(Error::Audio(format!(
@@ -317,22 +325,52 @@ impl Sortformer {
         let features = self.extract_mel_features(&audio)?;
         let full_preds = self.process_features(&features)?;
 
+        Ok((full_preds, audio.len() as u64))
+    }
+
+    /// Median-smooth and binarize raw per-frame speaker probabilities into segments, clipped to
+    /// the audio length.
+    ///
+    /// Takes the config explicitly and depends only on the `[num_frames, NUM_SPEAKERS]` matrix, so
+    /// it runs without a session and a backend that is not this ONNX one gets byte-identical
+    /// post-processing.
+    pub fn post_process(
+        config: &DiarizationConfig,
+        preds: &Array2<f32>,
+        n_audio_samples: u64,
+    ) -> Vec<SpeakerSegment> {
         // Apply median filtering
-        let filtered_preds = if self.config.median_window > 1 {
-            self.median_filter(&full_preds)
+        let filtered_owned;
+        let filtered_preds = if config.median_window > 1 {
+            filtered_owned = Self::median_filter(config, preds);
+            &filtered_owned
         } else {
-            full_preds
+            preds
         };
 
         // Binarize to segments and clip to audio length
-        let n_audio_samples = audio.len() as u64;
-        let mut segments = self.binarize(&filtered_preds);
+        let mut segments = Self::binarize(config, filtered_preds);
         for seg in &mut segments {
             seg.end = seg.end.min(n_audio_samples);
         }
         segments.retain(|s| s.end > s.start);
 
-        Ok(segments)
+        segments
+    }
+
+    /// Main diarization entry point
+    pub fn diarize(
+        &mut self,
+        audio: Vec<f32>,
+        sample_rate: u32,
+        channels: u16,
+    ) -> Result<Vec<SpeakerSegment>> {
+        let (full_preds, n_audio_samples) = self.predict_raw(audio, sample_rate, channels)?;
+        Ok(Self::post_process(
+            &self.config,
+            &full_preds,
+            n_audio_samples,
+        ))
     }
 
     /// Streaming diarization: process one audio chunk without resetting state.
@@ -359,14 +397,14 @@ impl Sortformer {
         let full_preds = self.process_features(&features)?;
 
         let filtered_preds = if self.config.median_window > 1 {
-            self.median_filter(&full_preds)
+            Self::median_filter(&self.config, &full_preds)
         } else {
             full_preds
         };
 
         // Clip to audio length in samples
         let n_audio_samples = audio_16k_mono.len() as u64;
-        let mut segments = self.binarize(&filtered_preds);
+        let mut segments = Self::binarize(&self.config, &filtered_preds);
         for seg in &mut segments {
             seg.end = seg.end.min(n_audio_samples);
         }
@@ -443,7 +481,7 @@ impl Sortformer {
 
             // Apply median filtering
             let filtered_preds = if self.config.median_window > 1 {
-                self.median_filter(&chunk_preds)
+                Self::median_filter(&self.config, &chunk_preds)
             } else {
                 chunk_preds
             };
@@ -451,7 +489,7 @@ impl Sortformer {
             // Binarize with absolute sample offset
             let sample_offset = self.elapsed_samples as u64;
             let chunk_samples = (self.chunk_len * SUBSAMPLING * HOP_LENGTH) as u64;
-            let mut segments = self.binarize(&filtered_preds);
+            let mut segments = Self::binarize(&self.config, &filtered_preds);
             for seg in &mut segments {
                 seg.start += sample_offset;
                 seg.end = (seg.end + sample_offset).min(sample_offset + chunk_samples);
@@ -496,14 +534,14 @@ impl Sortformer {
         let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
 
         let filtered_preds = if self.config.median_window > 1 {
-            self.median_filter(&chunk_preds)
+            Self::median_filter(&self.config, &chunk_preds)
         } else {
             chunk_preds
         };
 
         let sample_offset = self.elapsed_samples as u64;
         let remaining_samples = remaining.len() as u64;
-        let mut segments = self.binarize(&filtered_preds);
+        let mut segments = Self::binarize(&self.config, &filtered_preds);
         for seg in &mut segments {
             seg.start += sample_offset;
             seg.end = (seg.end + sample_offset).min(sample_offset + remaining_samples);
@@ -1008,8 +1046,10 @@ impl Sortformer {
     }
 
     /// Apply median filter to predictions
-    fn median_filter(&self, preds: &Array2<f32>) -> Array2<f32> {
-        let window = self.config.median_window;
+    /// Takes the config explicitly rather than `&self` so [`Sortformer::post_process`] can run
+    /// without a session.
+    fn median_filter(config: &DiarizationConfig, preds: &Array2<f32>) -> Array2<f32> {
+        let window = config.median_window;
         let half = window / 2;
         let mut filtered = preds.clone();
 
@@ -1029,15 +1069,17 @@ impl Sortformer {
     }
 
     /// Binarize predictions to segments (padding applied during thresholding)
-    fn binarize(&self, preds: &Array2<f32>) -> Vec<SpeakerSegment> {
+    /// Takes the config explicitly rather than `&self` so [`Sortformer::post_process`] can run
+    /// without a session.
+    fn binarize(config: &DiarizationConfig, preds: &Array2<f32>) -> Vec<SpeakerSegment> {
         let mut segments = Vec::new();
         let num_frames = preds.shape()[0];
 
         // pre cobvert cfg thresh from secs to samples
-        let pad_onset_samples = (self.config.pad_onset * SAMPLE_RATE as f32) as u64;
-        let pad_offset_samples = (self.config.pad_offset * SAMPLE_RATE as f32) as u64;
-        let min_dur_on_samples = (self.config.min_duration_on * SAMPLE_RATE as f32) as u64;
-        let min_dur_off_samples = (self.config.min_duration_off * SAMPLE_RATE as f32) as u64;
+        let pad_onset_samples = (config.pad_onset * SAMPLE_RATE as f32) as u64;
+        let pad_offset_samples = (config.pad_offset * SAMPLE_RATE as f32) as u64;
+        let min_dur_on_samples = (config.min_duration_on * SAMPLE_RATE as f32) as u64;
+        let min_dur_off_samples = (config.min_duration_off * SAMPLE_RATE as f32) as u64;
         let samples_per_frame = (FRAME_DURATION * SAMPLE_RATE as f32) as u64;
 
         for spk in 0..NUM_SPEAKERS {
@@ -1048,10 +1090,10 @@ impl Sortformer {
             for t in 0..num_frames {
                 let p = preds[[t, spk]];
 
-                if p >= self.config.onset && !in_seg {
+                if p >= config.onset && !in_seg {
                     in_seg = true;
                     seg_start = t;
-                } else if p < self.config.offset && in_seg {
+                } else if p < config.offset && in_seg {
                     in_seg = false;
 
                     let start_s = (seg_start as u64 * samples_per_frame)
