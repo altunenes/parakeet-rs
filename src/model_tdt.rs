@@ -24,21 +24,6 @@ pub struct ParakeetTDTModel {
 }
 
 impl ParakeetTDTModel {
-    /// Load TDT model from directory containing encoder and decoder_joint ONNX files
-    ///
-    /// # Arguments
-    /// * `model_dir` - Directory containing encoder and decoder_joint ONNX files
-    /// * `exec_config` - Execution configuration for ONNX runtime
-    /// * `vocab_size` - Vocabulary size (number of tokens including blank)
-    pub fn from_pretrained<P: AsRef<Path>>(
-        model_dir: P,
-        exec_config: ExecutionConfig,
-        vocab_size: usize,
-    ) -> Result<Self> {
-        let joint_config = exec_config.clone();
-        Self::from_pretrained_with_configs(model_dir, exec_config, joint_config, vocab_size)
-    }
-
     /// Load a TDT model, running the encoder and the decoder/joint under separate execution
     /// configurations.
     ///
