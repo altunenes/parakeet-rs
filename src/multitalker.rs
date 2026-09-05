@@ -206,6 +206,21 @@ pub struct MultitalkerASR {
     audio_buffer: Vec<f32>,
     audio_processed: usize,
     chunk_idx: usize,
+    // APEX PATCH (docs/superpowers/specs/2026-09-04-apex-onnx-multitalker-engine-swap-design.md
+    // follow-up): the last PRE_ENCODE_CACHE rows of the previous call's raw
+    // diarization predictions, kept so THIS call's derive_speaker_targets
+    // can prepend real historical data for the PRE_ENCODE_CACHE lookback
+    // window build_mel_chunk already gives the encoder -- instead of
+    // derive_speaker_targets's nearest-neighbour rescale silently mapping
+    // that lookback region onto the CURRENT chunk's diarization curve
+    // (temporally wrong: frame 0 of a 720ms-in-the-past lookback getting
+    // assigned "whatever the speaker's activity was at the START of the
+    // chunk that just arrived", not what was actually happening 720ms
+    // earlier). Deliberately NOT re-fed into Sortformer's own
+    // diarize_chunk_raw (that would double-process already-seen audio
+    // through its stateful arrival-order cache); this is already-computed
+    // predictions being reused, not new inference.
+    prev_diar_tail: Option<Array2<f32>>,
 }
 
 impl MultitalkerASR {
@@ -244,6 +259,7 @@ impl MultitalkerASR {
             audio_buffer: Vec::new(),
             audio_processed: 0,
             chunk_idx: 0,
+            prev_diar_tail: None,
         })
     }
 
@@ -254,6 +270,7 @@ impl MultitalkerASR {
         self.audio_buffer.clear();
         self.audio_processed = 0;
         self.chunk_idx = 0;
+        self.prev_diar_tail = None;
     }
 
     /// Returns the current multitalker configuration.
@@ -349,14 +366,34 @@ impl MultitalkerASR {
         let raw_preds = self.sortformer.diarize_chunk_raw(audio_chunk)?;
         let diar_preds = &raw_preds.predictions;
 
-        // Determine active speakers
+        // APEX PATCH: prepend the previous call's retained diarization tail
+        // (real predictions for the PRE_ENCODE_CACHE lookback window
+        // build_mel_chunk already gives the encoder below) so
+        // derive_speaker_targets has genuine historical data for that
+        // window instead of nearest-neighbour-rescaling the CURRENT
+        // chunk's predictions onto it. See prev_diar_tail's field comment.
+        // NOT re-run through Sortformer (would double-process audio it's
+        // already seen) -- this is reuse of already-computed predictions.
+        let combined_diar_preds: Array2<f32> = match &self.prev_diar_tail {
+            Some(tail) if tail.nrows() > 0 => {
+                ndarray::concatenate(ndarray::Axis(0), &[tail.view(), diar_preds.view()])
+                    .map_err(|e| Error::Model(format!("diar tail concat failed: {e}")))?
+            }
+            _ => diar_preds.clone(),
+        };
+
+        // Determine active speakers -- uses the combined (lookback + new)
+        // window so a speaker whose activity was already rising just
+        // before this chunk's official start is more likely to be
+        // detected, not just whoever crosses threshold within the new
+        // audio alone.
         let mut active_speakers = Vec::new();
         for spk_id in 0..self.config.max_speakers {
-            if spk_id >= diar_preds.ncols() {
+            if spk_id >= combined_diar_preds.ncols() {
                 break;
             }
-            let max_activity = (0..diar_preds.nrows())
-                .map(|t| diar_preds[[t, spk_id]])
+            let max_activity = (0..combined_diar_preds.nrows())
+                .map(|t| combined_diar_preds[[t, spk_id]])
                 .fold(0.0f32, f32::max);
             if max_activity > self.config.activity_threshold {
                 active_speakers.push(spk_id);
@@ -383,9 +420,12 @@ impl MultitalkerASR {
 
         // For each active speaker, run encoder with speaker-specific masks
         for &spk_id in &active_speakers {
-            // Derive spk_targets and bg_spk_targets from raw predictions
+            // Derive spk_targets and bg_spk_targets from raw predictions --
+            // APEX PATCH: combined_diar_preds (lookback + new), not the
+            // chunk-only diar_preds, so the PRE_ENCODE_CACHE lookback
+            // region of chunk_length gets a real speaker mask.
             let (spk_targets, bg_spk_targets) =
-                self.derive_speaker_targets(diar_preds, spk_id, chunk_length)?;
+                self.derive_speaker_targets(&combined_diar_preds, spk_id, chunk_length)?;
 
             let spk_idx = self
                 .speakers
@@ -429,6 +469,18 @@ impl MultitalkerASR {
                 });
             }
         }
+
+        // APEX PATCH: retain this call's own last PRE_ENCODE_CACHE rows
+        // (the FRESH diar_preds, not combined_diar_preds -- using the
+        // combined one here would make the retained tail grow by the old
+        // tail's length every call instead of staying a fixed lookback
+        // window) as the next call's lookback tail.
+        let tail_len = PRE_ENCODE_CACHE.min(diar_preds.nrows());
+        self.prev_diar_tail = Some(
+            diar_preds
+                .slice(s![diar_preds.nrows() - tail_len.., ..])
+                .to_owned(),
+        );
 
         // Advance processed position
         self.audio_processed += chunk_size * HOP_LENGTH;
