@@ -150,6 +150,18 @@ See `scripts/export_diar_sortformer.py` for exporting the model with custom stre
 
 **TDT**: Download from [HuggingFace](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx): `encoder-model.onnx`, `encoder-model.onnx.data`, `decoder_joint-model.onnx`, `vocab.txt`
 
+**Orukeet (optional TDT fine-tune)**: the [pinned Hugging Face INT8 export](https://huggingface.co/oruk/orukeet/tree/eac739d754bb171287930e6e63386f5b88f8179e/onnx/combined-v0.1.0-int8) works with `ParakeetTDT`. The downloader verifies a release manifest and all required file hashes, including licenses, then prints the cached model directory:
+
+```bash
+python3 -m pip install huggingface-hub
+model_dir=$(python3 examples/download_orukeet.py)
+cargo run --release --example orukeet -- "$model_dir" audio.wav
+# After installation, no network is needed:
+model_dir=$(python3 examples/download_orukeet.py --offline)
+```
+
+This uses the existing local TDT runtime; it does not add streaming support or change defaults. The ~672 MB weights use the NVIDIA Open Model License. Model downloads use normal Hugging Face accounting through the required verification manifest. Audio stays local; cached files cause no counting requests. Accuracy numbers on the model card describe its NeMo evaluation, not a benchmark of this Rust runtime.
+
 **EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`
 
 **Nemotron (English-only)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model` (*[int8](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int8) / [int4](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int4)*)
