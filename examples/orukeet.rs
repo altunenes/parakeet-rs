@@ -1,4 +1,4 @@
-//! Run after downloading the verified model with examples/download_orukeet.py.
+//! Run after downloading the verified model with scripts/download_orukeet.py.
 use parakeet_rs::{ParakeetTDT, TimestampMode, Transcriber};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

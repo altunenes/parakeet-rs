@@ -10,7 +10,7 @@ from huggingface_hub.errors import LocalEntryNotFoundError
 
 MISSING = "missing"
 SPEC = importlib.util.spec_from_file_location(
-    "orukeet_example", Path(__file__).parents[1] / "examples/download_orukeet.py"
+    "orukeet_example", Path(__file__).parents[1] / "scripts/download_orukeet.py"
 )
 assert SPEC is not None
 assert SPEC.loader is not None

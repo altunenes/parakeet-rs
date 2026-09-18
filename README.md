@@ -154,13 +154,13 @@ See `scripts/export_diar_sortformer.py` for exporting the model with custom stre
 
 ```bash
 python3 -m pip install huggingface-hub
-model_dir=$(python3 examples/download_orukeet.py)
+model_dir=$(python3 scripts/download_orukeet.py)
 cargo run --release --example orukeet -- "$model_dir" audio.wav
 # After installation, no network is needed:
-model_dir=$(python3 examples/download_orukeet.py --offline)
+model_dir=$(python3 scripts/download_orukeet.py --offline)
 ```
 
-This uses the existing local TDT runtime; it does not add streaming support or change defaults. The ~672 MB weights use the NVIDIA Open Model License. Model downloads use normal Hugging Face accounting through the required verification manifest. Audio stays local; cached files cause no counting requests. Accuracy numbers on the model card describe its NeMo evaluation, not a benchmark of this Rust runtime.
+This uses the existing local TDT runtime; it does not add streaming support or change defaults. The ~672 MB weights are licensed under [CC BY-SA 4.0](https://huggingface.co/oruk/orukeet/blob/eac739d754bb171287930e6e63386f5b88f8179e/onnx/combined-v0.1.0-int8/LICENSE-WEIGHTS), as recorded in the downloaded `LICENSE-WEIGHTS`; `NOTICE.md` preserves the NVIDIA/Parakeet attribution. Model downloads use normal Hugging Face accounting through the required verification manifest. Audio stays local; cached files cause no counting requests. Accuracy numbers on the model card describe its NeMo evaluation, not a benchmark of this Rust runtime.
 
 **EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`
 
