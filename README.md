@@ -104,7 +104,7 @@ use parakeet_rs::MultitalkerASR;
 
 let mut model = MultitalkerASR::from_pretrained(
     "./multitalker",             // encoder, decoder, tokenizer
-    "sortformer.onnx",           // Sortformer v2 for diarization
+    "nemotron3_diar_v3.onnx",    // Nemotron-3 (Sortformer v3) for diarization
     None,
 )?;
 
@@ -117,32 +117,32 @@ for chunk in audio.chunks(17920) {  // ~1.12s at 16kHz
 ```
 See `examples/multitalker.rs` for full usage with latency modes.
 
-**Sortformer v2 & v2.1 (Speaker Diarization)**: Streaming 4-speaker diarization
+**Nemotron-3 Diarization (Sortformer v3)**: Streaming diarization, up to 8 speakers
 ```toml
 parakeet-rs = { version = "0.3", features = ["sortformer"] }
 ```
 ```rust
-use parakeet_rs::sortformer::{Sortformer, DiarizationConfig};
+use parakeet_rs::sortformer::{Sortformer, StreamingProfile};
 
-let mut sortformer = Sortformer::with_config(
-    "diar_streaming_sortformer_4spk-v2.onnx", // or v2.1.onnx
-    None,
-    DiarizationConfig::callhome(),  // or dihard3(),custom()
-)?;
-let segments = sortformer.diarize(audio, 16000, 1)?;
+let mut diarizer = Sortformer::new("nemotron3_diar_v3.onnx")?;
+let segments = diarizer.diarize(audio, 16000, 1)?;
 for seg in segments {
-    println!("Speaker {} [{:.2}s - {:.2}s]", seg.speaker_id,
+    println!("speaker_{} [{:.2}s - {:.2}s]", seg.speaker_id,
         seg.start as f64 / 16_000.0, seg.end as f64 / 16_000.0);
 }
 
-// For streaming/real-time use, diarize_chunk() preserves state across calls:
-let segments = sortformer.diarize_chunk(&audio_chunk_16k_mono)?;
+// Streaming/real-time: diarize_chunk() / feed() preserve state across calls.
+let segments = diarizer.diarize_chunk(&audio_chunk_16k_mono)?;
+
+// Latency presets from NVIDIA's model card:
+// offline() 30.4s (default), low_latency() 1.04s, very_low_latency() 0.64s, ultra_low_latency() 0.32s
+diarizer.set_profile(StreamingProfile::low_latency())?;
 ```
-See `examples/diarization.rs` for combining with TDT transcription.
+See `examples/diarization.rs` for a runnable example (pass `low`, `very-low` or `ultra` to try
+the latency presets) and `examples/streaming_diarization.rs` for real-time `feed`/`flush`.
 
-See `examples/streaming_diarization.rs` for `diarize_chunk` usage example.
-
-See `scripts/export_diar_sortformer.py` for exporting the model with custom streaming parameters.
+See `scripts/export_diar_sortformer.py` for exporting the ONNX (dual-resolution,
+self-describing metadata) with custom streaming parameters.
 
 ## Setup
 
@@ -158,11 +158,11 @@ See `scripts/export_diar_sortformer.py` for exporting the model with custom stre
 
 **Unified**: Download from [HuggingFace](https://huggingface.co/bobNight/parakeet-unified-en-0.6b-onnx): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`
 
-**Multitalker**: Download from [HuggingFace](https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8/tree/main): `encoder.int8.onnx`, `decoder_joint.int8.onnx`, `tokenizer.model` (also needs a Sortformer model for diarization)
+**Multitalker**: Download from [HuggingFace](https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8/tree/main): `encoder.int8.onnx`, `decoder_joint.int8.onnx`, `tokenizer.model` (also needs the Nemotron-3 diarization ONNX below)
 
 **Cohere Transcribe**: Download from [HuggingFace](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX): `encoder_model.onnx` (+ `.onnx_data*`), `decoder_model_merged.onnx` (+ `.onnx_data`), `tokenizer.json` (FP32, FP16, INT8, INT4 variants available)
 
-**Diarization (Sortformer v2 & v2.1)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main): `diar_streaming_sortformer_4spk-v2.onnx` or `v2.1.onnx`.
+**Diarization (Nemotron-3 / Sortformer v3)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization): `nemotron3_diar_v3.onnx`. Or export it yourself from the [base model](https://huggingface.co/nvidia/Nemotron-3-Diarization) with `scripts/export_diar_sortformer.py`.
 
 Quantized versions available (int8). All files must be in the same directory.
 
@@ -193,7 +193,7 @@ let config = ExecutionConfig::new()
 - [Unified: Offline + buffered streaming RNNT ASR (600M params, EN only)](https://huggingface.co/nvidia/parakeet-unified-en-0.6b)
 - [Multitalker: Streaming multi-speaker ASR with speaker-kernel injection](https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1) ([ONNX int8](https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8))
 - [Cohere Transcribe: Offline multilingual ASR (14 languages, long-form supported)](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026) ([ONNX](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX))
-- [Sortformer v2 & v2.1: Streaming speaker diarization (up to 4 speakers)](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2) NOTE: you can also download v2.1 model same way.
+- [Nemotron-3 Diarization (Sortformer v3): Streaming speaker diarization (up to 8 speakers)](https://huggingface.co/nvidia/Nemotron-3-Diarization) ([ONNX](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization))
 - Token-level timestamps (CTC, TDT)
 
 ## Notes
