@@ -7,8 +7,8 @@ encoding to produce per-speaker transcriptions with word-level timestamps.
 Download models:
 - Multitalker ASR (int8): encoder.int8.onnx, decoder_joint.int8.onnx, tokenizer.model
   https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8/tree/main
-- Nemotron-3 Diarization ONNX (nemotron3_diar_v3.onnx), exported with
-  scripts/export_diar_sortformer.py from https://huggingface.co/nvidia/Nemotron-3-Diarization
+- Nemotron-3 Diarization ONNX (nemotron3_diar_v3.onnx):
+  https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization
 
 Usage:
   cargo run --release --example multitalker --features multitalker -- \

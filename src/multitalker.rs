@@ -162,9 +162,9 @@ impl LatencyMode {
 /// calling [`MultitalkerASR::reset()`] first (the setter does this automatically).
 #[derive(Debug, Clone)]
 pub struct MultitalkerConfig {
-    /// Maximum number of concurrent speakers to track (1..=4).
-    /// The Sortformer model supports up to 4 speaker slots. Setting this
-    /// lower reduces compute by skipping inactive slots.
+    /// Maximum number of concurrent speakers to track (1..=8).
+    /// The Nemotron-3 (Sortformer v3) model supports up to 8 speaker slots.
+    /// Setting this lower reduces compute by skipping inactive slots.
     pub max_speakers: usize,
 
     /// Minimum speaker activity probability to consider a speaker active

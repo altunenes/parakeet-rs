@@ -1,21 +1,30 @@
 /*
-Speaker Diarization with NVIDIA Sortformer v2 (Streaming)
+Streaming Speaker Diarization with NVIDIA Nemotron-3 Diarization (Sortformer v3).
 
-Download the Sortformer v2 model:
-https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.onnx
-Or download the Sortformer v2.1 model:
-https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.1.onnx
-Download test audio:
-wget https://github.com/thewh1teagle/pyannote-rs/releases/download/v0.1.0/6_speakers.wav
+Download nemotron3_diar_v3.onnx from https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization
+(or export it with scripts/export_diar_sortformer.py), then feed audio in small
+chunks as it arrives (mic, GStreamer, etc.). State (speaker cache, FIFO) is preserved
+across feed() calls, so speaker IDs stay consistent over time.
+
+Latency vs accuracy (same ONNX, no re-export; set before feeding audio, it resets state):
+  Buffer latency = (chunk_len + right_context) * 80ms. NVIDIA's recommended presets:
+    - StreamingProfile::offline()            30.4 s
+    - StreamingProfile::low_latency()        1.04 s   <- used here
+    - StreamingProfile::very_low_latency()   0.64 s
+    - StreamingProfile::ultra_low_latency()  0.32 s
+  Lower latency means less context per step and slightly higher DER (see the model card).
+
+Resolution: segments come from the model's 10ms "hires" frames (80ms frames are used
+internally for the speaker cache), so timestamps are accurate to ~10ms. Note feed()
+binarizes each chunk independently, so a segment crossing a chunk edge may be split --
+per-speaker total voiced time still matches the whole-file result.
 
 Usage:
-cargo run --example streaming-diarization --features sortformer <audio.wav>
+  cargo run --release --example streaming-diarization --features sortformer -- <audio.wav> [nemotron3_diar_v3.onnx]
 */
 
 #[cfg(feature = "sortformer")]
-use hound;
-#[cfg(feature = "sortformer")]
-use parakeet_rs::sortformer::{DiarizationConfig, Sortformer};
+use parakeet_rs::sortformer::{Sortformer, StreamingProfile};
 #[cfg(feature = "sortformer")]
 use std::env;
 #[cfg(feature = "sortformer")]
@@ -26,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "sortformer"))]
     {
         eprintln!("Error: This example requires the 'sortformer' feature.");
-        eprintln!("Run with: cargo run --example streaming_diarization --features sortformer <audio.wav>");
+        eprintln!("Run with: cargo run --example streaming-diarization --features sortformer -- <audio.wav>");
         return Err("sortformer feature not enabled".into());
     }
 
@@ -34,18 +43,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let start_time = Instant::now();
         let args: Vec<String> = env::args().collect();
-        let audio_path = args.get(1).expect(
-            "Please specify audio file: cargo run --example streaming-diarization --features sortformer <audio.wav>",
-        );
+        let audio_path = args
+            .get(1)
+            .expect("usage: streaming-diarization --features sortformer -- <audio.wav> [onnx]");
+        let onnx = args.get(2).map(String::as_str).unwrap_or("nemotron3_diar_v3.onnx");
 
-        // Load audio
         let mut reader = hound::WavReader::open(audio_path)?;
         let spec = reader.spec();
-
         if spec.sample_rate != 16000 {
             return Err(format!("Expected 16kHz, got {}Hz", spec.sample_rate).into());
         }
-
         let mut audio: Vec<f32> = match spec.sample_format {
             hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<Vec<_>, _>>()?,
             hound::SampleFormat::Int => reader
@@ -53,72 +60,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|s| s.map(|s| s as f32 / 32768.0))
                 .collect::<Result<Vec<_>, _>>()?,
         };
-
         if spec.channels > 1 {
             audio = audio
                 .chunks(spec.channels as usize)
                 .map(|c| c.iter().sum::<f32>() / spec.channels as f32)
                 .collect();
         }
+        println!("Loaded {:.1}s of audio", audio.len() as f32 / 16_000.0);
 
-        let duration = audio.len() as f32 / 16_000.0;
-        println!("Loaded {:.1}s of audio", duration);
-
-        // Create Sortformer
-        let mut sortformer = Sortformer::with_config(
-            "diar_streaming_sortformer_4spk-v2.1.onnx",
-            None,
-            DiarizationConfig::callhome(),
-        )?;
-
+        let mut diarizer = Sortformer::new(onnx)?;
+        diarizer.set_profile(StreamingProfile::low_latency())?;
+        let p = diarizer.profile();
         println!(
-            "Config: chunk_len={}, right_context={}, latency={:.2}s",
-            sortformer.chunk_len,
-            sortformer.right_context,
-            sortformer.latency()
+            "Profile: chunk_len={}, right_context={}, latency={:.2}s",
+            p.chunk_len,
+            p.right_context,
+            diarizer.latency()
         );
 
-        // simulate real-time streaming: feed small chunks (for instance 20ms = 320 samples)
-        // In practice, real world these would come from gsttreamer, mic etc ofc
+        // Simulate real-time streaming: feed 20ms chunks (in practice, from a mic/GStreamer).
         let feed_chunk_size = 320; // 20ms at 16kHz
         let mut total_segments = 0;
-
         println!("\nStreaming diarization (feeding {}ms chunks):", feed_chunk_size * 1000 / 16_000);
         println!("{}", "-".repeat(60));
 
         for chunk in audio.chunks(feed_chunk_size) {
-            let segments = sortformer.feed(chunk)?;
-
-            for seg in &segments {
+            for seg in diarizer.feed(chunk)? {
                 println!(
-                    "  [{:06.2}s - {:06.2}s] Speaker {}",
+                    "  [{:06.2}s - {:06.2}s] speaker_{}",
                     seg.start as f64 / 16_000.0,
                     seg.end as f64 / 16_000.0,
                     seg.speaker_id
                 );
+                total_segments += 1;
             }
-            total_segments += segments.len();
         }
-
-        // Flush remaining buffered audio
-        let final_segments = sortformer.flush()?;
-        for seg in &final_segments {
+        for seg in diarizer.flush()? {
             println!(
-                "  [{:06.2}s - {:06.2}s] Speaker {} (flush)",
+                "  [{:06.2}s - {:06.2}s] speaker_{} (flush)",
                 seg.start as f64 / 16_000.0,
                 seg.end as f64 / 16_000.0,
                 seg.speaker_id
             );
+            total_segments += 1;
         }
-        total_segments += final_segments.len();
 
         println!("{}", "-".repeat(60));
-        println!(
-            "Done: {} segments in {:.2}s",
-            total_segments,
-            start_time.elapsed().as_secs_f32()
-        );
-
+        println!("Done: {} segments in {:.2}s", total_segments, start_time.elapsed().as_secs_f32());
         Ok(())
     }
 
