@@ -1,30 +1,28 @@
-//! NVIDIA Sortformer v2 Streaming Speaker Diarization
-//!
-//! This module implements NVIDIA's Sortformer v2 streaming model for speaker diarization.
+//! NVIDIA Sortformer streaming speaker diarization (Nemotron-3 Diarization / Sortformer v3).
 //!
 //! Key features:
-//! - Streaming inference with ~10s chunks (124 frames at 80ms each)
-//! - FIFO buffer for context management
-//! - Smart speaker cache compression (keeps important frames, not just recent)
-//! - Silence profile tracking
-//! - Post-processing: median filtering, hysteresis thresholding
-//! - Supports up to 4 speakers
+//! - Streaming inference with a FIFO queue and an arrival-order speaker cache
+//! - Smart speaker cache compression (keeps informative frames, not just recent ones)
+//! - Up to 8 speakers, IDs ordered by each speaker's first appearance
+//! - Post-processing: optional median filtering, hysteresis thresholding
 //!
-//! Reference: https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2
-//! Note that, my ONNX export:
-//! CHUNK_LEN = 124
-//! FIFO_LEN = 124
-//! CACHE_LEN = 188
-//! FEAT_DIM = 128
-//! EMB_DIM = 512
+//! Resolution: the model tracks the stream at 80ms frames (these drive the speaker cache) and
+//! predicts speaker activity at 10ms frames. Everything this module returns is at 10ms.
+//!
+//! Latency: a streaming call emits nothing until `(chunk_len + right_context) * 80ms` of audio
+//! has arrived. All streaming parameters are runtime settings; the exported graph has dynamic
+//! time axes, so no re-export is needed to change them. See [`StreamingProfile`].
+//!
+//! Export the ONNX with `scripts/export_diar_sortformer.py`.
+//! Reference: https://huggingface.co/nvidia/Nemotron-3-Diarization
 //! Note, my stft code is adapted from: https://librosa.org/doc/main/generated/librosa.stft.html
 
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig;
+use crate::tensor_utils::extract_3d_f32;
 use ndarray::{s, Array1, Array2, Array3, Axis};
 use ort::session::Session;
 use realfft::RealFftPlanner;
-use std::f32::consts::PI;
 use std::path::Path;
 
 // Model constants
@@ -37,28 +35,36 @@ const LOG_ZERO_GUARD: f32 = 5.960_464_5e-8;
 const SAMPLE_RATE: usize = 16000;
 
 // Streaming constants (defaults, overridden by ONNX metadata if present)
-const CHUNK_LEN: usize = 124; // Frames per chunk (~10s at 80ms)
-const FIFO_LEN: usize = 124; // FIFO buffer length
-const SPKCACHE_LEN: usize = 188; // Speaker cache length
-const RIGHT_CONTEXT: usize = 1; // Future frames for lookahead
+const CHUNK_LEN: usize = 340; // Frames per chunk (~27s at 80ms)
+const FIFO_LEN: usize = 40; // FIFO buffer length
+const SPKCACHE_LEN: usize = 264; // Speaker cache length
+const RIGHT_CONTEXT: usize = 40; // Future frames for lookahead
+const SPKCACHE_UPDATE_PERIOD: usize = 300; // Frames moved from FIFO to cache per update
 pub const SUBSAMPLING: usize = 8; // Audio frames -> model frames
+const UPSAMPLE_FACTOR: usize = 8; // Model (80ms) frames -> output (10ms) frames
 const EMB_DIM: usize = 512; // Embedding dimension
-pub const NUM_SPEAKERS: usize = 4; // Model supports 4 speakers
+pub const NUM_SPEAKERS: usize = 8; // Model supports 8 speakers
 const FRAME_DURATION: f32 = 0.08; // 80ms per frame
 
 // Cache compression params (from NeMo)
-const SPKCACHE_SIL_FRAMES_PER_SPK: usize = 3;
+const SPKCACHE_SIL_FRAMES_PER_SPK: usize = 1;
 const PRED_SCORE_THRESHOLD: f32 = 0.25;
 const STRONG_BOOST_RATE: f32 = 0.75;
 const WEAK_BOOST_RATE: f32 = 1.5;
 const MIN_POS_SCORES_RATE: f32 = 0.5;
-const SIL_THRESHOLD: f32 = 0.2;
+const SCORES_BOOST_LATEST: f32 = 0.05;
 const MAX_INDEX: usize = 99999;
 
-/// Post-processing configuration for speaker diarization. (NVIDIA official configs from v2 YAMLs)
+/// Round to the nearest bfloat16 value. The checkpoint stores the STFT window and mel filterbank
+/// in bf16 and NeMo runs with those values, so the features only match NeMo when ours do too.
+fn to_bf16(x: f32) -> f32 {
+    let bits = x.to_bits();
+    f32::from_bits((bits + 0x7FFF + ((bits >> 16) & 1)) & 0xFFFF_0000)
+}
+
+/// Post-processing configuration for speaker diarization.
 ///
 /// Controls how raw model predictions are converted into speaker segments.
-/// NVIDIA provides pre-tuned configs for different datasets (CallHome, DIHARD3, AMI).
 ///
 /// # Parameters
 /// - `onset`: Probability threshold to START a speaker segment (higher = more strict)
@@ -67,16 +73,10 @@ const MAX_INDEX: usize = 99999;
 /// - `pad_offset`: Seconds to add to segment end times
 /// - `min_duration_on`: Minimum segment length in seconds (filters short blips)
 /// - `min_duration_off`: Minimum gap between segments before merging
-/// - `median_window`: Smoothing window size (odd number, higher = smoother)
+/// - `median_window`: Smoothing window in 10ms frames (odd number, `<= 1` disables it)
 ///
-/// # Pre-tuned Configs
-/// - `callhome()` - (default)
-/// - `dihard3()`
-///
-/// # Custom Config
-/// Use `custom(onset, offset)` to create your own config for fine-tuning.
-///
-/// See: https://github.com/NVIDIA-NeMo/NeMo/tree/main/examples/speaker_tasks/diarization/conf/neural_diarizer
+/// The default reproduces NeMo's `diarize()` for this model: a plain 0.5 threshold with no
+/// padding, duration filtering, or smoothing. Use `custom(onset, offset)` to tune.
 #[derive(Debug, Clone)]
 pub struct DiarizationConfig {
     pub onset: f32,
@@ -90,39 +90,19 @@ pub struct DiarizationConfig {
 
 impl Default for DiarizationConfig {
     fn default() -> Self {
-        Self::callhome()
+        Self {
+            onset: 0.5,
+            offset: 0.5,
+            pad_onset: 0.0,
+            pad_offset: 0.0,
+            min_duration_on: 0.0,
+            min_duration_off: 0.0,
+            median_window: 1,
+        }
     }
 }
 
 impl DiarizationConfig {
-    /// CallHome dataset config for v2 (default)
-    /// From: diar_streaming_sortformer_4spk-v2_callhome-part1.yaml
-    pub fn callhome() -> Self {
-        Self {
-            onset: 0.641,
-            offset: 0.561,
-            pad_onset: 0.229,
-            pad_offset: 0.079,
-            min_duration_on: 0.511,
-            min_duration_off: 0.296,
-            median_window: 11,
-        }
-    }
-
-    /// DIHARD3 dataset config for v2
-    /// From: diar_streaming_sortformer_4spk-v2_dihard3-dev.yaml
-    pub fn dihard3() -> Self {
-        Self {
-            onset: 0.56,
-            offset: 1.0,
-            pad_onset: 0.063,
-            pad_offset: 0.002,
-            min_duration_on: 0.007,
-            min_duration_off: 0.151,
-            median_window: 11,
-        }
-    }
-
     /// Create a custom config for fine-tuning diarization behavior.
     ///
     /// # Arguments
@@ -142,7 +122,7 @@ impl DiarizationConfig {
     /// // Full customization
     /// let mut config = DiarizationConfig::custom(0.6, 0.5);
     /// config.min_duration_on = 0.3;  // Ignore segments shorter than 300ms
-    /// config.median_window = 15;      // More smoothing
+    /// config.median_window = 15;      // Smooth over 150ms
     /// ```
     pub fn custom(onset: f32, offset: f32) -> Self {
         Self {
@@ -154,6 +134,76 @@ impl DiarizationConfig {
             min_duration_off: 0.1,
             median_window: 11,
         }
+    }
+}
+
+/// Streaming parameters, all in 80ms model frames.
+///
+/// Buffer latency is `(chunk_len + right_context) * 80ms`. The presets are NVIDIA's recommended
+/// cfgs from the model card. note that any other combination also runs on the same ONNX.
+///
+/// | preset                | latency | spkcache | fifo | chunk | right_context | update |
+/// |-----------------------|---------|----------|------|-------|---------------|--------|
+/// | `offline()`           | 30.4 s  | 264      | 40   | 340   | 40            | 300    |
+/// | `low_latency()`       | 1.04 s  | 264      | 264  | 9     | 4             | 222    |
+/// | `very_low_latency()`  | 0.64 s  | 264      | 264  | 6     | 2             | 222    |
+/// | `ultra_low_latency()` | 0.32 s  | 264      | 264  | 3     | 1             | 222    |
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StreamingProfile {
+    /// Frames emitted per step.
+    pub chunk_len: usize,
+    /// Lookahead frames seen by the model but not emitted.
+    pub right_context: usize,
+    /// FIFO length between the chunk and the speaker cache.
+    pub fifo_len: usize,
+    /// Frames moved from the FIFO into the speaker cache per update.
+    pub spkcache_update_period: usize,
+    /// Speaker cache capacity (a multiple of [`NUM_SPEAKERS`]).
+    pub spkcache_len: usize,
+}
+
+impl StreamingProfile {
+    const fn nvidia(
+        spkcache_len: usize,
+        fifo_len: usize,
+        chunk_len: usize,
+        right_context: usize,
+        spkcache_update_period: usize,
+    ) -> Self {
+        Self {
+            chunk_len,
+            right_context,
+            fifo_len,
+            spkcache_update_period,
+            spkcache_len,
+        }
+    }
+
+    /// Very high latency (offline), 30.4 s. What the exporter writes into the ONNX metadata.
+    /// note that all those latency presets are coming from NVIDIA's recommended configs for this model (I did not invent them).
+    pub const fn offline() -> Self {
+        Self::nvidia(SPKCACHE_LEN, FIFO_LEN, CHUNK_LEN, RIGHT_CONTEXT, SPKCACHE_UPDATE_PERIOD)
+    }
+
+    /// 1.04 s.
+    pub const fn low_latency() -> Self {
+        Self::nvidia(264, 264, 9, 4, 222)
+    }
+
+    /// 0.64 s.
+    pub const fn very_low_latency() -> Self {
+        Self::nvidia(264, 264, 6, 2, 222)
+    }
+
+    /// 0.32 s
+    pub const fn ultra_low_latency() -> Self {
+        Self::nvidia(264, 264, 3, 1, 222)
+    }
+}
+
+impl Default for StreamingProfile {
+    fn default() -> Self {
+        Self::offline()
     }
 }
 
@@ -173,7 +223,7 @@ pub struct SpeakerSegment {
     pub speaker_id: usize,
 }
 
-/// Raw per-frame speaker activity predictions (sigmoid outputs).
+/// Raw per-frame speaker activity predictions (sigmoid outputs), one row per 10ms frame.
 /// Used by the multitalker pipeline to derive speaker masks for the ASR encoder.
 #[derive(Debug, Clone)]
 pub struct RawDiarizationPredictions {
@@ -218,23 +268,26 @@ pub fn graph_window(session: &Session) -> Option<StreamingWindow> {
     Some((dim("chunk")?, dim("spkcache")?, dim("fifo")?))
 }
 
-/// Streaming Sortformer v2 speaker diarization engine
+/// Streaming Sortformer speaker diarization engine
 pub struct Sortformer {
     session: Session,
     router: Option<Box<dyn SessionRouter>>,
+    // The owned graph has fixed input shapes, so short chunks must be padded to full size.
+    pinned: bool,
     config: DiarizationConfig,
     // Streaming constants (read from ONNX metadata, fallback to defaults)
     pub chunk_len: usize,
     pub fifo_len: usize,
     pub spkcache_len: usize,
     pub right_context: usize,
+    pub spkcache_update_period: usize,
+    // Learned embedding for silence / unused cache slots (from ONNX metadata)
+    sil_emb: Array1<f32>, // (EMB_DIM,)
     // Streaming state. note that, Same way as Nemo
     spkcache: Array3<f32>,               // (1, 0..spkcache_len, EMB_DIM)
-    spkcache_preds: Option<Array3<f32>>, // (1, 0..spkcache_len, NUM_SPEAKERS)
+    spkcache_preds: Option<Array3<f32>>, // (1, 0..spkcache_len, NUM_SPEAKERS), 80ms
     fifo: Array3<f32>,                   // (1, 0..fifo_len, EMB_DIM)
-    fifo_preds: Array3<f32>,             // (1, 0..fifo_len, NUM_SPEAKERS)
-    mean_sil_emb: Array2<f32>,           // (1, EMB_DIM)
-    n_sil_frames: usize,
+    fifo_preds: Array3<f32>,             // (1, 0..fifo_len, NUM_SPEAKERS), 80ms
     // Buffered streaming state (used by feed/flush)
     audio_buffer: Vec<f32>,
     elapsed_samples: usize,
@@ -257,46 +310,65 @@ impl Sortformer {
         let config_to_use = execution_config.unwrap_or_default();
         let session = config_to_use.build_session(model_path.as_ref())?;
 
-        // Read streaming constants from ONNX metadata (fallback to defaults)
-        let (chunk_len, fifo_len, spkcache_len, right_context) =
-            if let Ok(metadata) = session.metadata() {
-                let c = metadata
-                    .custom("chunk_len")
+        let has_output = |name: &str| session.outputs().iter().any(|o| o.name() == name);
+        if !has_output("preds_diar") || !has_output("preds_hires") {
+            return Err(Error::Config(
+                "this ONNX has no preds_diar/preds_hires outputs; it looks like a Sortformer v2 \
+                 export. Export Nemotron-3 Diarization with scripts/export_diar_sortformer.py"
+                    .into(),
+            ));
+        }
+
+        // Read streaming constants and the silence embedding from ONNX metadata.
+        let (chunk_len, fifo_len, spkcache_len, right_context, spkcache_update_period, sil_emb) = {
+            let metadata = session.metadata().ok();
+            let get = |key: &str, default: usize| -> usize {
+                metadata
+                    .as_ref()
+                    .and_then(|m| m.custom(key))
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(CHUNK_LEN);
-                let f = metadata
-                    .custom("fifo_len")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(FIFO_LEN);
-                let s = metadata
-                    .custom("spkcache_len")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(SPKCACHE_LEN);
-                let r = metadata
-                    .custom("right_context")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(RIGHT_CONTEXT);
-                (c, f, s, r)
-            } else {
-                (CHUNK_LEN, FIFO_LEN, SPKCACHE_LEN, RIGHT_CONTEXT)
+                    .unwrap_or(default)
             };
+            let sil_emb = metadata
+                .as_ref()
+                .and_then(|m| m.custom("learnable_sil_emb"))
+                .map(|raw| {
+                    raw.split(',')
+                        .filter_map(|v| v.trim().parse().ok())
+                        .collect::<Vec<f32>>()
+                })
+                .filter(|v| v.len() == EMB_DIM)
+                .map(Array1::from_vec)
+                .unwrap_or_else(|| Array1::zeros(EMB_DIM));
+            (
+                get("chunk_len", CHUNK_LEN),
+                get("fifo_len", FIFO_LEN),
+                get("spkcache_len", SPKCACHE_LEN),
+                get("right_context", RIGHT_CONTEXT),
+                get("spkcache_update_period", SPKCACHE_UPDATE_PERIOD),
+                sil_emb,
+            )
+        };
 
-        let mel_basis = crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE);
+        let mel_basis =
+            crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE).mapv(to_bf16);
 
+        let pinned = graph_window(&session).is_some();
         let mut instance = Self {
             session,
             router: None,
+            pinned,
             config,
             chunk_len,
             fifo_len,
             spkcache_len,
             right_context,
+            spkcache_update_period,
+            sil_emb,
             spkcache: Array3::zeros((1, 0, EMB_DIM)),
             spkcache_preds: None,
             fifo: Array3::zeros((1, 0, EMB_DIM)),
             fifo_preds: Array3::zeros((1, 0, NUM_SPEAKERS)),
-            mean_sil_emb: Array2::zeros((1, EMB_DIM)),
-            n_sil_frames: 0,
             audio_buffer: Vec::new(),
             elapsed_samples: 0,
             mel_basis,
@@ -306,7 +378,7 @@ impl Sortformer {
     }
 
     /// Streaming latency in seconds: (chunk_len + right_context) * 80ms.
-    /// eg. chunk_len=124, right_context=1 -> 10.0s
+    /// eg. chunk_len=340, right_context=40 -> 30.4s
     pub fn latency(&self) -> f32 {
         (self.chunk_len + self.right_context) as f32 * FRAME_DURATION
     }
@@ -321,6 +393,54 @@ impl Sortformer {
         self.router = Some(router);
     }
 
+    /// The current streaming parameters.
+    pub fn profile(&self) -> StreamingProfile {
+        StreamingProfile {
+            chunk_len: self.chunk_len,
+            right_context: self.right_context,
+            fifo_len: self.fifo_len,
+            spkcache_update_period: self.spkcache_update_period,
+            spkcache_len: self.spkcache_len,
+        }
+    }
+
+    /// Validate and apply streaming parameters, then reset streaming state.
+    pub fn set_profile(&mut self, profile: StreamingProfile) -> Result<()> {
+        if profile.chunk_len == 0 {
+            return Err(Error::Config("chunk_len must be > 0".into()));
+        }
+        if profile.spkcache_len == 0 || !profile.spkcache_len.is_multiple_of(NUM_SPEAKERS) {
+            return Err(Error::Config(format!(
+                "spkcache_len ({}) must be a positive multiple of {NUM_SPEAKERS}",
+                profile.spkcache_len
+            )));
+        }
+        self.chunk_len = profile.chunk_len;
+        self.right_context = profile.right_context;
+        self.fifo_len = profile.fifo_len;
+        self.spkcache_update_period = profile.spkcache_update_period;
+        self.spkcache_len = profile.spkcache_len;
+        self.reset_state();
+        Ok(())
+    }
+
+    /// Override the silence embedding, for an ONNX exported without `learnable_sil_emb` metadata.
+    pub fn set_silence_embedding(&mut self, embedding: Vec<f32>) -> Result<()> {
+        if embedding.len() != EMB_DIM {
+            return Err(Error::Config(format!(
+                "silence embedding must have {EMB_DIM} values, got {}",
+                embedding.len()
+            )));
+        }
+        self.sil_emb = Array1::from_vec(embedding);
+        Ok(())
+    }
+
+    /// Log mel feats `(1, frames, 128)` as fed to the model.
+    pub fn mel_features(&self, audio_16k_mono: &[f32]) -> Result<Array3<f32>> {
+        self.extract_mel_features(audio_16k_mono)
+    }
+
     /// Reset streaming state
     pub fn reset_state(&mut self) {
         if let Some(router) = self.router.as_mut() {
@@ -330,15 +450,12 @@ impl Sortformer {
         self.spkcache_preds = None;
         self.fifo = Array3::zeros((1, 0, EMB_DIM));
         self.fifo_preds = Array3::zeros((1, 0, NUM_SPEAKERS));
-        self.mean_sil_emb = Array2::zeros((1, EMB_DIM));
-        self.n_sil_frames = 0;
         self.audio_buffer.clear();
         self.elapsed_samples = 0;
     }
 
-    /// Main diarization entry point
-    /// Mel extraction and streaming inference, returning raw per-frame speaker probabilities with
-    /// no post-processing applied.
+    /// Mel extraction and streaming inference, returning raw per-frame (10ms) speaker
+    /// probabilities with no post-processing applied.
     ///
     /// # Returns
     /// `(predictions [num_frames, NUM_SPEAKERS], mono sample count)`
@@ -348,7 +465,6 @@ impl Sortformer {
         sample_rate: u32,
         channels: u16,
     ) -> Result<(Array2<f32>, u64)> {
-        // Resample if needed
         if sample_rate != SAMPLE_RATE as u32 {
             return Err(Error::Audio(format!(
                 "Expected {} Hz, got {} Hz",
@@ -374,14 +490,13 @@ impl Sortformer {
         Ok((full_preds, audio.len() as u64))
     }
 
-    /// Median-smooth and binarize raw per-frame speaker probabilities into segments, clipped to
-    /// the audio length. Needs no session.
+    /// Median-smooth and binarize raw per-frame (10ms) speaker probabilities into segments,
+    /// clipped to the audio length. Needs no session.
     pub fn post_process(
         config: &DiarizationConfig,
         preds: &Array2<f32>,
         n_audio_samples: u64,
     ) -> Vec<SpeakerSegment> {
-        // Apply median filtering
         let filtered_owned;
         let filtered_preds = if config.median_window > 1 {
             filtered_owned = Self::median_filter(config, preds);
@@ -390,7 +505,6 @@ impl Sortformer {
             preds
         };
 
-        // Binarize to segments and clip to audio length
         let mut segments = Self::binarize(config, filtered_preds);
         for seg in &mut segments {
             seg.end = seg.end.min(n_audio_samples);
@@ -417,8 +531,8 @@ impl Sortformer {
 
     /// Streaming diarization: process one audio chunk without resetting state.
     ///
-    /// Unlike `diarize()`, this method preserves internal state (FIFO, speaker cache,
-    /// silence profile) across calls, enabling true streaming diarization.
+    /// Unlike `diarize()`, this method preserves internal state (FIFO, speaker cache)
+    /// across calls, enabling true streaming diarization.
     ///
     /// For full `right_context` benefit, buffer at least
     /// `(chunk_len + right_context) * 80ms` of audio before each call, then stride
@@ -426,7 +540,7 @@ impl Sortformer {
     /// the lookahead sees silence instead of real future audio.
     ///
     /// # Arguments
-    /// * `audio_16k_mono` - Audio chunk at 16kHz mono (any length, typically 2-30s)
+    /// * `audio_16k_mono` - Audio chunk at 16kHz mono
     ///
     /// # Returns
     /// Speaker segments with sample offsets relative to this chunk (starting at 0)
@@ -438,32 +552,22 @@ impl Sortformer {
         let features = self.extract_mel_features(audio_16k_mono)?;
         let full_preds = self.process_features(&features)?;
 
-        let filtered_preds = if self.config.median_window > 1 {
-            Self::median_filter(&self.config, &full_preds)
-        } else {
-            full_preds
-        };
-
-        // Clip to audio length in samples
-        let n_audio_samples = audio_16k_mono.len() as u64;
-        let mut segments = Self::binarize(&self.config, &filtered_preds);
-        for seg in &mut segments {
-            seg.end = seg.end.min(n_audio_samples);
-        }
-        segments.retain(|s| s.end > s.start);
-
-        Ok(segments)
+        Ok(Self::post_process(
+            &self.config,
+            &full_preds,
+            audio_16k_mono.len() as u64,
+        ))
     }
 
     /// Streaming diarization returning raw predictions without post-processing.
     ///
     /// Unlike `diarize_chunk()`, this method returns the raw sigmoid outputs
-    /// (per-frame speaker activity probabilities) without median filtering or
+    /// (per-10ms-frame speaker activity probabilities) without median filtering or
     /// binarisation. Used by the multitalker ASR pipeline to derive speaker
     /// masks for the encoder.
     ///
     /// # Arguments
-    /// * `audio_16k_mono` - Audio chunk at 16kHz mono (any length, typically 2-30s)
+    /// * `audio_16k_mono` - Audio chunk at 16kHz mono
     ///
     /// # Returns
     /// Raw predictions with shape [num_frames, NUM_SPEAKERS], values in [0.0, 1.0]
@@ -494,8 +598,8 @@ impl Sortformer {
     /// accumulated for a full `(chunk_len + right_context)` window. Returns
     /// segments with **absolute** timestamps (accumulated across calls).
     ///
-    /// Each successful inference produces `chunk_len * 80ms` worth of predictions
-    /// from exactly one `streaming_update` call — no redundant re-chunking.
+    /// Each window is binarized on its own, so a segment that crosses a window
+    /// edge is returned as two segments.
     ///
     /// # Arguments
     /// * `audio_16k_mono` - Audio samples at 16kHz mono (any length)
@@ -508,6 +612,7 @@ impl Sortformer {
         let feed_size = (self.chunk_len + self.right_context) * SUBSAMPLING;
         let stride_samples = self.chunk_len * SUBSAMPLING * HOP_LENGTH;
         let feed_samples = (self.chunk_len + self.right_context) * SUBSAMPLING * HOP_LENGTH;
+        let chunk_samples = stride_samples as u64;
 
         let mut all_segments = Vec::new();
 
@@ -517,26 +622,16 @@ impl Sortformer {
             // STFT center=True produces feed_size+1 mel frames from feed_samples audio,
             // so we always have enough frames: just slice to feed_size...
             let chunk_feat = features.slice(s![.., ..feed_size, ..]).to_owned();
-            let current_len = feed_size;
 
-            let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
-
-            // Apply median filtering
-            let filtered_preds = if self.config.median_window > 1 {
-                Self::median_filter(&self.config, &chunk_preds)
-            } else {
-                chunk_preds
-            };
+            let chunk_preds = self.streaming_update(&chunk_feat, feed_size)?;
 
             // Binarize with absolute sample offset
             let sample_offset = self.elapsed_samples as u64;
-            let chunk_samples = (self.chunk_len * SUBSAMPLING * HOP_LENGTH) as u64;
-            let mut segments = Self::binarize(&self.config, &filtered_preds);
+            let mut segments = Self::post_process(&self.config, &chunk_preds, chunk_samples);
             for seg in &mut segments {
                 seg.start += sample_offset;
-                seg.end = (seg.end + sample_offset).min(sample_offset + chunk_samples);
+                seg.end += sample_offset;
             }
-            segments.retain(|s| s.end > s.start);
             all_segments.extend(segments);
 
             // Advance: stride by chunk_len, keep right_context overlap
@@ -563,36 +658,39 @@ impl Sortformer {
         let total_mel = features.shape()[1];
         let current_len = total_mel.min(feed_size);
 
-        let chunk_feat = if current_len < feed_size {
-            let mut padded = Array3::zeros((1, feed_size, N_MELS));
-            padded
-                .slice_mut(s![.., ..current_len, ..])
-                .assign(&features.slice(s![.., ..current_len, ..]));
-            padded
-        } else {
-            features.slice(s![.., ..feed_size, ..]).to_owned()
-        };
+        let chunk_feat = self.pad_chunk(features.slice(s![.., ..current_len, ..]), feed_size);
 
         let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
 
-        let filtered_preds = if self.config.median_window > 1 {
-            Self::median_filter(&self.config, &chunk_preds)
-        } else {
-            chunk_preds
-        };
-
         let sample_offset = self.elapsed_samples as u64;
-        let remaining_samples = remaining.len() as u64;
-        let mut segments = Self::binarize(&self.config, &filtered_preds);
+        let mut segments =
+            Self::post_process(&self.config, &chunk_preds, remaining.len() as u64);
         for seg in &mut segments {
             seg.start += sample_offset;
-            seg.end = (seg.end + sample_offset).min(sample_offset + remaining_samples);
+            seg.end += sample_offset;
         }
-        segments.retain(|s| s.end > s.start);
 
         self.elapsed_samples += remaining.len();
 
         Ok(segments)
+    }
+
+    /// Zero-pad a short (final) chunk to a whole number of 80ms frames, as NeMo's pre-encoder does.
+    /// Padding further, to the full chunk size, changes the predictions of the real frames, so that
+    /// is only done when the graph has fixed input shapes.
+    fn pad_chunk(&self, chunk: ndarray::ArrayView3<f32>, feed_size: usize) -> Array3<f32> {
+        let len = chunk.shape()[1];
+        let target = if self.pinned {
+            feed_size
+        } else {
+            len.next_multiple_of(SUBSAMPLING)
+        };
+        if len == target {
+            return chunk.to_owned();
+        }
+        let mut padded = Array3::zeros((1, target, N_MELS));
+        padded.slice_mut(s![.., ..len, ..]).assign(&chunk);
+        padded
     }
 
     /// run streaming inference over mel features, returning concatenated per chunk predictions.
@@ -610,24 +708,22 @@ impl Sortformer {
             let end = (start + feed_size).min(total_frames);
             let current_len = end - start;
 
-            let mut chunk_feat = features.slice(s![.., start..end, ..]).to_owned();
-
-            if current_len < feed_size {
-                let mut padded = Array3::zeros((1, feed_size, N_MELS));
-                padded
-                    .slice_mut(s![.., ..current_len, ..])
-                    .assign(&chunk_feat);
-                chunk_feat = padded;
-            }
+            let chunk_feat = self.pad_chunk(features.slice(s![.., start..end, ..]), feed_size);
 
             let chunk_preds = self.streaming_update(&chunk_feat, current_len)?;
             all_chunk_preds.push(chunk_preds);
         }
 
-        Ok(Self::concat_predictions(&all_chunk_preds))
+        let mut preds = Self::concat_predictions(&all_chunk_preds);
+        // The last chunk rounds up to whole 80ms frames; trim to the audio's 10ms frame count.
+        if preds.nrows() > total_frames {
+            preds = preds.slice(s![..total_frames, ..]).to_owned();
+        }
+        Ok(preds)
     }
 
-    /// NeMo's streaming_update with smart cache compression
+    /// NeMo's streaming_update with smart cache compression. The 80ms predictions update the
+    /// FIFO and speaker cache; the chunk's 10ms predictions are returned.
     fn streaming_update(
         &mut self,
         chunk_feat: &Array3<f32>,
@@ -666,7 +762,7 @@ impl Sortformer {
         };
 
         // Run ONNX inference and extract all data in a block to release borrow
-        let (preds, new_embs, chunk_len) = {
+        let (preds_diar, preds_hires, new_embs) = {
             let session = match routed {
                 Some(session) => session,
                 None => &mut self.session,
@@ -680,61 +776,31 @@ impl Sortformer {
                 "fifo_lengths" => fifo_lengths_value
             ))?;
 
-            // Extract outputs
-            let (preds_shape, preds_data) = outputs["spkcache_fifo_chunk_preds"]
-                .try_extract_tensor::<f32>()
-                .map_err(|e| Error::Model(format!("Failed to extract preds: {e}")))?;
-            let (embs_shape, embs_data) = outputs["chunk_pre_encode_embs"]
-                .try_extract_tensor::<f32>()
-                .map_err(|e| Error::Model(format!("Failed to extract embs: {e}")))?;
-
-            // Convert to ndarray
-            let preds_dims = preds_shape.as_ref();
-            let embs_dims = embs_shape.as_ref();
-
-            let preds = Array3::from_shape_vec(
-                (
-                    preds_dims[0] as usize,
-                    preds_dims[1] as usize,
-                    preds_dims[2] as usize,
-                ),
-                preds_data.to_vec(),
+            (
+                extract_3d_f32(&outputs["preds_diar"], "preds_diar")?,
+                extract_3d_f32(&outputs["preds_hires"], "preds_hires")?,
+                extract_3d_f32(&outputs["chunk_pre_encode_embs"], "chunk_pre_encode_embs")?,
             )
-            .map_err(|e| Error::Model(format!("Failed to reshape preds: {e}")))?;
-
-            let new_embs = Array3::from_shape_vec(
-                (
-                    embs_dims[0] as usize,
-                    embs_dims[1] as usize,
-                    embs_dims[2] as usize,
-                ),
-                embs_data.to_vec(),
-            )
-            .map_err(|e| Error::Model(format!("Failed to reshape embs: {e}")))?;
-
-            // Calculate valid frames
-            let valid_frames = current_len.div_ceil(SUBSAMPLING);
-
-            (preds, new_embs, valid_frames)
         };
 
         if let (Some(router), Some(started)) = (self.router.as_mut(), inference_start) {
             router.call_finished(window, started.elapsed());
         }
 
-        // Extract predictions for different parts
+        // only keep chunk_len predictions/embeddings... right_context frames
+        // participaded in attenttion (__providing lookahead__) but are discarded here.
+        let valid_frames = current_len.div_ceil(SUBSAMPLING);
+        let keep = self.chunk_len.min(valid_frames);
+
+        // Extract 80ms predictions for different parts
         let fifo_preds = if fifo_len > 0 {
-            preds
+            preds_diar
                 .slice(s![0, spkcache_len..spkcache_len + fifo_len, ..])
                 .to_owned()
         } else {
             Array2::zeros((0, NUM_SPEAKERS))
         };
-
-        // only keep chunk_len predictions/embeddings... right_context frames
-        // participaded in attenttion (__providing lookahead__) but are discarded here.
-        let keep = self.chunk_len.min(chunk_len);
-        let chunk_preds = preds
+        let chunk_preds = preds_diar
             .slice(s![
                 0,
                 spkcache_len + fifo_len..spkcache_len + fifo_len + keep,
@@ -742,6 +808,12 @@ impl Sortformer {
             ])
             .to_owned();
         let chunk_embs = new_embs.slice(s![0, ..keep, ..]).to_owned();
+
+        // The same chunk at 10ms: each 80ms frame covers UPSAMPLE_FACTOR output frames.
+        let hires_start = (spkcache_len + fifo_len) * UPSAMPLE_FACTOR;
+        let chunk_preds_hires = preds_hires
+            .slice(s![0, hires_start..hires_start + keep * UPSAMPLE_FACTOR, ..])
+            .to_owned();
 
         // Append chunk embeddings to FIFO
         self.fifo = Self::concat_axis1(&self.fifo, &chunk_embs.insert_axis(Axis(0)));
@@ -751,22 +823,22 @@ impl Sortformer {
             let combined = Self::concat_axis1_2d(&fifo_preds, &chunk_preds);
             self.fifo_preds = combined.insert_axis(Axis(0));
         } else {
-            self.fifo_preds = chunk_preds.clone().insert_axis(Axis(0));
+            self.fifo_preds = chunk_preds.insert_axis(Axis(0));
         }
 
         let fifo_len_after = self.fifo.shape()[1];
 
-        // Move from FIFO to cache when FIFO exceeds limit
+        // Move from FIFO to cache when FIFO exceeds limit. The pop length comes from
+        // spkcache_update_period and the chunk length without right context, as in NeMo.
         if fifo_len_after > self.fifo_len {
-            let mut pop_out_len = self.chunk_len;
-            pop_out_len = pop_out_len.max(chunk_len.saturating_sub(self.fifo_len) + fifo_len);
+            let mut pop_out_len = self.spkcache_update_period;
+            // NeMo: chunk_len - self.fifo_len + fifo_len. Subtract last: keep < fifo_len here in
+            // the low-latency presets, and clamping that difference first over-pops the FIFO.
+            pop_out_len = pop_out_len.max((keep + fifo_len).saturating_sub(self.fifo_len));
             pop_out_len = pop_out_len.min(fifo_len_after);
 
             let pop_out_embs = self.fifo.slice(s![.., ..pop_out_len, ..]).to_owned();
             let pop_out_preds = self.fifo_preds.slice(s![.., ..pop_out_len, ..]).to_owned();
-
-            // Update silence profile
-            self.update_silence_profile(&pop_out_embs, &pop_out_preds);
 
             // Remove from FIFO
             self.fifo = self.fifo.slice(s![.., pop_out_len.., ..]).to_owned();
@@ -783,7 +855,8 @@ impl Sortformer {
             if self.spkcache.shape()[1] > self.spkcache_len {
                 if self.spkcache_preds.is_none() {
                     // Initialize cache predictions from initial output
-                    let initial_cache_preds = preds.slice(s![.., ..spkcache_len, ..]).to_owned();
+                    let initial_cache_preds =
+                        preds_diar.slice(s![.., ..spkcache_len, ..]).to_owned();
                     let combined = Self::concat_axis1(&initial_cache_preds, &pop_out_preds);
                     self.spkcache_preds = Some(combined);
                 }
@@ -793,34 +866,7 @@ impl Sortformer {
             }
         }
 
-        Ok(chunk_preds)
-    }
-
-    /// Update mean silence embedding
-    fn update_silence_profile(&mut self, embs: &Array3<f32>, preds: &Array3<f32>) {
-        let preds_2d = preds.slice(s![0, .., ..]);
-
-        for t in 0..preds_2d.shape()[0] {
-            let sum: f32 = (0..NUM_SPEAKERS).map(|s| preds_2d[[t, s]]).sum();
-            if sum < SIL_THRESHOLD {
-                // This is a silence frame
-                let emb = embs.slice(s![0, t, ..]);
-
-                // Update running mean
-                let old_sum: Vec<f32> = self
-                    .mean_sil_emb
-                    .slice(s![0, ..])
-                    .iter()
-                    .map(|&x| x * self.n_sil_frames as f32)
-                    .collect();
-
-                self.n_sil_frames += 1;
-
-                for i in 0..EMB_DIM {
-                    self.mean_sil_emb[[0, i]] = (old_sum[i] + emb[i]) / self.n_sil_frames as f32;
-                }
-            }
-        }
+        Ok(chunk_preds_hires)
     }
 
     /// Smart cache compression
@@ -851,6 +897,15 @@ impl Sortformer {
 
         // Disable low scores
         scores = self.disable_low_scores(&preds_2d, scores, min_pos_scores_per_spk);
+
+        // Slightly favor frames appended since the last compression
+        if SCORES_BOOST_LATEST > 0.0 {
+            for t in self.spkcache_len.min(n_frames)..n_frames {
+                for s in 0..NUM_SPEAKERS {
+                    scores[[t, s]] += SCORES_BOOST_LATEST;
+                }
+            }
+        }
 
         // Boost important frames
         scores = self.boost_topk_scores(scores, strong_boost_per_spk, 2.0);
@@ -885,18 +940,16 @@ impl Sortformer {
     fn get_log_pred_scores(&self, preds: &Array2<f32>) -> Array2<f32> {
         let mut scores = Array2::zeros(preds.dim());
 
+        // As NeMo: log(clamp(p)) and log(clamp(1 - p)), each clamped separately on the raw p.
         for t in 0..preds.shape()[0] {
             let mut log_1_probs_sum = 0.0f32;
             for s in 0..NUM_SPEAKERS {
-                let p = preds[[t, s]].max(PRED_SCORE_THRESHOLD);
-                let log_1_p = (1.0 - p).max(PRED_SCORE_THRESHOLD).ln();
-                log_1_probs_sum += log_1_p;
+                log_1_probs_sum += (1.0 - preds[[t, s]]).max(PRED_SCORE_THRESHOLD).ln();
             }
 
             for s in 0..NUM_SPEAKERS {
-                let p = preds[[t, s]].max(PRED_SCORE_THRESHOLD);
-                let log_p = p.ln();
-                let log_1_p = (1.0 - p).max(PRED_SCORE_THRESHOLD).ln();
+                let log_p = preds[[t, s]].max(PRED_SCORE_THRESHOLD).ln();
+                let log_1_p = (1.0 - preds[[t, s]]).max(PRED_SCORE_THRESHOLD).ln();
                 scores[[t, s]] = log_p - log_1_p + log_1_probs_sum - 0.5f32.ln();
             }
         }
@@ -923,15 +976,10 @@ impl Sortformer {
 
         for t in 0..preds.shape()[0] {
             for s in 0..NUM_SPEAKERS {
-                let is_speech = preds[[t, s]] > 0.5;
-
-                if !is_speech {
+                let non_speech = preds[[t, s]] <= 0.5;
+                let low_overlap = scores[[t, s]] <= 0.0 && pos_count[s] >= min_pos_scores_per_spk;
+                if non_speech || low_overlap {
                     scores[[t, s]] = f32::NEG_INFINITY;
-                } else {
-                    let is_pos = scores[[t, s]] > 0.0;
-                    if !is_pos && pos_count[s] >= min_pos_scores_per_spk {
-                        scores[[t, s]] = f32::NEG_INFINITY;
-                    }
                 }
             }
         }
@@ -948,17 +996,15 @@ impl Sortformer {
     ) -> Array2<f32> {
         for s in 0..NUM_SPEAKERS {
             // Get column for this speaker
-            let col: Vec<(usize, f32)> = (0..scores.shape()[0])
+            let mut sorted: Vec<(usize, f32)> = (0..scores.shape()[0])
                 .map(|t| (t, scores[[t, s]]))
                 .collect();
 
             // Sort by score descending
-            let mut sorted = col.clone();
             sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
             // Boost top K
-            for item in sorted.iter().take(n_boost_per_spk.min(sorted.len())) {
-                let t = item.0;
+            for &(t, _) in sorted.iter().take(n_boost_per_spk.min(sorted.len())) {
                 if scores[[t, s]] != f32::NEG_INFINITY {
                     scores[[t, s]] -= scale_factor * 0.5f32.ln();
                 }
@@ -1014,7 +1060,6 @@ impl Sortformer {
             if flat_idx == MAX_INDEX {
                 // Invalid entries are disabled
                 is_disabled[i] = true;
-                frame_indices[i] = 0; // We set disabled to 0
             } else {
                 // convert to frame index
                 let frame_idx = flat_idx % n_frames;
@@ -1022,7 +1067,6 @@ impl Sortformer {
                 // check if frame is beyond valid range
                 if frame_idx >= n_frames_no_sil {
                     is_disabled[i] = true;
-                    frame_indices[i] = 0; // same as abov: set disabled to 0
                 } else {
                     frame_indices[i] = frame_idx;
                 }
@@ -1049,11 +1093,8 @@ impl Sortformer {
             }
 
             if disabled {
-                // Use silence embedding
-                new_embs
-                    .slice_mut(s![0, i, ..])
-                    .assign(&self.mean_sil_emb.slice(s![0, ..]));
-                // Predictions stay zero
+                // Use silence embedding; predictions stay zero
+                new_embs.slice_mut(s![0, i, ..]).assign(&self.sil_emb);
             } else if idx < self.spkcache.shape()[1] {
                 new_embs
                     .slice_mut(s![0, i, ..])
@@ -1123,89 +1164,87 @@ impl Sortformer {
         filtered
     }
 
-    /// Binarize predictions to segments (padding applied during thresholding)
+    /// Binarize 10ms predictions to segments, following NeMo's `binarization`: a segment starts
+    /// when p > onset, ends when p < offset, then padding, min_duration_on and min_duration_off.
     fn binarize(config: &DiarizationConfig, preds: &Array2<f32>) -> Vec<SpeakerSegment> {
         let mut segments = Vec::new();
         let num_frames = preds.shape()[0];
+        let frame_sec = FRAME_DURATION / UPSAMPLE_FACTOR as f32;
 
-        // pre cobvert cfg thresh from secs to samples
+        let to_samples = |sec: f32| (sec * SAMPLE_RATE as f32).round().max(0.0) as u64;
         let pad_onset_samples = (config.pad_onset * SAMPLE_RATE as f32) as u64;
         let pad_offset_samples = (config.pad_offset * SAMPLE_RATE as f32) as u64;
-        let min_dur_on_samples = (config.min_duration_on * SAMPLE_RATE as f32) as u64;
-        let min_dur_off_samples = (config.min_duration_off * SAMPLE_RATE as f32) as u64;
-        let samples_per_frame = (FRAME_DURATION * SAMPLE_RATE as f32) as u64;
+        let min_dur_on_samples = to_samples(config.min_duration_on);
+        // Padded neighbours can overlap; always merge those.
+        let merge_gap = to_samples(config.min_duration_off)
+            .max((pad_onset_samples + pad_offset_samples > 0) as u64);
 
         for spk in 0..NUM_SPEAKERS {
+            // Hysteresis: runs of [start_frame, end_frame)
+            let mut runs: Vec<(usize, usize)> = Vec::new();
             let mut in_seg = false;
             let mut seg_start = 0;
-            let mut temp_segments = Vec::new();
-
             for t in 0..num_frames {
                 let p = preds[[t, spk]];
-
-                if p >= config.onset && !in_seg {
-                    in_seg = true;
+                let active = if p > config.onset {
+                    true
+                } else if p < config.offset {
+                    false
+                } else {
+                    in_seg
+                };
+                if active && !in_seg {
                     seg_start = t;
-                } else if p < config.offset && in_seg {
-                    in_seg = false;
-
-                    let start_s = (seg_start as u64 * samples_per_frame)
-                        .saturating_sub(pad_onset_samples);
-                    let end_s = t as u64 * samples_per_frame + pad_offset_samples;
-
-                    if end_s - start_s >= min_dur_on_samples {
-                        temp_segments.push(SpeakerSegment {
-                            start: start_s,
-                            end: end_s,
-                            speaker_id: spk,
-                        });
-                    }
+                } else if !active && in_seg {
+                    runs.push((seg_start, t));
                 }
+                in_seg = active;
+            }
+            if in_seg {
+                runs.push((seg_start, num_frames));
             }
 
-            // Handle segment at end
-            if in_seg {
-                let start_s = (seg_start as u64 * samples_per_frame)
-                    .saturating_sub(pad_onset_samples);
-                let end_s = num_frames as u64 * samples_per_frame + pad_offset_samples;
-
-                if end_s - start_s >= min_dur_on_samples {
-                    temp_segments.push(SpeakerSegment {
-                        start: start_s,
-                        end: end_s,
-                        speaker_id: spk,
-                    });
+            let mut temp_segments: Vec<SpeakerSegment> = Vec::new();
+            for (start_f, end_f) in runs {
+                let start = to_samples(start_f as f32 * frame_sec).saturating_sub(pad_onset_samples);
+                let end = to_samples(end_f as f32 * frame_sec) + pad_offset_samples;
+                if end <= start || end - start < min_dur_on_samples {
+                    continue;
                 }
+                temp_segments.push(SpeakerSegment {
+                    start,
+                    end,
+                    speaker_id: spk,
+                });
             }
 
             // Merge close segments (min_duration_off)
-            if temp_segments.len() > 1 {
-                let mut filtered = vec![temp_segments[0].clone()];
+            if merge_gap > 0 && temp_segments.len() > 1 {
+                let mut merged = vec![temp_segments[0].clone()];
                 for seg in temp_segments.into_iter().skip(1) {
-                    let last = filtered.last_mut().unwrap();
-                    // saturating_sub: overlapping segments (gap<-0) always merge..
-                    let gap = seg.start.saturating_sub(last.end);
-                    if gap < min_dur_off_samples {
-                        last.end = seg.end; // Merge
+                    let last = merged.last_mut().unwrap();
+                    if seg.start.saturating_sub(last.end) < merge_gap {
+                        last.end = last.end.max(seg.end); // Merge
                     } else {
-                        filtered.push(seg);
+                        merged.push(seg);
                     }
                 }
-                segments.extend(filtered);
+                segments.extend(merged);
             } else {
                 segments.extend(temp_segments);
             }
         }
 
         // Sort by start time
-        segments.sort_by_key(|s| s.start);
+        segments.sort_by_key(|s| (s.start, s.speaker_id));
         segments
     }
 
     fn hann_window(window_length: usize) -> Vec<f32> {
-        // Librosa uses periodic window (fftbins=True): divide by N, not N-1
+        // NeMo uses torch.hann_window(periodic=False): divide by N-1, not N
+        let n = (window_length - 1) as f64;
         (0..window_length)
-            .map(|i| 0.5 - 0.5 * ((2.0 * PI * i as f32) / window_length as f32).cos())
+            .map(|i| to_bf16((0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / n).cos()) as f32))
             .collect()
     }
 
@@ -1285,6 +1324,7 @@ impl Sortformer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f32::consts::PI;
 
     fn sine_wave(freq_hz: f32, sample_rate: usize, num_samples: usize) -> Vec<f32> {
         (0..num_samples)
@@ -1333,5 +1373,19 @@ mod tests {
         let freq_bins = N_FFT / 2 + 1;
         assert_eq!(spec.shape()[0], freq_bins);
         assert!(spec.shape()[1] > 0);
+    }
+
+    #[test]
+    fn binarize_matches_hysteresis() {
+        // speaker 0 active for frames 10..30 (10ms frames); onset/offset 0.5
+        let mut preds = Array2::zeros((50, NUM_SPEAKERS));
+        for t in 10..30 {
+            preds[[t, 0]] = 0.9;
+        }
+        let segs = Sortformer::post_process(&DiarizationConfig::default(), &preds, 1_000_000);
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].speaker_id, 0);
+        assert_eq!(segs[0].start, 10 * 160);
+        assert_eq!(segs[0].end, 30 * 160);
     }
 }

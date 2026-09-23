@@ -1,14 +1,14 @@
 /*
 Multi-talker streaming ASR with speaker-attributed transcription.
 
-Combines Sortformer diarisation with speaker-kernel-injected ASR encoding
-to produce per-speaker transcriptions with word-level timestamps.
+Combines Nemotron-3 (Sortformer v3) diarisation with speaker-kernel-injected ASR
+encoding to produce per-speaker transcriptions with word-level timestamps.
 
 Download models:
 - Multitalker ASR (int8): encoder.int8.onnx, decoder_joint.int8.onnx, tokenizer.model
   https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8/tree/main
-- Sortformer v2: diar_streaming_sortformer_4spk-v2.onnx
-  https://huggingface.co/altunenes/parakeet-rs/blob/main/diar_streaming_sortformer_4spk-v2.onnx
+- Nemotron-3 Diarization ONNX (nemotron3_diar_v3.onnx):
+  https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization
 
 Usage:
   cargo run --release --example multitalker --features multitalker -- \
