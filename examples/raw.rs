@@ -7,6 +7,7 @@ with sample_rate and channels instead of using transcribe_file()
 Usage:
 cargo run --example raw 6_speakers.wav
 cargo run --example raw 6_speakers.wav tdt
+cargo run --example raw 6_speakers.wav tdt ./parakeet-ultra   # any TDT folder, e.g. Moondream's Parakeet Ultra
 
 WARNING: TDT model has sequence length limitations (~8-10 minutes max).
 For longer audio files, you must split into chunks (e.g., 5-minute segments)
@@ -51,7 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if use_tdt {
         println!("Loading TDT model...");
-        let mut parakeet = ParakeetTDT::from_pretrained("./tdt", None)?;
+        let tdt_dir = args.get(3).map(String::as_str).unwrap_or("./tdt");
+        let mut parakeet = ParakeetTDT::from_pretrained(tdt_dir, None)?;
 
         // Use transcribe_samples() with raw parameters and timestamp mode
         let result = parakeet.transcribe_samples(
