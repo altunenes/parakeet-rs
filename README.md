@@ -150,7 +150,7 @@ self-describing metadata) with custom streaming parameters.
 
 **TDT**: Download from [HuggingFace](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx): `encoder-model.onnx`, `encoder-model.onnx.data`, `decoder_joint-model.onnx`, `vocab.txt`
 
-**Parakeet Ultra (optional TDT fine-tune)**: Moondream's post-trained parakeet-tdt-0.6b-v3 with better accuracy. Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ultra): same files as TDT, loads with `ParakeetTDT` (CC-BY-4.0).
+**Parakeet Ultra (optional TDT fine-tune)**: Moondream's post-trained parakeet-tdt-0.6b-v3 with better accuracy. Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ultra): same files as TDT, loads with `ParakeetTDT` (CC-BY-4.0). Or export it yourself with `scripts/export_parakeet_ultra.py`.
 
 **Orukeet (optional TDT fine-tune)**: the [pinned Hugging Face INT8 export](https://huggingface.co/oruk/orukeet/tree/eac739d754bb171287930e6e63386f5b88f8179e/onnx/combined-v0.1.0-int8) works with `ParakeetTDT`. The downloader verifies a release manifest and all required file hashes, including licenses, then prints the cached model directory:
 
