@@ -1326,6 +1326,13 @@ mod tests {
     use super::*;
     use std::f32::consts::PI;
 
+    // A session router is stored inside Sortformer, so its bounds must keep both auto traits.
+    #[test]
+    fn sortformer_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Sortformer>();
+    }
+
     fn sine_wave(freq_hz: f32, sample_rate: usize, num_samples: usize) -> Vec<f32> {
         (0..num_samples)
             .map(|i| (2.0 * PI * freq_hz * i as f32 / sample_rate as f32).sin())
