@@ -10,6 +10,7 @@ pub struct TimedToken {
     pub start: f32,
     pub end: f32,
     /// Softmax probability of the emitted token, in `[0, 1]`.
+    /// This is the probability over the full vocabulary, blank included.
     /// `None` for decoders that do not compute it (CTC, EOU, Nemotron, ...).
     /// For word and sentence modes this is the minimum over the aggregated tokens
     /// (`None` if any of them has no confidence).

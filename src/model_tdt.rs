@@ -107,10 +107,7 @@ impl ParakeetTDTModel {
 
     /// Run greedy decoding - returns (token_ids, frame_indices, durations, probs),
     /// where `probs[i]` is the softmax probability of `token_ids[i]`.
-    pub fn forward(
-        &mut self,
-        features: Array2<f32>,
-    ) -> Result<GreedyOutput> {
+    pub fn forward(&mut self, features: Array2<f32>) -> Result<GreedyOutput> {
         // Run encoder
         let (encoder_out, encoder_len) = self.run_encoder(&features)?;
 
