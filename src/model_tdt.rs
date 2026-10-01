@@ -110,7 +110,7 @@ impl ParakeetTDTModel {
     pub fn forward(
         &mut self,
         features: Array2<f32>,
-    ) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>, Vec<f32>)> {
+    ) -> Result<GreedyOutput> {
         // Run encoder
         let (encoder_out, encoder_len) = self.run_encoder(&features)?;
 
@@ -153,7 +153,7 @@ impl ParakeetTDTModel {
         &mut self,
         encoder_out: &Array3<f32>,
         _encoder_len: i64,
-    ) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>, Vec<f32>)> {
+    ) -> Result<GreedyOutput> {
         // encoder_out shape: [batch, encoder_dim, time]
         let encoder_dim = encoder_out.shape()[1];
         let time_steps = encoder_out.shape()[2];
@@ -270,6 +270,9 @@ impl ParakeetTDTModel {
         Ok((tokens, frame_indices, durations, probs))
     }
 }
+
+/// (token_ids, frame_indices, durations, probs) of one greedy decoding run.
+type GreedyOutput = (Vec<usize>, Vec<usize>, Vec<usize>, Vec<f32>);
 
 /// Softmax probability of `index` over `logits`.
 /// Numerically stable: the maximum logit is subtracted before `exp`.
