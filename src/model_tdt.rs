@@ -105,18 +105,14 @@ impl ParakeetTDTModel {
         )))
     }
 
-    /// Run greedy decoding - returns (token_ids, frame_indices, durations)
-    pub fn forward(
-        &mut self,
-        features: Array2<f32>,
-    ) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>)> {
+    /// Run greedy decoding - returns (token_ids, frame_indices, durations, probs),
+    /// where `probs[i]` is the softmax probability of `token_ids[i]`.
+    pub fn forward(&mut self, features: Array2<f32>) -> Result<GreedyOutput> {
         // Run encoder
         let (encoder_out, encoder_len) = self.run_encoder(&features)?;
 
         // Run greedy decoding with decoder_joint
-        let (tokens, frame_indices, durations) = self.greedy_decode(&encoder_out, encoder_len)?;
-
-        Ok((tokens, frame_indices, durations))
+        self.greedy_decode(&encoder_out, encoder_len)
     }
 
     fn run_encoder(&mut self, features: &Array2<f32>) -> Result<(Array3<f32>, i64)> {
@@ -154,7 +150,7 @@ impl ParakeetTDTModel {
         &mut self,
         encoder_out: &Array3<f32>,
         _encoder_len: i64,
-    ) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>)> {
+    ) -> Result<GreedyOutput> {
         // encoder_out shape: [batch, encoder_dim, time]
         let encoder_dim = encoder_out.shape()[1];
         let time_steps = encoder_out.shape()[2];
@@ -169,6 +165,7 @@ impl ParakeetTDTModel {
         let mut tokens = Vec::new();
         let mut frame_indices = Vec::new();
         let mut durations = Vec::new();
+        let mut probs = Vec::new();
 
         let mut t = 0;
         let mut emitted_tokens = 0;
@@ -250,6 +247,9 @@ impl ParakeetTDTModel {
                 tokens.push(token_id);
                 frame_indices.push(t);
                 durations.push(duration_step);
+                // One softmax over the vocabulary per emitted token (not per frame),
+                // so the extra cost is O(vocab_size) only when a token is emitted.
+                probs.push(softmax_prob(&vocab_logits, token_id));
                 last_emitted_token = token_id as i32;
                 emitted_tokens += 1;
             }
@@ -264,6 +264,51 @@ impl ParakeetTDTModel {
             }
         }
 
-        Ok((tokens, frame_indices, durations))
+        Ok((tokens, frame_indices, durations, probs))
+    }
+}
+
+/// (token_ids, frame_indices, durations, probs) of one greedy decoding run.
+type GreedyOutput = (Vec<usize>, Vec<usize>, Vec<usize>, Vec<f32>);
+
+/// Softmax probability of `index` over `logits`.
+/// Numerically stable: the maximum logit is subtracted before `exp`.
+fn softmax_prob(logits: &[f32], index: usize) -> f32 {
+    let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let sum: f32 = logits.iter().map(|&l| (l - max).exp()).sum();
+    (logits[index] - max).exp() / sum
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn softmax_prob_sums_to_one_and_argmax_is_largest() {
+        let logits = [0.5_f32, 2.0, -1.0, 1.0];
+        let probs: Vec<f32> = (0..logits.len())
+            .map(|i| softmax_prob(&logits, i))
+            .collect();
+        let sum: f32 = probs.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-6, "sum = {sum}");
+        let best = probs
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(i, _)| i)
+            .unwrap();
+        assert_eq!(best, 1);
+    }
+
+    #[test]
+    fn softmax_prob_is_stable_for_large_logits() {
+        let logits = [1000.0_f32, 1001.0, 999.0];
+        let probs: Vec<f32> = (0..logits.len())
+            .map(|i| softmax_prob(&logits, i))
+            .collect();
+        assert!(probs.iter().all(|p| p.is_finite()));
+        let sum: f32 = probs.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-6, "sum = {sum}");
+        assert!(probs[1] > probs[0] && probs[0] > probs[2]);
     }
 }

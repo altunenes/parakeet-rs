@@ -660,6 +660,7 @@ impl Nemotron {
                     text: t.text,
                     start,
                     end: start + frame_seconds,
+                    confidence: None,
                 }
             })
             .collect();

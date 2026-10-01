@@ -513,6 +513,7 @@ impl ParakeetUnified {
                 text: self.vocab.decode_single(id),
                 start: Self::encoder_frame_to_seconds(frame),
                 end: Self::encoder_frame_to_seconds(frame + 1),
+                confidence: None,
             })
             .collect()
     }
