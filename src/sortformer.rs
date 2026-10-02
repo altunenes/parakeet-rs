@@ -729,6 +729,7 @@ impl Sortformer {
         chunk_feat: &Array3<f32>,
         current_len: usize,
     ) -> Result<Array2<f32>> {
+        let chunk_feat = chunk_feat.as_standard_layout();
         let spkcache_len = self.spkcache.shape()[1];
         let fifo_len = self.fifo.shape()[1];
 
