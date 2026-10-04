@@ -729,7 +729,6 @@ impl Sortformer {
         chunk_feat: &Array3<f32>,
         current_len: usize,
     ) -> Result<Array2<f32>> {
-        let chunk_feat = chunk_feat.as_standard_layout();
         let spkcache_len = self.spkcache.shape()[1];
         let fifo_len = self.fifo.shape()[1];
 
@@ -1318,7 +1317,7 @@ impl Sortformer {
         let log_mel_spec = mel_spec.mapv(|x| (x + LOG_ZERO_GUARD).ln());
 
         // Transpose to (batch, time, features) - NeMo outputs (B, D, T), model expects (B, T, D)
-        Ok(log_mel_spec.t().to_owned().insert_axis(Axis(0)))
+        Ok(log_mel_spec.t().as_standard_layout().into_owned().insert_axis(Axis(0)))
     }
 }
 
