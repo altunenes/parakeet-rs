@@ -1317,7 +1317,7 @@ impl Sortformer {
         let log_mel_spec = mel_spec.mapv(|x| (x + LOG_ZERO_GUARD).ln());
 
         // Transpose to (batch, time, features) - NeMo outputs (B, D, T), model expects (B, T, D)
-        Ok(log_mel_spec.t().to_owned().insert_axis(Axis(0)))
+        Ok(log_mel_spec.t().as_standard_layout().into_owned().insert_axis(Axis(0)))
     }
 }
 
