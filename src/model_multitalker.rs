@@ -1,11 +1,15 @@
+#[cfg(feature = "burn")]
+use crate::burn_backend::multitalker::{MultitalkerDecoderJoint, MultitalkerEncoder};
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
+#[cfg(feature = "ort")]
 use crate::tensor_utils::{
     extract_1d_i64, extract_3d_f32, extract_4d_f32, extract_flat_f32, extract_scalar_i64,
 };
 use ndarray::{Array1, Array2, Array3, Array4};
+#[cfg(feature = "ort")]
 use ort::session::Session;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Encoder cache for the multitalker model.
 ///
@@ -43,8 +47,45 @@ impl MultitalkerEncoderCache {
 /// Encoder accepts additional spk_targets and bg_spk_targets inputs for speaker
 /// kernel injection. Decoder is identical to Nemotron's RNNT decoder.
 pub(crate) struct MultitalkerModel {
-    encoder: Session,
-    decoder_joint: Session,
+    encoder: Encoder,
+    decoder_joint: DecoderJoint,
+}
+
+/// The encoder graph, on whichever backend the execution configuration selects.
+enum Encoder {
+    #[cfg(feature = "ort")]
+    Ort(Session),
+    #[cfg(feature = "burn")]
+    Burn(Box<MultitalkerEncoder>),
+}
+
+/// The decoder/joint graph, on whichever backend the execution configuration selects.
+enum DecoderJoint {
+    #[cfg(feature = "ort")]
+    Ort(Session),
+    #[cfg(feature = "burn")]
+    Burn(Box<MultitalkerDecoderJoint>),
+}
+
+/// `name.int8.onnx` if present (ONNX Runtime only), else `name.onnx`.
+fn model_file(dir: &Path, name: &str, allow_int8: bool) -> Result<PathBuf> {
+    let int8 = dir.join(format!("{name}.int8.onnx"));
+    let fp32 = dir.join(format!("{name}.onnx"));
+    if allow_int8 && int8.exists() {
+        Ok(int8)
+    } else if fp32.exists() {
+        Ok(fp32)
+    } else if int8.exists() {
+        Err(Error::Config(format!(
+            "only {name}.int8.onnx in {}; the burn backend needs the fp32 {name}.onnx",
+            dir.display()
+        )))
+    } else {
+        Err(Error::Config(format!(
+            "Missing {name}.onnx or {name}.int8.onnx in {}",
+            dir.display()
+        )))
+    }
 }
 
 impl MultitalkerModel {
@@ -54,44 +95,38 @@ impl MultitalkerModel {
     ) -> Result<Self> {
         let model_dir = model_dir.as_ref();
 
-        // Prefer int8 models if available
-        let encoder_path = {
-            let int8 = model_dir.join("encoder.int8.onnx");
-            let fp32 = model_dir.join("encoder.onnx");
-            if int8.exists() {
-                int8
-            } else if fp32.exists() {
-                fp32
-            } else {
-                return Err(Error::Config(format!(
-                    "Missing encoder.onnx or encoder.int8.onnx in {}",
-                    model_dir.display()
-                )));
-            }
-        };
+        // ONNX Runtime prefers the int8 models if available; burn runs fp32 only.
+        let provider = exec_config.execution_provider;
+        let allow_int8 = !provider.is_burn();
+        let encoder_path = model_file(model_dir, "encoder", allow_int8)?;
+        let decoder_path = model_file(model_dir, "decoder_joint", allow_int8)?;
 
-        let decoder_path = {
-            let int8 = model_dir.join("decoder_joint.int8.onnx");
-            let fp32 = model_dir.join("decoder_joint.onnx");
-            if int8.exists() {
-                int8
-            } else if fp32.exists() {
-                fp32
-            } else {
-                return Err(Error::Config(format!(
-                    "Missing decoder_joint.onnx or decoder_joint.int8.onnx in {}",
-                    model_dir.display()
-                )));
-            }
-        };
-
-        let encoder = exec_config.build_session(&encoder_path)?;
-        let decoder_joint = exec_config.build_session(&decoder_path)?;
-
-        Ok(Self {
-            encoder,
-            decoder_joint,
-        })
+        #[cfg(feature = "burn")]
+        if provider.is_burn() {
+            let encoder = MultitalkerEncoder::load(&encoder_path, provider)?;
+            // The decoder/joint runs once per token: keep it off the GPU.
+            let provider = provider.per_token_provider();
+            let decoder = MultitalkerDecoderJoint::load(&decoder_path, provider)?;
+            return Ok(Self {
+                encoder: Encoder::Burn(Box::new(encoder)),
+                decoder_joint: DecoderJoint::Burn(Box::new(decoder)),
+            });
+        }
+        #[cfg(feature = "ort")]
+        {
+            let encoder = exec_config.build_session(&encoder_path)?;
+            let decoder_joint = exec_config.build_session(&decoder_path)?;
+            Ok(Self {
+                encoder: Encoder::Ort(encoder),
+                decoder_joint: DecoderJoint::Ort(decoder_joint),
+            })
+        }
+        #[cfg(not(feature = "ort"))]
+        {
+            Err(Error::Config(format!(
+                "{provider:?} needs the `ort` feature"
+            )))
+        }
     }
 
     /// Run encoder with cache-aware streaming and speaker target injection.
@@ -110,34 +145,35 @@ impl MultitalkerModel {
         spk_targets: &Array2<f32>,
         bg_spk_targets: &Array2<f32>,
     ) -> Result<(Array3<f32>, i64, MultitalkerEncoderCache)> {
-        let length_arr = Array1::from_vec(vec![length]);
-
-        let outputs = self.encoder.run(ort::inputs![
-            "processed_signal" => ort::value::Value::from_array(features.clone())?,
-            "processed_signal_length" => ort::value::Value::from_array(length_arr)?,
-            "cache_last_channel" => ort::value::Value::from_array(cache.cache_last_channel.clone())?,
-            "cache_last_time" => ort::value::Value::from_array(cache.cache_last_time.clone())?,
-            "cache_last_channel_len" => ort::value::Value::from_array(cache.cache_last_channel_len.clone())?,
-            "spk_targets" => ort::value::Value::from_array(spk_targets.clone())?,
-            "bg_spk_targets" => ort::value::Value::from_array(bg_spk_targets.clone())?
-        ])?;
-
-        let encoder_out = extract_3d_f32(&outputs["encoded"], "encoder output")?;
-        let encoded_len = extract_scalar_i64(&outputs["encoded_len"], "encoded_len")?;
-
-        let new_cache = MultitalkerEncoderCache {
-            cache_last_channel: extract_4d_f32(
-                &outputs["cache_last_channel_next"],
-                "cache_last_channel",
-            )?,
-            cache_last_time: extract_4d_f32(&outputs["cache_last_time_next"], "cache_last_time")?,
-            cache_last_channel_len: extract_1d_i64(
-                &outputs["cache_last_channel_len_next"],
-                "cache_len",
-            )?,
-        };
-
-        Ok((encoder_out, encoded_len, new_cache))
+        match &mut self.encoder {
+            #[cfg(feature = "ort")]
+            Encoder::Ort(session) => ort_encoder(
+                session,
+                features,
+                length,
+                cache,
+                spk_targets,
+                bg_spk_targets,
+            ),
+            #[cfg(feature = "burn")]
+            Encoder::Burn(encoder) => {
+                let (encoded, len, channel, time, channel_len) = encoder.run(
+                    features.view(),
+                    length,
+                    cache.cache_last_channel.view(),
+                    cache.cache_last_time.view(),
+                    &cache.cache_last_channel_len,
+                    spk_targets.view(),
+                    bg_spk_targets.view(),
+                )?;
+                let new_cache = MultitalkerEncoderCache {
+                    cache_last_channel: channel,
+                    cache_last_time: time,
+                    cache_last_channel_len: channel_len,
+                };
+                Ok((encoded, len, new_cache))
+            }
+        }
     }
 
     /// Run RNNT decoder step.
@@ -155,20 +191,82 @@ impl MultitalkerModel {
         state_1: &Array3<f32>,
         state_2: &Array3<f32>,
     ) -> Result<(Array1<f32>, Array3<f32>, Array3<f32>)> {
-        let targets = Array2::from_shape_vec((1, 1), vec![target_token as i64])
-            .map_err(|e| Error::Model(format!("Failed to create targets: {e}")))?;
-
-        let outputs = self.decoder_joint.run(ort::inputs![
-            "encoder_outputs" => ort::value::Value::from_array(encoder_frame.clone())?,
-            "targets" => ort::value::Value::from_array(targets)?,
-            "input_states_1" => ort::value::Value::from_array(state_1.clone())?,
-            "input_states_2" => ort::value::Value::from_array(state_2.clone())?
-        ])?;
-
-        let logits = extract_flat_f32(&outputs["outputs"], "logits")?;
-        let new_state_1 = extract_3d_f32(&outputs["states_1"], "state_1")?;
-        let new_state_2 = extract_3d_f32(&outputs["states_2"], "state_2")?;
-
-        Ok((logits, new_state_1, new_state_2))
+        match &mut self.decoder_joint {
+            #[cfg(feature = "ort")]
+            DecoderJoint::Ort(session) => {
+                ort_decoder(session, encoder_frame, target_token, state_1, state_2)
+            }
+            #[cfg(feature = "burn")]
+            DecoderJoint::Burn(decoder) => decoder.step(
+                encoder_frame.view(),
+                target_token,
+                state_1.view(),
+                state_2.view(),
+            ),
+        }
     }
+}
+
+#[cfg(feature = "ort")]
+fn ort_encoder(
+    session: &mut Session,
+    features: &Array3<f32>,
+    length: i64,
+    cache: &MultitalkerEncoderCache,
+    spk_targets: &Array2<f32>,
+    bg_spk_targets: &Array2<f32>,
+) -> Result<(Array3<f32>, i64, MultitalkerEncoderCache)> {
+    let length_arr = Array1::from_vec(vec![length]);
+
+    let outputs = session.run(ort::inputs![
+        "processed_signal" => ort::value::Value::from_array(features.clone())?,
+        "processed_signal_length" => ort::value::Value::from_array(length_arr)?,
+        "cache_last_channel" => ort::value::Value::from_array(cache.cache_last_channel.clone())?,
+        "cache_last_time" => ort::value::Value::from_array(cache.cache_last_time.clone())?,
+        "cache_last_channel_len" => ort::value::Value::from_array(cache.cache_last_channel_len.clone())?,
+        "spk_targets" => ort::value::Value::from_array(spk_targets.clone())?,
+        "bg_spk_targets" => ort::value::Value::from_array(bg_spk_targets.clone())?
+    ])?;
+
+    let encoder_out = extract_3d_f32(&outputs["encoded"], "encoder output")?;
+    let encoded_len = extract_scalar_i64(&outputs["encoded_len"], "encoded_len")?;
+
+    let new_cache = MultitalkerEncoderCache {
+        cache_last_channel: extract_4d_f32(
+            &outputs["cache_last_channel_next"],
+            "cache_last_channel",
+        )?,
+        cache_last_time: extract_4d_f32(&outputs["cache_last_time_next"], "cache_last_time")?,
+        cache_last_channel_len: extract_1d_i64(
+            &outputs["cache_last_channel_len_next"],
+            "cache_len",
+        )?,
+    };
+
+    Ok((encoder_out, encoded_len, new_cache))
+}
+
+#[cfg(feature = "ort")]
+fn ort_decoder(
+    session: &mut Session,
+    encoder_frame: &Array3<f32>,
+    target_token: i32,
+    state_1: &Array3<f32>,
+    state_2: &Array3<f32>,
+) -> Result<(Array1<f32>, Array3<f32>, Array3<f32>)> {
+    let targets = Array2::from_shape_vec((1, 1), vec![target_token as i64])
+        .map_err(|e| Error::Model(format!("Failed to create targets: {e}")))?;
+
+    let outputs = session.run(ort::inputs![
+        "encoder_outputs" => ort::value::Value::from_array(encoder_frame.clone())?,
+        "targets" => ort::value::Value::from_array(targets)?,
+        "input_states_1" => ort::value::Value::from_array(state_1.clone())?,
+        "input_states_2" => ort::value::Value::from_array(state_2.clone())?
+    ])?;
+
+    let logits = extract_flat_f32(&outputs["outputs"], "logits")?;
+    let new_state_1 = extract_3d_f32(&outputs["states_1"], "state_1")?;
+    let new_state_2 = extract_3d_f32(&outputs["states_2"], "state_2")?;
+
+    Ok((logits, new_state_1, new_state_2))
 }

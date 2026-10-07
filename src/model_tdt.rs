@@ -1,6 +1,11 @@
+#[cfg(feature = "burn")]
+use crate::burn_backend::tdt::{TdtDecoderJoint, TdtEncoder};
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
-use ndarray::{Array1, Array2, Array3};
+#[cfg(feature = "ort")]
+use ndarray::Array1;
+use ndarray::{Array2, Array3, ArrayView3};
+#[cfg(feature = "ort")]
 use ort::session::Session;
 use std::path::{Path, PathBuf};
 
@@ -18,9 +23,76 @@ impl TDTModelConfig {
 }
 
 pub struct ParakeetTDTModel {
-    encoder: Session,
-    decoder_joint: Session,
+    encoder: Encoder,
+    decoder_joint: DecoderJoint,
     config: TDTModelConfig,
+}
+
+/// The encoder graph, on whichever backend its execution configuration selects.
+enum Encoder {
+    #[cfg(feature = "ort")]
+    Ort(Session),
+    #[cfg(feature = "burn")]
+    Burn(Box<TdtEncoder>),
+}
+
+/// The decoder/joint graph, on whichever backend its execution configuration selects.
+enum DecoderJoint {
+    #[cfg(feature = "ort")]
+    Ort(Session),
+    #[cfg(feature = "burn")]
+    Burn(Box<TdtDecoderJoint>),
+}
+
+/// Token logits (followed by duration logits) and the LSTM state after one decoder/joint step.
+type JointOutput = (Vec<f32>, Option<(Array3<f32>, Array3<f32>)>);
+
+impl Encoder {
+    fn load(path: &Path, config: &ExecutionConfig) -> Result<Self> {
+        #[cfg(feature = "burn")]
+        if config.execution_provider.is_burn() {
+            return Ok(Self::Burn(Box::new(TdtEncoder::load(
+                path,
+                config.execution_provider,
+            )?)));
+        }
+        #[cfg(feature = "ort")]
+        {
+            Ok(Self::Ort(config.build_session(path)?))
+        }
+        #[cfg(not(feature = "ort"))]
+        {
+            Err(Error::Config(format!(
+                "{:?} needs the `ort` feature",
+                config.execution_provider
+            )))
+        }
+    }
+}
+
+impl DecoderJoint {
+    #[cfg_attr(not(feature = "burn"), allow(unused_variables))]
+    fn load(path: &Path, config: &ExecutionConfig, vocab_size: usize) -> Result<Self> {
+        #[cfg(feature = "burn")]
+        if config.execution_provider.is_burn() {
+            return Ok(Self::Burn(Box::new(TdtDecoderJoint::load(
+                path,
+                config.execution_provider,
+                vocab_size,
+            )?)));
+        }
+        #[cfg(feature = "ort")]
+        {
+            Ok(Self::Ort(config.build_session(path)?))
+        }
+        #[cfg(not(feature = "ort"))]
+        {
+            Err(Error::Config(format!(
+                "{:?} needs the `ort` feature",
+                config.execution_provider
+            )))
+        }
+    }
 }
 
 impl ParakeetTDTModel {
@@ -46,8 +118,8 @@ impl ParakeetTDTModel {
 
         let config = TDTModelConfig::new(vocab_size);
 
-        let encoder = exec_config.build_session(&encoder_path)?;
-        let decoder_joint = joint_config.build_session(&decoder_joint_path)?;
+        let encoder = Encoder::load(&encoder_path, &exec_config)?;
+        let decoder_joint = DecoderJoint::load(&decoder_joint_path, &joint_config, vocab_size)?;
 
         Ok(Self {
             encoder,
@@ -131,23 +203,80 @@ impl ParakeetTDTModel {
             .map_err(|e| Error::Model(format!("Failed to reshape encoder input: {e}")))?
             .to_owned();
 
-        let input_length = Array1::from_vec(vec![time_steps as i64]);
+        match &mut self.encoder {
+            #[cfg(feature = "ort")]
+            Encoder::Ort(session) => {
+                let input_length = Array1::from_vec(vec![time_steps as i64]);
 
-        let input_value = ort::value::Value::from_array(input)?;
-        let length_value = ort::value::Value::from_array(input_length)?;
+                let input_value = ort::value::Value::from_array(input)?;
+                let length_value = ort::value::Value::from_array(input_length)?;
 
-        let outputs = self.encoder.run(ort::inputs!(
-            "audio_signal" => input_value,
-            "length" => length_value
-        ))?;
+                let outputs = session.run(ort::inputs!(
+                    "audio_signal" => input_value,
+                    "length" => length_value
+                ))?;
 
-        // TDT encoder outputs [batch, encoder_dim, time] directly
-        let encoder_array =
-            crate::tensor_utils::extract_3d_f32(&outputs["outputs"], "encoder output")?;
-        let encoded_len =
-            crate::tensor_utils::extract_scalar_i64(&outputs["encoded_lengths"], "encoder lengths")?;
+                // TDT encoder outputs [batch, encoder_dim, time] directly
+                let encoder_array =
+                    crate::tensor_utils::extract_3d_f32(&outputs["outputs"], "encoder output")?;
+                let encoded_len = crate::tensor_utils::extract_scalar_i64(
+                    &outputs["encoded_lengths"],
+                    "encoder lengths",
+                )?;
 
-        Ok((encoder_array, encoded_len))
+                Ok((encoder_array, encoded_len))
+            }
+            #[cfg(feature = "burn")]
+            Encoder::Burn(encoder) => encoder.run(input),
+        }
+    }
+
+    /// Run the decoder/joint for one encoder frame `[1, encoder_dim, 1]`.
+    fn joint_step(
+        &mut self,
+        frame: ArrayView3<f32>,
+        last_token: i32,
+        state_h: &Array3<f32>,
+        state_c: &Array3<f32>,
+    ) -> Result<JointOutput> {
+        match &mut self.decoder_joint {
+            #[cfg(feature = "ort")]
+            DecoderJoint::Ort(session) => {
+                // Current token for prediction network
+                let targets = Array2::from_shape_vec((1, 1), vec![last_token])
+                    .map_err(|e| Error::Model(format!("Failed to create targets: {e}")))?;
+
+                let outputs = session.run(ort::inputs!(
+                    "encoder_outputs" => ort::value::Value::from_array(frame.to_owned())?,
+                    "targets" => ort::value::Value::from_array(targets)?,
+                    "target_length" => ort::value::Value::from_array(Array1::from_vec(vec![1i32]))?,
+                    "input_states_1" => ort::value::Value::from_array(state_h.clone())?,
+                    "input_states_2" => ort::value::Value::from_array(state_c.clone())?
+                ))?;
+
+                let (_, logits_data) = outputs["outputs"]
+                    .try_extract_tensor::<f32>()
+                    .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
+                let logits = logits_data.to_vec();
+
+                let state = |name: &str| -> Option<Array3<f32>> {
+                    let (shape, data) = outputs[name].try_extract_tensor::<f32>().ok()?;
+                    let dims = shape.as_ref();
+                    Array3::from_shape_vec(
+                        (dims[0] as usize, dims[1] as usize, dims[2] as usize),
+                        data.to_vec(),
+                    )
+                    .ok()
+                };
+                let states = state("output_states_1").zip(state("output_states_2"));
+                Ok((logits, states))
+            }
+            #[cfg(feature = "burn")]
+            DecoderJoint::Burn(decoder) => {
+                let step = decoder.step(frame, last_token, state_h, state_c)?;
+                Ok((step.logits, Some((step.state_h, step.state_c))))
+            }
+        }
     }
 
     fn greedy_decode(
@@ -183,23 +312,13 @@ impl ParakeetTDTModel {
                 .map_err(|e| Error::Model(format!("Failed to reshape frame: {e}")))?
                 .to_owned();
 
-            // Current token for prediction network
-            let targets = Array2::from_shape_vec((1, 1), vec![last_emitted_token])
-                .map_err(|e| Error::Model(format!("Failed to create targets: {e}")))?;
-
             // Run decoder_joint
-            let outputs = self.decoder_joint.run(ort::inputs!(
-                "encoder_outputs" => ort::value::Value::from_array(frame_reshaped)?,
-                "targets" => ort::value::Value::from_array(targets)?,
-                "target_length" => ort::value::Value::from_array(Array1::from_vec(vec![1i32]))?,
-                "input_states_1" => ort::value::Value::from_array(state_h.clone())?,
-                "input_states_2" => ort::value::Value::from_array(state_c.clone())?
-            ))?;
-
-            // Extract logits
-            let (_, logits_data) = outputs["outputs"]
-                .try_extract_tensor::<f32>()
-                .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
+            let (logits_data, states) = self.joint_step(
+                frame_reshaped.view(),
+                last_emitted_token,
+                &state_h,
+                &state_c,
+            )?;
 
             // TDT outputs vocab_size + 5 durations
             let vocab_logits: Vec<f32> = logits_data.iter().take(vocab_size).copied().collect();
@@ -226,25 +345,9 @@ impl ParakeetTDTModel {
             // Check if blank token
             if token_id != blank_id {
                 // Update states when we emit a token
-                if let Ok((h_shape, h_data)) =
-                    outputs["output_states_1"].try_extract_tensor::<f32>()
-                {
-                    let dims = h_shape.as_ref();
-                    state_h = Array3::from_shape_vec(
-                        (dims[0] as usize, dims[1] as usize, dims[2] as usize),
-                        h_data.to_vec(),
-                    )
-                    .map_err(|e| Error::Model(format!("Failed to update state_h: {e}")))?;
-                }
-                if let Ok((c_shape, c_data)) =
-                    outputs["output_states_2"].try_extract_tensor::<f32>()
-                {
-                    let dims = c_shape.as_ref();
-                    state_c = Array3::from_shape_vec(
-                        (dims[0] as usize, dims[1] as usize, dims[2] as usize),
-                        c_data.to_vec(),
-                    )
-                    .map_err(|e| Error::Model(format!("Failed to update state_c: {e}")))?;
+                if let Some((h, c)) = states {
+                    state_h = h;
+                    state_c = c;
                 }
 
                 tokens.push(token_id);

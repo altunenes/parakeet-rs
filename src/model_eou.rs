@@ -1,7 +1,11 @@
+#[cfg(feature = "burn")]
+use crate::burn_backend::eou::{EouDecoderJoint, EouEncoder};
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
+#[cfg(feature = "ort")]
 use crate::tensor_utils::{extract_1d_i64, extract_3d_f32, extract_4d_f32};
 use ndarray::{Array1, Array2, Array3, Array4};
+#[cfg(feature = "ort")]
 use ort::session::Session;
 use std::path::Path;
 
@@ -29,8 +33,24 @@ impl EncoderCache {
 }
 
 pub struct ParakeetEOUModel {
-    encoder: Session,
-    decoder_joint: Session,
+    encoder: Encoder,
+    decoder_joint: DecoderJoint,
+}
+
+/// The encoder graph, on whichever backend the execution configuration selects.
+enum Encoder {
+    #[cfg(feature = "ort")]
+    Ort(Session),
+    #[cfg(feature = "burn")]
+    Burn(Box<EouEncoder>),
+}
+
+/// The decoder/joint graph, on whichever backend the execution configuration selects.
+enum DecoderJoint {
+    #[cfg(feature = "ort")]
+    Ort(Session),
+    #[cfg(feature = "burn")]
+    Burn(Box<EouDecoderJoint>),
 }
 
 impl ParakeetEOUModel {
@@ -50,13 +70,34 @@ impl ParakeetEOUModel {
             )));
         }
 
-        let encoder = exec_config.build_session(&encoder_path)?;
-        let decoder_joint = exec_config.build_session(&decoder_path)?;
-
-        Ok(Self {
-            encoder,
-            decoder_joint,
-        })
+        #[cfg(feature = "burn")]
+        if exec_config.execution_provider.is_burn() {
+            let provider = exec_config.execution_provider;
+            let encoder = EouEncoder::load(&encoder_path, provider)?;
+            // The decoder/joint runs once per token: keep it off the GPU.
+            let provider = provider.per_token_provider();
+            let decoder = EouDecoderJoint::load(&decoder_path, provider)?;
+            return Ok(Self {
+                encoder: Encoder::Burn(Box::new(encoder)),
+                decoder_joint: DecoderJoint::Burn(Box::new(decoder)),
+            });
+        }
+        #[cfg(feature = "ort")]
+        {
+            let encoder = exec_config.build_session(&encoder_path)?;
+            let decoder_joint = exec_config.build_session(&decoder_path)?;
+            Ok(Self {
+                encoder: Encoder::Ort(encoder),
+                decoder_joint: DecoderJoint::Ort(decoder_joint),
+            })
+        }
+        #[cfg(not(feature = "ort"))]
+        {
+            Err(Error::Config(format!(
+                "{:?} needs the `ort` feature",
+                exec_config.execution_provider
+            )))
+        }
     }
 
     /// Run the stateful encoder with cache
@@ -68,67 +109,122 @@ impl ParakeetEOUModel {
         length: i64,
         cache: &EncoderCache,
     ) -> Result<(Array3<f32>, EncoderCache)> {
-        let length_arr = Array1::from_vec(vec![length]);
-
-        let outputs = self.encoder.run(ort::inputs![
-            "audio_signal" => ort::value::Value::from_array(features.clone())?,
-            "length" => ort::value::Value::from_array(length_arr)?,
-            "cache_last_channel" => ort::value::Value::from_array(cache.cache_last_channel.clone())?,
-            "cache_last_time" => ort::value::Value::from_array(cache.cache_last_time.clone())?,
-            "cache_last_channel_len" => ort::value::Value::from_array(cache.cache_last_channel_len.clone())?
-        ])?;
-
-        // Extract encoder output [1, 512, T] and new cache states
-        let encoder_out = extract_3d_f32(&outputs["outputs"], "encoder output")?;
-
-        let new_cache = EncoderCache {
-            cache_last_channel: extract_4d_f32(
-                &outputs["new_cache_last_channel"],
-                "cache_last_channel",
-            )?,
-            cache_last_time: extract_4d_f32(&outputs["new_cache_last_time"], "cache_last_time")?,
-            cache_last_channel_len: extract_1d_i64(
-                &outputs["new_cache_last_channel_len"],
-                "cache_len",
-            )?,
-        };
-
-        Ok((encoder_out, new_cache))
+        match &mut self.encoder {
+            #[cfg(feature = "ort")]
+            Encoder::Ort(session) => ort_encoder(session, features, length, cache),
+            #[cfg(feature = "burn")]
+            Encoder::Burn(encoder) => {
+                let (encoded, channel, time, channel_len) = encoder.run(
+                    features.view(),
+                    length,
+                    cache.cache_last_channel.view(),
+                    cache.cache_last_time.view(),
+                    &cache.cache_last_channel_len,
+                )?;
+                let new_cache = EncoderCache {
+                    cache_last_channel: channel,
+                    cache_last_time: time,
+                    cache_last_channel_len: channel_len,
+                };
+                Ok((encoded, new_cache))
+            }
+        }
     }
 
-    /// Run the stateful decoder
-    /// Returns: (logits [1, 1, 1, vocab], new_state_h, new_state_c)
+    /// Run the stateful decoder.
+    ///
+    /// `encoder_frame` is `[1, 512, 1]`, `last_token` is `[1, 1]`, and `state_h` and `state_c`
+    /// are `[1, 1, 640]`. Returns `(logits [1, 1, vocab], new_state_h, new_state_c)`.
     pub fn run_decoder(
         &mut self,
-        encoder_frame: &Array3<f32>, // [1, 512, 1]
-        last_token: &Array2<i32>,    // [1, 1]
-        state_h: &Array3<f32>,       // [1, 1, 640]
-        state_c: &Array3<f32>,       // [1, 1, 640]
+        encoder_frame: &Array3<f32>,
+        last_token: &Array2<i32>,
+        state_h: &Array3<f32>,
+        state_c: &Array3<f32>,
     ) -> Result<(Array3<f32>, Array3<f32>, Array3<f32>)> {
-        // Target length is always 1 for single step
-        let target_len = Array1::from_vec(vec![1i32]);
-
-        let outputs = self.decoder_joint.run(ort::inputs![
-            "encoder_outputs" => ort::value::Value::from_array(encoder_frame.clone())?,
-            "targets" => ort::value::Value::from_array(last_token.clone())?,
-            "target_length" => ort::value::Value::from_array(target_len)?,
-            "input_states_1" => ort::value::Value::from_array(state_h.clone())?,
-            "input_states_2" => ort::value::Value::from_array(state_c.clone())?
-        ])?;
-
-        // Logits: I simplify [1, 1, 1, vocab] to [1, 1, vocab]
-        let (l_shape, l_data) = outputs["outputs"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
-
-        let vocab_size = l_shape[3] as usize;
-        let logits = Array3::from_shape_vec((1, 1, vocab_size), l_data.to_vec())
-            .map_err(|e| Error::Model(format!("Reshape logits failed: {e}")))?;
-
-        // States: [1, 1, 640]
-        let new_h = extract_3d_f32(&outputs["output_states_1"], "state h")?;
-        let new_c = extract_3d_f32(&outputs["output_states_2"], "state c")?;
-
-        Ok((logits, new_h, new_c))
+        match &mut self.decoder_joint {
+            #[cfg(feature = "ort")]
+            DecoderJoint::Ort(session) => {
+                ort_decoder(session, encoder_frame, last_token, state_h, state_c)
+            }
+            #[cfg(feature = "burn")]
+            DecoderJoint::Burn(decoder) => {
+                let token = *last_token
+                    .iter()
+                    .next()
+                    .ok_or_else(|| Error::Model("empty last token".into()))?;
+                decoder.step(encoder_frame.view(), token, state_h.view(), state_c.view())
+            }
+        }
     }
+}
+
+#[cfg(feature = "ort")]
+fn ort_encoder(
+    session: &mut Session,
+    features: &Array3<f32>,
+    length: i64,
+    cache: &EncoderCache,
+) -> Result<(Array3<f32>, EncoderCache)> {
+    let length_arr = Array1::from_vec(vec![length]);
+
+    let outputs = session.run(ort::inputs![
+        "audio_signal" => ort::value::Value::from_array(features.clone())?,
+        "length" => ort::value::Value::from_array(length_arr)?,
+        "cache_last_channel" => ort::value::Value::from_array(cache.cache_last_channel.clone())?,
+        "cache_last_time" => ort::value::Value::from_array(cache.cache_last_time.clone())?,
+        "cache_last_channel_len" => ort::value::Value::from_array(cache.cache_last_channel_len.clone())?
+    ])?;
+
+    // Extract encoder output [1, 512, T] and new cache states
+    let encoder_out = extract_3d_f32(&outputs["outputs"], "encoder output")?;
+
+    let new_cache = EncoderCache {
+        cache_last_channel: extract_4d_f32(
+            &outputs["new_cache_last_channel"],
+            "cache_last_channel",
+        )?,
+        cache_last_time: extract_4d_f32(&outputs["new_cache_last_time"], "cache_last_time")?,
+        cache_last_channel_len: extract_1d_i64(
+            &outputs["new_cache_last_channel_len"],
+            "cache_len",
+        )?,
+    };
+
+    Ok((encoder_out, new_cache))
+}
+
+#[cfg(feature = "ort")]
+fn ort_decoder(
+    session: &mut Session,
+    encoder_frame: &Array3<f32>,
+    last_token: &Array2<i32>,
+    state_h: &Array3<f32>,
+    state_c: &Array3<f32>,
+) -> Result<(Array3<f32>, Array3<f32>, Array3<f32>)> {
+    // Target length is always 1 for single step
+    let target_len = Array1::from_vec(vec![1i32]);
+
+    let outputs = session.run(ort::inputs![
+        "encoder_outputs" => ort::value::Value::from_array(encoder_frame.clone())?,
+        "targets" => ort::value::Value::from_array(last_token.clone())?,
+        "target_length" => ort::value::Value::from_array(target_len)?,
+        "input_states_1" => ort::value::Value::from_array(state_h.clone())?,
+        "input_states_2" => ort::value::Value::from_array(state_c.clone())?
+    ])?;
+
+    // Logits: I simplify [1, 1, 1, vocab] to [1, 1, vocab]
+    let (l_shape, l_data) = outputs["outputs"]
+        .try_extract_tensor::<f32>()
+        .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
+
+    let vocab_size = l_shape[3] as usize;
+    let logits = Array3::from_shape_vec((1, 1, vocab_size), l_data.to_vec())
+        .map_err(|e| Error::Model(format!("Reshape logits failed: {e}")))?;
+
+    // States: [1, 1, 640]
+    let new_h = extract_3d_f32(&outputs["output_states_1"], "state h")?;
+    let new_c = extract_3d_f32(&outputs["output_states_2"], "state c")?;
+
+    Ok((logits, new_h, new_c))
 }
