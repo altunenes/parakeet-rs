@@ -82,7 +82,6 @@ impl ExecutionProvider {
 
     /// Where a model's decoder/joint runs when its encoder runs on `self`. It runs once per token
     /// on tiny tensors, so burn GPU providers hand it to burn's CPU backend.
-    #[cfg_attr(not(feature = "burn"), allow(dead_code))]
     pub(crate) fn per_token_provider(self) -> Self {
         match self {
             #[cfg(feature = "wgpu")]
