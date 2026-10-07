@@ -1,9 +1,13 @@
+#[cfg(feature = "ort")]
 use crate::error::{Error, Result};
+#[cfg(feature = "ort")]
 use ndarray::{Array1, Array3, Array4};
+#[cfg(feature = "ort")]
 use ort::value::DynValue;
 
 /// Extract a tensor as a flat `Array1<f32>` regardless of its ONNX shape.
 /// Used for joint-network logits, which arrive as `[1, 1, 1, vocab]`.
+#[cfg(feature = "ort")]
 pub(crate) fn extract_flat_f32(value: &DynValue, name: &str) -> Result<Array1<f32>> {
     let (_, data) = value
         .try_extract_tensor::<f32>()
@@ -11,6 +15,7 @@ pub(crate) fn extract_flat_f32(value: &DynValue, name: &str) -> Result<Array1<f3
     Ok(Array1::from_vec(data.to_vec()))
 }
 
+#[cfg(feature = "ort")]
 pub(crate) fn extract_3d_f32(value: &DynValue, name: &str) -> Result<Array3<f32>> {
     let (shape, data) = value
         .try_extract_tensor::<f32>()
@@ -28,6 +33,7 @@ pub(crate) fn extract_3d_f32(value: &DynValue, name: &str) -> Result<Array3<f32>
     .map_err(|e| Error::Model(format!("Failed to reshape {name}: {e}")))
 }
 
+#[cfg(feature = "ort")]
 pub(crate) fn extract_4d_f32(value: &DynValue, name: &str) -> Result<Array4<f32>> {
     let (shape, data) = value
         .try_extract_tensor::<f32>()
@@ -50,6 +56,7 @@ pub(crate) fn extract_4d_f32(value: &DynValue, name: &str) -> Result<Array4<f32>
     .map_err(|e| Error::Model(format!("Failed to reshape {name}: {e}")))
 }
 
+#[cfg(feature = "ort")]
 pub(crate) fn extract_1d_i64(value: &DynValue, name: &str) -> Result<Array1<i64>> {
     let (shape, data) = value
         .try_extract_tensor::<i64>()
@@ -63,6 +70,7 @@ pub(crate) fn extract_1d_i64(value: &DynValue, name: &str) -> Result<Array1<i64>
     Ok(Array1::from_vec(data.to_vec()))
 }
 
+#[cfg(feature = "ort")]
 pub(crate) fn extract_scalar_i64(value: &DynValue, name: &str) -> Result<i64> {
     let (_, data) = value
         .try_extract_tensor::<i64>()

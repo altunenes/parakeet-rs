@@ -1,4 +1,4 @@
-//! Experimental pure-Rust backend on [burn](https://burn.dev): runs models without ONNX Runtime,
+//! Pure-Rust backend on [burn](https://burn.dev): runs models without ONNX Runtime,
 //! on the CPU or on the GPU through wgpu (Metal, Vulkan, DX12).
 //!
 //! The model code in `generated/` comes from burn-onnx and is checked in, so building

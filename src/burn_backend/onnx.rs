@@ -379,6 +379,7 @@ pub(crate) struct ModelInfo {
     pub metadata: HashMap<String, String>,
     /// Input names and shapes; symbolic dimensions are -1.
     pub inputs: Vec<(String, Vec<i64>)>,
+    /// Read by Sortformer only.
     #[cfg_attr(not(feature = "sortformer"), allow(dead_code))]
     pub outputs: Vec<String>,
 }
