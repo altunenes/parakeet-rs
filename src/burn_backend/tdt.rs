@@ -18,8 +18,9 @@ pub(crate) struct TdtEncoder {
 impl TdtEncoder {
     pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
         let device = super::device(provider)?;
-        let mut model = tdt_encoder::Model::new(&device);
-        onnx::load(&mut model, path, tdt_encoder_weights::WEIGHTS)?;
+        let file = onnx::OnnxFile::open(path)?;
+        let mut model = guard("allocating the model", || tdt_encoder::Model::new(&device))?;
+        file.load(&mut model, tdt_encoder_weights::WEIGHTS)?;
         Ok(Self { model, device })
     }
 
@@ -62,17 +63,20 @@ impl TdtDecoderJoint {
         vocab_size: usize,
     ) -> Result<Self> {
         let device = super::device(provider)?;
+        let file = onnx::OnnxFile::open(path)?;
         // The joint emits one logit per token plus one per duration; the duration count is a
         // property of the export, so read the joint's output size from the weights.
-        let joint_size = joint_output_size(path)?;
+        let joint_size = joint_output_size(&file)?;
         if joint_size <= vocab_size {
             return Err(Error::Model(format!(
                 "{}: joint output size {joint_size} does not fit vocabulary size {vocab_size}",
                 path.display()
             )));
         }
-        let mut model = tdt_decoder_joint::Model::new(&device, vocab_size, joint_size);
-        onnx::load(&mut model, path, tdt_decoder_joint_weights::WEIGHTS)?;
+        let mut model = guard("allocating the model", || {
+            tdt_decoder_joint::Model::new(&device, vocab_size, joint_size)
+        })?;
+        file.load(&mut model, tdt_decoder_joint_weights::WEIGHTS)?;
         Ok(Self { model, device })
     }
 
@@ -104,7 +108,7 @@ impl TdtDecoderJoint {
 }
 
 /// Output size of the joint network: the length of its last layer's bias.
-fn joint_output_size(path: &Path) -> Result<usize> {
+fn joint_output_size(file: &onnx::OnnxFile) -> Result<usize> {
     let source = tdt_decoder_joint_weights::WEIGHTS
         .iter()
         .find(|w| w.path == "linear3.bias")
@@ -115,5 +119,5 @@ fn joint_output_size(path: &Path) -> Result<usize> {
             "joint output bias is not read from the model".into(),
         ));
     };
-    Ok(onnx::dims(path, key)?.iter().product())
+    Ok(file.dims(key)?.iter().product())
 }

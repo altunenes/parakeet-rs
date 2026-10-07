@@ -4,7 +4,7 @@ use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
 #[cfg(feature = "ort")]
 use ndarray::Array1;
-use ndarray::{Array2, Array3, ArrayView3};
+use ndarray::{Array2, Array3};
 #[cfg(feature = "ort")]
 use ort::session::Session;
 use std::path::{Path, PathBuf};
@@ -43,9 +43,6 @@ enum DecoderJoint {
     #[cfg(feature = "burn")]
     Burn(Box<TdtDecoderJoint>),
 }
-
-/// Token logits (followed by duration logits) and the LSTM state after one decoder/joint step.
-type JointOutput = (Vec<f32>, Option<(Array3<f32>, Array3<f32>)>);
 
 impl Encoder {
     fn load(path: &Path, config: &ExecutionConfig) -> Result<Self> {
@@ -231,14 +228,17 @@ impl ParakeetTDTModel {
         }
     }
 
-    /// Run the decoder/joint for one encoder frame `[1, encoder_dim, 1]`.
+    /// Run the decoder/joint for one encoder frame `[1, encoder_dim, 1]`: returns the token and
+    /// the duration it predicts, and updates the LSTM state when it emits a token.
     fn joint_step(
         &mut self,
-        frame: ArrayView3<f32>,
+        frame: Array3<f32>,
         last_token: i32,
-        state_h: &Array3<f32>,
-        state_c: &Array3<f32>,
-    ) -> Result<JointOutput> {
+        state_h: &mut Array3<f32>,
+        state_c: &mut Array3<f32>,
+    ) -> Result<(usize, usize)> {
+        let vocab_size = self.config.vocab_size;
+        let blank_id = vocab_size - 1;
         match &mut self.decoder_joint {
             #[cfg(feature = "ort")]
             DecoderJoint::Ort(session) => {
@@ -247,34 +247,53 @@ impl ParakeetTDTModel {
                     .map_err(|e| Error::Model(format!("Failed to create targets: {e}")))?;
 
                 let outputs = session.run(ort::inputs!(
-                    "encoder_outputs" => ort::value::Value::from_array(frame.to_owned())?,
+                    "encoder_outputs" => ort::value::Value::from_array(frame)?,
                     "targets" => ort::value::Value::from_array(targets)?,
                     "target_length" => ort::value::Value::from_array(Array1::from_vec(vec![1i32]))?,
                     "input_states_1" => ort::value::Value::from_array(state_h.clone())?,
                     "input_states_2" => ort::value::Value::from_array(state_c.clone())?
                 ))?;
 
+                // Extract logits
                 let (_, logits_data) = outputs["outputs"]
                     .try_extract_tensor::<f32>()
                     .map_err(|e| Error::Model(format!("Failed to extract logits: {e}")))?;
-                let logits = logits_data.to_vec();
+                let (token_id, duration_step) = pick(logits_data, vocab_size);
 
-                let state = |name: &str| -> Option<Array3<f32>> {
-                    let (shape, data) = outputs[name].try_extract_tensor::<f32>().ok()?;
-                    let dims = shape.as_ref();
-                    Array3::from_shape_vec(
-                        (dims[0] as usize, dims[1] as usize, dims[2] as usize),
-                        data.to_vec(),
-                    )
-                    .ok()
-                };
-                let states = state("output_states_1").zip(state("output_states_2"));
-                Ok((logits, states))
+                if token_id != blank_id {
+                    // Update states when we emit a token
+                    if let Ok((h_shape, h_data)) =
+                        outputs["output_states_1"].try_extract_tensor::<f32>()
+                    {
+                        let dims = h_shape.as_ref();
+                        *state_h = Array3::from_shape_vec(
+                            (dims[0] as usize, dims[1] as usize, dims[2] as usize),
+                            h_data.to_vec(),
+                        )
+                        .map_err(|e| Error::Model(format!("Failed to update state_h: {e}")))?;
+                    }
+                    if let Ok((c_shape, c_data)) =
+                        outputs["output_states_2"].try_extract_tensor::<f32>()
+                    {
+                        let dims = c_shape.as_ref();
+                        *state_c = Array3::from_shape_vec(
+                            (dims[0] as usize, dims[1] as usize, dims[2] as usize),
+                            c_data.to_vec(),
+                        )
+                        .map_err(|e| Error::Model(format!("Failed to update state_c: {e}")))?;
+                    }
+                }
+                Ok((token_id, duration_step))
             }
             #[cfg(feature = "burn")]
             DecoderJoint::Burn(decoder) => {
-                let step = decoder.step(frame, last_token, state_h, state_c)?;
-                Ok((step.logits, Some((step.state_h, step.state_c))))
+                let step = decoder.step(frame.view(), last_token, state_h, state_c)?;
+                let (token_id, duration_step) = pick(&step.logits, vocab_size);
+                if token_id != blank_id {
+                    *state_h = step.state_h;
+                    *state_c = step.state_c;
+                }
+                Ok((token_id, duration_step))
             }
         }
     }
@@ -313,43 +332,15 @@ impl ParakeetTDTModel {
                 .to_owned();
 
             // Run decoder_joint
-            let (logits_data, states) = self.joint_step(
-                frame_reshaped.view(),
+            let (token_id, duration_step) = self.joint_step(
+                frame_reshaped,
                 last_emitted_token,
-                &state_h,
-                &state_c,
+                &mut state_h,
+                &mut state_c,
             )?;
-
-            // TDT outputs vocab_size + 5 durations
-            let vocab_logits: Vec<f32> = logits_data.iter().take(vocab_size).copied().collect();
-            let duration_logits: Vec<f32> = logits_data.iter().skip(vocab_size).copied().collect();
-
-            let token_id = vocab_logits
-                .iter()
-                .enumerate()
-                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-                .map(|(idx, _)| idx)
-                .unwrap_or(blank_id);
-
-            let duration_step = if !duration_logits.is_empty() {
-                duration_logits
-                    .iter()
-                    .enumerate()
-                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-                    .map(|(idx, _)| idx)
-                    .unwrap_or(0)
-            } else {
-                0
-            };
 
             // Check if blank token
             if token_id != blank_id {
-                // Update states when we emit a token
-                if let Some((h, c)) = states {
-                    state_h = h;
-                    state_c = c;
-                }
-
                 tokens.push(token_id);
                 frame_indices.push(t);
                 durations.push(duration_step);
@@ -369,4 +360,20 @@ impl ParakeetTDTModel {
 
         Ok((tokens, frame_indices, durations))
     }
+}
+
+/// The token and the duration a TDT joint output predicts: it holds `vocab_size` token logits
+/// followed by the duration logits.
+fn pick(logits: &[f32], vocab_size: usize) -> (usize, usize) {
+    let argmax = |values: &[f32]| {
+        values
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(idx, _)| idx)
+    };
+    let (vocab_logits, duration_logits) = logits.split_at(vocab_size.min(logits.len()));
+    let token_id = argmax(vocab_logits).unwrap_or(vocab_size - 1);
+    let duration_step = argmax(duration_logits).unwrap_or(0);
+    (token_id, duration_step)
 }

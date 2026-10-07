@@ -18,8 +18,11 @@ pub(crate) struct UnifiedEncoder {
 impl UnifiedEncoder {
     pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
         let device = super::device(provider)?;
-        let mut model = unified_encoder::Model::new(&device);
-        onnx::load(&mut model, path, unified_encoder_weights::WEIGHTS)?;
+        let file = onnx::OnnxFile::open(path)?;
+        let mut model = guard("allocating the model", || {
+            unified_encoder::Model::new(&device)
+        })?;
+        file.load(&mut model, unified_encoder_weights::WEIGHTS)?;
         Ok(Self { model, device })
     }
 
@@ -49,8 +52,11 @@ pub(crate) struct UnifiedDecoderJoint {
 impl UnifiedDecoderJoint {
     pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
         let device = super::device(provider)?;
-        let mut model = unified_decoder_joint::Model::new(&device);
-        onnx::load(&mut model, path, unified_decoder_joint_weights::WEIGHTS)?;
+        let file = onnx::OnnxFile::open(path)?;
+        let mut model = guard("allocating the model", || {
+            unified_decoder_joint::Model::new(&device)
+        })?;
+        file.load(&mut model, unified_decoder_joint_weights::WEIGHTS)?;
         Ok(Self { model, device })
     }
 

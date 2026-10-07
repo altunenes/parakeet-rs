@@ -101,6 +101,13 @@ pub(crate) fn guard<T>(what: &str, f: impl FnOnce() -> T) -> Result<T> {
 
 // ---- ndarray <-> burn ----
 
+#[cfg(feature = "multitalker")]
+pub(crate) fn tensor2(a: ndarray::ArrayView2<f32>, device: &Device) -> burn::tensor::Tensor<2> {
+    let (x, y) = a.dim();
+    let data = a.iter().copied().collect::<Vec<_>>();
+    burn::tensor::Tensor::from_data(burn::tensor::TensorData::new(data, [x, y]), device)
+}
+
 pub(crate) fn tensor3(a: ndarray::ArrayView3<f32>, device: &Device) -> burn::tensor::Tensor<3> {
     let (x, y, z) = a.dim();
     let data = a.iter().copied().collect::<Vec<_>>();
@@ -153,4 +160,3 @@ pub(crate) fn array3(t: burn::tensor::Tensor<3>) -> Result<ndarray::Array3<f32>>
     ndarray::Array3::from_shape_vec((x, y, z), vec_f32(t)?)
         .map_err(|e| Error::Model(format!("burn output shape: {e}")))
 }
-

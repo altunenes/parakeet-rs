@@ -40,23 +40,45 @@ pub(crate) struct EncoderStep {
 }
 
 impl NemotronEncoder {
-    /// `multilingual` selects the graph with a `prompt_index` input.
+    /// Load the encoder, with the export's inputs and metadata. The multilingual graph is the
+    /// one with a `prompt_index` input.
     pub(crate) fn load(
         path: &Path,
         provider: ExecutionProvider,
-        multilingual: bool,
-    ) -> Result<Self> {
+    ) -> Result<(Self, onnx::ModelInfo)> {
         let device = super::device(provider)?;
+        let file = onnx::OnnxFile::open(path)?;
+        let multilingual = file
+            .info
+            .inputs
+            .iter()
+            .any(|(name, _)| name == "prompt_index");
         let model = if multilingual {
-            let mut model = nemotron_multi_encoder::Model::new(&device);
-            onnx::load(&mut model, path, nemotron_multi_encoder_weights::WEIGHTS)?;
+            let mut model = guard("allocating the model", || {
+                nemotron_multi_encoder::Model::new(&device)
+            })?;
+            file.load(&mut model, nemotron_multi_encoder_weights::WEIGHTS)?;
             Encoder::Multilingual(Box::new(model))
         } else {
-            let mut model = nemotron_encoder::Model::new(&device);
-            onnx::load(&mut model, path, nemotron_encoder_weights::WEIGHTS)?;
+            let mut model = guard("allocating the model", || {
+                nemotron_encoder::Model::new(&device)
+            })?;
+            file.load(&mut model, nemotron_encoder_weights::WEIGHTS)?;
             Encoder::English(Box::new(model))
         };
-        Ok(Self { model, device })
+        Ok((Self { model, device }, file.info))
+    }
+
+    pub(crate) fn is_multilingual(&self) -> bool {
+        matches!(self.model, Encoder::Multilingual(_))
+    }
+
+    /// The streaming profile this encoder was generated for: (chunk, pre-encode, left context).
+    pub(crate) fn profile(&self) -> (usize, usize, usize) {
+        match self.model {
+            Encoder::English(_) => (7, 9, 70),
+            Encoder::Multilingual(_) => (7, 9, 56),
+        }
     }
 
     pub(crate) fn run(
@@ -129,17 +151,18 @@ impl NemotronDecoderJoint {
         multilingual: bool,
     ) -> Result<Self> {
         let device = super::device(provider)?;
+        let file = onnx::OnnxFile::open(path)?;
         let model = if multilingual {
-            let mut model = nemotron_multi_decoder_joint::Model::new(&device);
-            onnx::load(
-                &mut model,
-                path,
-                nemotron_multi_decoder_joint_weights::WEIGHTS,
-            )?;
+            let mut model = guard("allocating the model", || {
+                nemotron_multi_decoder_joint::Model::new(&device)
+            })?;
+            file.load(&mut model, nemotron_multi_decoder_joint_weights::WEIGHTS)?;
             DecoderJoint::Multilingual(Box::new(model))
         } else {
-            let mut model = nemotron_decoder_joint::Model::new(&device);
-            onnx::load(&mut model, path, nemotron_decoder_joint_weights::WEIGHTS)?;
+            let mut model = guard("allocating the model", || {
+                nemotron_decoder_joint::Model::new(&device)
+            })?;
+            file.load(&mut model, nemotron_decoder_joint_weights::WEIGHTS)?;
             DecoderJoint::English(Box::new(model))
         };
         Ok(Self { model, device })
@@ -170,4 +193,3 @@ impl NemotronDecoderJoint {
         })?
     }
 }
-

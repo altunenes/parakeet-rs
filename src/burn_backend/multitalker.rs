@@ -4,7 +4,7 @@ use super::generated::{
     multitalker_decoder_joint, multitalker_decoder_joint_weights, multitalker_encoder,
     multitalker_encoder_weights,
 };
-use super::{array3, array4, guard, ints, onnx, tensor3, tensor4, vec_f32, vec_i64};
+use super::{array3, array4, guard, ints, onnx, tensor2, tensor3, tensor4, vec_f32, vec_i64};
 use crate::error::{Error, Result};
 use crate::execution::ExecutionProvider;
 use burn::tensor::Device;
@@ -22,8 +22,11 @@ pub(crate) type EncoderStep = (Array3<f32>, i64, Array4<f32>, Array4<f32>, Array
 impl MultitalkerEncoder {
     pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
         let device = super::device(provider)?;
-        let mut model = multitalker_encoder::Model::new(&device);
-        onnx::load(&mut model, path, multitalker_encoder_weights::WEIGHTS)?;
+        let file = onnx::OnnxFile::open(path)?;
+        let mut model = guard("allocating the model", || {
+            multitalker_encoder::Model::new(&device)
+        })?;
+        file.load(&mut model, multitalker_encoder_weights::WEIGHTS)?;
         Ok(Self { model, device })
     }
 
@@ -75,8 +78,11 @@ pub(crate) struct MultitalkerDecoderJoint {
 impl MultitalkerDecoderJoint {
     pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
         let device = super::device(provider)?;
-        let mut model = multitalker_decoder_joint::Model::new(&device);
-        onnx::load(&mut model, path, multitalker_decoder_joint_weights::WEIGHTS)?;
+        let file = onnx::OnnxFile::open(path)?;
+        let mut model = guard("allocating the model", || {
+            multitalker_decoder_joint::Model::new(&device)
+        })?;
+        file.load(&mut model, multitalker_decoder_joint_weights::WEIGHTS)?;
         Ok(Self { model, device })
     }
 
@@ -99,10 +105,4 @@ impl MultitalkerDecoderJoint {
             Ok((Array1::from_vec(vec_f32(logits)?), array3(s1)?, array3(s2)?))
         })?
     }
-}
-
-fn tensor2(a: ArrayView2<f32>, device: &Device) -> burn::tensor::Tensor<2> {
-    let (x, y) = a.dim();
-    let data = a.iter().copied().collect::<Vec<_>>();
-    burn::tensor::Tensor::from_data(burn::tensor::TensorData::new(data, [x, y]), device)
 }

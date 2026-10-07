@@ -69,68 +69,6 @@ fn weight_key(name: &str, consumers: Option<&Vec<String>>) -> String {
     consumers.join("|")
 }
 
-/// Load every weight in `table` from `onnx_path` into `model`.
-///
-/// Fails with a clear error, never a panic, if the file is not an export of the model the
-/// table was generated for.
-pub(crate) fn load<M: ModuleSnapshot>(
-    model: &mut M,
-    onnx_path: &Path,
-    table: &[Weight],
-) -> Result<()> {
-    let tensors = read_tensors(onnx_path)?;
-    let unsupported = |what: String| {
-        Error::Model(format!(
-            "{}: {what}. This ONNX export is not supported by the burn backend; use ONNX Runtime",
-            onnx_path.display()
-        ))
-    };
-
-    let mut pack = Vec::with_capacity(table.len());
-    for w in table {
-        let tensor = match &w.source {
-            Source::ConstF32(values) => {
-                constant(w, DType::F32, Bytes::from_elems(values.to_vec()))?
-            }
-            Source::ConstI64(values) => {
-                constant(w, DType::I64, Bytes::from_elems(values.to_vec()))?
-            }
-            Source::ConstI32(values) => {
-                constant(w, DType::I32, Bytes::from_elems(values.to_vec()))?
-            }
-            Source::Zeros => {
-                let numel = shape_of(w)?.iter().product::<usize>();
-                constant(w, DType::F32, Bytes::from_elems(vec![0f32; numel]))?
-            }
-            Source::Param(key, transform) => {
-                let (src, layout) = resolve(&tensors, key)
-                    .ok_or_else(|| unsupported(format!("no tensor for {key}")))?;
-                param(w, src, layout, *transform).map_err(unsupported)?
-            }
-        };
-        pack.push(tensor);
-    }
-
-    let result = model.apply(pack, None, None, false);
-    if !result.missing.is_empty() || !result.unused.is_empty() || !result.errors.is_empty() {
-        return Err(unsupported(format!(
-            "weights did not load cleanly (missing {:?}, unused {:?}, errors {:?})",
-            result.missing.iter().take(3).collect::<Vec<_>>(),
-            result.unused.iter().take(3).collect::<Vec<_>>(),
-            result.errors.iter().take(3).collect::<Vec<_>>()
-        )));
-    }
-    Ok(())
-}
-
-/// Shape of the tensor for `key` in `onnx_path`.
-pub(crate) fn dims(onnx_path: &Path, key: &str) -> Result<Vec<usize>> {
-    let tensors = read_tensors(onnx_path)?;
-    resolve(&tensors, key)
-        .map(|(t, _)| t.dims.clone())
-        .ok_or_else(|| Error::Model(format!("{}: no tensor for {key}", onnx_path.display())))
-}
-
 fn constant(w: &Weight, dtype: DType, bytes: Bytes) -> Result<PackTensor> {
     Ok(PackTensor::new(
         w.path.into(),
@@ -353,10 +291,15 @@ impl OnnxTensor {
     }
 
     fn f32s(&self) -> std::result::Result<Vec<f32>, String> {
+        Ok(le_f32s(&self.raw()?))
+    }
+
+    /// The tensor's little-endian bytes.
+    fn raw(&self) -> std::result::Result<Vec<u8>, String> {
         let (file, offset, len) = match &self.data {
             Data::Inline(file, r) => (file, r.start as u64, r.len()),
             Data::External(file, offset, len) => (file, *offset, *len as usize),
-            Data::Decoded(b) => return Ok(le_f32s(b)),
+            Data::Decoded(b) => return Ok(b.to_vec()),
         };
         use std::io::{Read, Seek, SeekFrom};
         let io = |e: std::io::Error| format!("{}: {e}", file.display());
@@ -364,7 +307,7 @@ impl OnnxTensor {
         f.seek(SeekFrom::Start(offset)).map_err(io)?;
         let mut raw = vec![0u8; len];
         f.read_exact(&mut raw).map_err(io)?;
-        Ok(le_f32s(&raw))
+        Ok(raw)
     }
 }
 
@@ -384,137 +327,200 @@ pub(crate) struct ModelInfo {
     pub outputs: Vec<String>,
 }
 
-pub(crate) fn model_info(path: &Path) -> Result<ModelInfo> {
-    let bad = |what: &str| {
-        Error::Model(format!(
-            "{}: not a valid ONNX model ({what})",
-            path.display()
-        ))
-    };
-    let buf = std::fs::read(path)?;
-    let text = |r: &Range<usize>| String::from_utf8_lossy(&buf[r.clone()]).into_owned();
-    let model = fields(&buf, 0..buf.len()).map_err(|e| bad(&e))?;
-    let mut metadata = HashMap::new();
-    // ModelProto.metadata_props: key/value entries
-    for entry in model.iter().filter(|f| f.0 == 14) {
-        let kv = fields(&buf, entry.2.clone()).map_err(|e| bad(&e))?;
-        let get = |n| kv.iter().find(|f| f.0 == n).map(|f| text(&f.2));
-        if let (Some(k), Some(v)) = (get(1), get(2)) {
-            metadata.insert(k, v);
-        }
-    }
-    let graph = model
-        .iter()
-        .find(|f| f.0 == 7)
-        .ok_or_else(|| bad("no graph"))?;
-    let (mut inputs, mut outputs) = (Vec::new(), Vec::new());
-    let graph_fields = fields(&buf, graph.2.clone()).map_err(|e| bad(&e))?;
-    // GraphProto.input / .output: ValueInfoProto { name: 1, type: 2 }
-    for (num, _, value) in graph_fields.iter().filter(|f| f.0 == 11 || f.0 == 12) {
-        let info = fields(&buf, value.clone()).map_err(|e| bad(&e))?;
-        let Some(name) = info.iter().find(|f| f.0 == 1).map(|f| text(&f.2)) else {
-            continue;
-        };
-        if *num == 12 {
-            outputs.push(name);
-            continue;
-        }
-        // TypeProto.tensor_type (1) -> TypeProto.Tensor.shape (2) -> dim (1): dim_value (1)
-        let mut dims = Vec::new();
-        let nested = |f: Option<&Field>, n: u64| -> std::result::Result<Option<Field>, String> {
-            match f {
-                Some(f) => Ok(fields(&buf, f.2.clone())?.into_iter().find(|g| g.0 == n)),
-                None => Ok(None),
-            }
-        };
-        let tensor_type = nested(info.iter().find(|f| f.0 == 2), 1).map_err(|e| bad(&e))?;
-        let shape = nested(tensor_type.as_ref(), 2).map_err(|e| bad(&e))?;
-        if let Some(shape) = shape {
-            for dim in fields(&buf, shape.2)
-                .map_err(|e| bad(&e))?
-                .iter()
-                .filter(|f| f.0 == 1)
-            {
-                let dim = fields(&buf, dim.2.clone()).map_err(|e| bad(&e))?;
-                dims.push(
-                    dim.iter()
-                        .find(|f| f.0 == 1 && f.1 == 0)
-                        .map_or(-1, |f| f.2.start as i64),
-                );
-            }
-        }
-        inputs.push((name, dims));
-    }
-    Ok(ModelInfo {
-        metadata,
-        inputs,
-        outputs,
-    })
+/// An ONNX file, parsed once: its tensors by [`weight_key`], and its [`ModelInfo`].
+pub(crate) struct OnnxFile {
+    path: PathBuf,
+    tensors: HashMap<String, OnnxTensor>,
+    pub info: ModelInfo,
 }
 
-/// Every initializer and `Constant` node tensor of an ONNX model, by [`weight_key`].
-fn read_tensors(path: &Path) -> Result<HashMap<String, OnnxTensor>> {
-    let bad = |what: &str| {
-        Error::Model(format!(
-            "{}: not a valid ONNX model ({what})",
-            path.display()
-        ))
-    };
-    let buf = std::fs::read(path)?;
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let model = fields(&buf, 0..buf.len()).map_err(|e| bad(&e))?;
-    let graph = model
-        .iter()
-        .find(|f| f.0 == 7)
-        .ok_or_else(|| bad("no graph"))?;
+impl OnnxFile {
+    /// Read every initializer and `Constant` node tensor, the metadata, and the graph's inputs and
+    /// outputs. Tensor data is not kept in memory; it is read from the file when needed.
+    pub(crate) fn open(path: &Path) -> Result<Self> {
+        let bad = |what: &str| {
+            Error::Model(format!(
+                "{}: not a valid ONNX model ({what})",
+                path.display()
+            ))
+        };
+        let buf = std::fs::read(path)?;
+        let dir = path.parent().unwrap_or(Path::new("."));
+        let text = |r: &Range<usize>| String::from_utf8_lossy(&buf[r.clone()]).into_owned();
+        let model = fields(&buf, 0..buf.len()).map_err(|e| bad(&e))?;
 
-    let mut named = HashMap::new();
-    let mut consumers: HashMap<String, Vec<String>> = HashMap::new();
-    for (num, _, val) in fields(&buf, graph.2.clone()).map_err(|e| bad(&e))? {
-        match num {
-            // GraphProto.initializer
-            5 => {
-                let (name, t) = tensor(&buf, val, path, dir).map_err(|e| bad(&e))?;
-                named.insert(name, t);
+        let mut metadata = HashMap::new();
+        // ModelProto.metadata_props: key/value entries
+        for entry in model.iter().filter(|f| f.0 == 14) {
+            let kv = fields(&buf, entry.2.clone()).map_err(|e| bad(&e))?;
+            let get = |n| kv.iter().find(|f| f.0 == n).map(|f| text(&f.2));
+            if let (Some(k), Some(v)) = (get(1), get(2)) {
+                metadata.insert(k, v);
             }
-            // GraphProto.node
-            1 => {
-                let node = fields(&buf, val).map_err(|e| bad(&e))?;
-                let text = |f: &Field| String::from_utf8_lossy(&buf[f.2.clone()]).into_owned();
-                let name = node.iter().find(|f| f.0 == 3).map(text).unwrap_or_default();
-                for (i, input) in node.iter().filter(|f| f.0 == 1).enumerate() {
-                    consumers
-                        .entry(text(input))
-                        .or_default()
-                        .push(format!("{name}#{i}"));
-                }
-                if !node
-                    .iter()
-                    .any(|f| f.0 == 4 && buf[f.2.clone()] == *b"Constant")
-                {
-                    continue;
-                }
-                let Some(output) = node.iter().find(|f| f.0 == 2).map(text) else {
-                    continue;
-                };
-                for attr in node.iter().filter(|f| f.0 == 5) {
-                    let attr = fields(&buf, attr.2.clone()).map_err(|e| bad(&e))?;
-                    let is_value = attr
+        }
+
+        let graph = model
+            .iter()
+            .find(|f| f.0 == 7)
+            .ok_or_else(|| bad("no graph"))?;
+        let (mut inputs, mut outputs) = (Vec::new(), Vec::new());
+        let mut named = HashMap::new();
+        let mut consumers: HashMap<String, Vec<String>> = HashMap::new();
+        for (num, _, val) in fields(&buf, graph.2.clone()).map_err(|e| bad(&e))? {
+            match num {
+                // GraphProto.node
+                1 => {
+                    let node = fields(&buf, val).map_err(|e| bad(&e))?;
+                    let name = node
                         .iter()
-                        .any(|f| f.0 == 1 && buf[f.2.clone()] == *b"value");
-                    if let (true, Some(t)) = (is_value, attr.iter().find(|f| f.0 == 5)) {
-                        let (_, t) = tensor(&buf, t.2.clone(), path, dir).map_err(|e| bad(&e))?;
-                        named.insert(output.clone(), t);
+                        .find(|f| f.0 == 3)
+                        .map(|f| text(&f.2))
+                        .unwrap_or_default();
+                    for (i, input) in node.iter().filter(|f| f.0 == 1).enumerate() {
+                        consumers
+                            .entry(text(&input.2))
+                            .or_default()
+                            .push(format!("{name}#{i}"));
+                    }
+                    if !node
+                        .iter()
+                        .any(|f| f.0 == 4 && buf[f.2.clone()] == *b"Constant")
+                    {
+                        continue;
+                    }
+                    let Some(output) = node.iter().find(|f| f.0 == 2).map(|f| text(&f.2)) else {
+                        continue;
+                    };
+                    for attr in node.iter().filter(|f| f.0 == 5) {
+                        let attr = fields(&buf, attr.2.clone()).map_err(|e| bad(&e))?;
+                        let is_value = attr
+                            .iter()
+                            .any(|f| f.0 == 1 && buf[f.2.clone()] == *b"value");
+                        if let (true, Some(t)) = (is_value, attr.iter().find(|f| f.0 == 5)) {
+                            let (_, t) =
+                                tensor(&buf, t.2.clone(), path, dir).map_err(|e| bad(&e))?;
+                            named.insert(output.clone(), t);
+                        }
                     }
                 }
+                // GraphProto.initializer
+                5 => {
+                    let (name, t) = tensor(&buf, val, path, dir).map_err(|e| bad(&e))?;
+                    named.insert(name, t);
+                }
+                // GraphProto.input / .output: ValueInfoProto { name: 1, type: 2 }
+                11 | 12 => {
+                    let info = fields(&buf, val).map_err(|e| bad(&e))?;
+                    let Some(name) = info.iter().find(|f| f.0 == 1).map(|f| text(&f.2)) else {
+                        continue;
+                    };
+                    if num == 12 {
+                        outputs.push(name);
+                        continue;
+                    }
+                    // TypeProto.tensor_type (1) -> TypeProto.Tensor.shape (2) -> dim (1): dim_value (1)
+                    let nested =
+                        |f: Option<&Field>, n: u64| -> std::result::Result<Option<Field>, String> {
+                            match f {
+                                Some(f) => {
+                                    Ok(fields(&buf, f.2.clone())?.into_iter().find(|g| g.0 == n))
+                                }
+                                None => Ok(None),
+                            }
+                        };
+                    let tensor_type =
+                        nested(info.iter().find(|f| f.0 == 2), 1).map_err(|e| bad(&e))?;
+                    let shape = nested(tensor_type.as_ref(), 2).map_err(|e| bad(&e))?;
+                    let mut dims = Vec::new();
+                    if let Some(shape) = shape {
+                        for dim in fields(&buf, shape.2)
+                            .map_err(|e| bad(&e))?
+                            .iter()
+                            .filter(|f| f.0 == 1)
+                        {
+                            let dim = fields(&buf, dim.2.clone()).map_err(|e| bad(&e))?;
+                            dims.push(
+                                dim.iter()
+                                    .find(|f| f.0 == 1 && f.1 == 0)
+                                    .map_or(-1, |f| f.2.start as i64),
+                            );
+                        }
+                    }
+                    inputs.push((name, dims));
+                }
+                _ => {}
             }
-            _ => {}
         }
+        let tensors = named
+            .into_iter()
+            .map(|(name, t)| (weight_key(&name, consumers.get(&name)), t))
+            .collect();
+        Ok(Self {
+            path: path.to_path_buf(),
+            tensors,
+            info: ModelInfo {
+                metadata,
+                inputs,
+                outputs,
+            },
+        })
     }
-    Ok(named
-        .into_iter()
-        .map(|(name, t)| (weight_key(&name, consumers.get(&name)), t))
-        .collect())
+
+    /// Load every weight in `table` into `model`.
+    ///
+    /// Fails with a clear error, never a panic, if the file is not an export of the model the
+    /// table was generated for.
+    pub(crate) fn load<M: ModuleSnapshot>(&self, model: &mut M, table: &[Weight]) -> Result<()> {
+        let unsupported = |what: String| {
+            Error::Model(format!(
+                "{}: {what}. This ONNX export is not supported by the burn backend; use ONNX Runtime",
+                self.path.display()
+            ))
+        };
+
+        let mut pack = Vec::with_capacity(table.len());
+        for w in table {
+            let tensor = match &w.source {
+                Source::ConstF32(values) => {
+                    constant(w, DType::F32, Bytes::from_elems(values.to_vec()))?
+                }
+                Source::ConstI64(values) => {
+                    constant(w, DType::I64, Bytes::from_elems(values.to_vec()))?
+                }
+                Source::ConstI32(values) => {
+                    constant(w, DType::I32, Bytes::from_elems(values.to_vec()))?
+                }
+                Source::Zeros => {
+                    let numel = shape_of(w)?.iter().product::<usize>();
+                    constant(w, DType::F32, Bytes::from_elems(vec![0f32; numel]))?
+                }
+                Source::Param(key, transform) => {
+                    let (src, layout) = resolve(&self.tensors, key)
+                        .ok_or_else(|| unsupported(format!("no tensor for {key}")))?;
+                    param(w, src, layout, *transform).map_err(unsupported)?
+                }
+            };
+            pack.push(tensor);
+        }
+
+        let result = super::guard("loading weights", || model.apply(pack, None, None, false))?;
+        if !result.missing.is_empty() || !result.unused.is_empty() || !result.errors.is_empty() {
+            return Err(unsupported(format!(
+                "weights did not load cleanly (missing {:?}, unused {:?}, errors {:?})",
+                result.missing.iter().take(3).collect::<Vec<_>>(),
+                result.unused.iter().take(3).collect::<Vec<_>>(),
+                result.errors.iter().take(3).collect::<Vec<_>>()
+            )));
+        }
+        Ok(())
+    }
+
+    /// Shape of the tensor for `key`.
+    pub(crate) fn dims(&self, key: &str) -> Result<Vec<usize>> {
+        resolve(&self.tensors, key)
+            .map(|(t, _)| t.dims.clone())
+            .ok_or_else(|| Error::Model(format!("{}: no tensor for {key}", self.path.display())))
+    }
 }
 
 /// A protobuf field: number, wire type, and the value's byte range (length-delimited and fixed
@@ -622,7 +628,18 @@ fn tensor(
         };
         let offset = number("offset")?.unwrap_or(0);
         let length = number("length")?.unwrap_or((dims.iter().product::<usize>() * elem) as u64);
-        Data::External(dir.join(location), offset, length)
+        // ONNX Runtime refuses locations outside the model's folder; so does this.
+        let relative = Path::new(location);
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
+            return Err(format!(
+                "{name}: external data location {location:?} is outside the model folder"
+            ));
+        }
+        Data::External(dir.join(relative), offset, length)
     } else if let Some(r) = raw {
         Data::Inline(file.to_path_buf(), r)
     } else {
@@ -848,7 +865,7 @@ mod tests {
 
     #[test]
     fn keys_do_not_depend_on_anonymous_names() {
-        let tensors = read_tensors(&test_model()).unwrap();
+        let tensors = OnnxFile::open(&test_model()).unwrap().tensors;
         let mut keys: Vec<_> = tensors.keys().cloned().collect();
         keys.sort();
         assert_eq!(
@@ -866,7 +883,7 @@ mod tests {
 
     #[test]
     fn copies_inline_and_external_tensors() {
-        let tensors = read_tensors(&test_model()).unwrap();
+        let tensors = OnnxFile::open(&test_model()).unwrap().tensors;
         assert_eq!(
             load_one(
                 &tensors,
@@ -884,7 +901,7 @@ mod tests {
 
     #[test]
     fn lstm_gates_are_split_and_biases_folded() {
-        let tensors = read_tensors(&test_model()).unwrap();
+        let tensors = OnnxFile::open(&test_model()).unwrap().tensors;
         // gate rows 2..4 of the packed [1, 8, 2] weight, transposed to [2, 2]
         assert_eq!(
             load_one(
@@ -909,7 +926,7 @@ mod tests {
 
     #[test]
     fn longer_positional_tables_are_center_sliced() {
-        let tensors = read_tensors(&test_model()).unwrap();
+        let tensors = OnnxFile::open(&test_model()).unwrap().tensors;
         // [1, 5, 2] -> the middle 3 rows
         assert_eq!(
             load_one(
@@ -924,7 +941,7 @@ mod tests {
 
     #[test]
     fn other_export_layouts_are_transposed() {
-        let tensors = read_tensors(&test_model()).unwrap();
+        let tensors = OnnxFile::open(&test_model()).unwrap().tensors;
         // pointwise conv exported as MatMul [in, out] -> reference Conv1d [out, in, 1]
         assert_eq!(
             load_one(
@@ -939,7 +956,7 @@ mod tests {
 
     #[test]
     fn missing_and_mismatched_weights_are_errors() {
-        let tensors = read_tensors(&test_model()).unwrap();
+        let tensors = OnnxFile::open(&test_model()).unwrap().tensors;
         assert!(resolve(&tensors, "layers.9.norm.weight").is_none());
         let w = Weight {
             path: "p",
@@ -949,8 +966,25 @@ mod tests {
         let (src, layout) = resolve(&tensors, "layers.0.norm.weight").unwrap();
         assert!(param(&w, src, layout, Transform::Copy).is_err());
         assert!(
-            read_tensors(&std::env::temp_dir().join("parakeet-rs-no-such-model.onnx")).is_err()
+            OnnxFile::open(&std::env::temp_dir().join("parakeet-rs-no-such-model.onnx")).is_err()
         );
+    }
+
+    #[test]
+    fn external_data_outside_the_model_folder_is_refused() {
+        let dir =
+            std::env::temp_dir().join(format!("parakeet-rs-onnx-escape-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for location in ["../w.data", "/etc/hosts"] {
+            let graph = bytes_field(5, &tensor_proto("w", &[1], &[1.0], Some((location, 0))));
+            let path = dir.join("model.onnx");
+            std::fs::write(&path, [int_field(1, 8), bytes_field(7, &graph)].concat()).unwrap();
+            let err = OnnxFile::open(&path).err().expect("must be refused");
+            assert!(
+                err.to_string().contains("outside the model folder"),
+                "{err}"
+            );
+        }
     }
 
     #[test]
@@ -959,6 +993,6 @@ mod tests {
         let bytes = std::fs::read(&path).unwrap();
         let cut = path.with_file_name("cut.onnx");
         std::fs::write(&cut, &bytes[..bytes.len() / 2]).unwrap();
-        assert!(read_tensors(&cut).is_err());
+        assert!(OnnxFile::open(&cut).is_err());
     }
 }

@@ -59,8 +59,10 @@ impl ParakeetUnifiedModel {
         config: UnifiedModelConfig,
     ) -> Result<Self> {
         let model_dir = model_dir.as_ref();
-        let encoder_path = Self::find_encoder(model_dir)?;
-        let decoder_joint_path = Self::find_decoder_joint(model_dir)?;
+        // burn runs fp32 exports only, so it skips int8 files.
+        let int8 = !exec_config.execution_provider.is_burn();
+        let encoder_path = Self::find_encoder(model_dir, int8)?;
+        let decoder_joint_path = Self::find_decoder_joint(model_dir, int8)?;
 
         #[cfg(feature = "burn")]
         if exec_config.execution_provider.is_burn() {
@@ -94,9 +96,9 @@ impl ParakeetUnifiedModel {
         }
     }
 
-    fn find_encoder(dir: &Path) -> Result<PathBuf> {
+    fn find_encoder(dir: &Path, int8: bool) -> Result<PathBuf> {
         let candidates = ["encoder.onnx", "encoder.int8.onnx", "encoder-model.onnx"];
-        for candidate in &candidates {
+        for candidate in candidates.iter().filter(|c| int8 || !c.contains(".int8.")) {
             let path = dir.join(candidate);
             if path.exists() {
                 return Ok(path);
@@ -109,13 +111,13 @@ impl ParakeetUnifiedModel {
         )))
     }
 
-    fn find_decoder_joint(dir: &Path) -> Result<PathBuf> {
+    fn find_decoder_joint(dir: &Path, int8: bool) -> Result<PathBuf> {
         let candidates = [
             "decoder_joint.onnx",
             "decoder_joint.int8.onnx",
             "decoder_joint-model.onnx",
         ];
-        for candidate in &candidates {
+        for candidate in candidates.iter().filter(|c| int8 || !c.contains(".int8.")) {
             let path = dir.join(candidate);
             if path.exists() {
                 return Ok(path);

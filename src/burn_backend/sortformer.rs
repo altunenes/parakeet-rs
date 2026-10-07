@@ -24,11 +24,16 @@ pub(crate) struct SortformerStep {
 }
 
 impl SortformerModel {
-    pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
+    /// Load the model, with the export's output names and metadata.
+    pub(crate) fn load(
+        path: &Path,
+        provider: ExecutionProvider,
+    ) -> Result<(Self, onnx::ModelInfo)> {
         let device = super::device(provider)?;
-        let mut model = sortformer::Model::new(&device);
-        onnx::load(&mut model, path, sortformer_weights::WEIGHTS)?;
-        Ok(Self { model, device })
+        let file = onnx::OnnxFile::open(path)?;
+        let mut model = guard("allocating the model", || sortformer::Model::new(&device))?;
+        file.load(&mut model, sortformer_weights::WEIGHTS)?;
+        Ok((Self { model, device }, file.info))
     }
 
     /// One streaming step. `chunk` is `[1, mel frames, n_mels]` with `chunk_len` valid frames;

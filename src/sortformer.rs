@@ -409,8 +409,7 @@ impl Sortformer {
     ) -> Result<(Backend, Vec<String>, HashMap<String, String>)> {
         #[cfg(feature = "burn")]
         if config.execution_provider.is_burn() {
-            let info = crate::burn_backend::onnx::model_info(path)?;
-            let model = SortformerModel::load(path, config.execution_provider)?;
+            let (model, info) = SortformerModel::load(path, config.execution_provider)?;
             return Ok((Backend::Burn(Box::new(model)), info.outputs, info.metadata));
         }
         #[cfg(feature = "ort")]

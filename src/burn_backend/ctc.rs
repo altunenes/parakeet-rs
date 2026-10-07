@@ -16,8 +16,9 @@ pub(crate) struct CtcModel {
 impl CtcModel {
     pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
         let device = super::device(provider)?;
-        let mut model = ctc::Model::new(&device);
-        onnx::load(&mut model, path, ctc_weights::WEIGHTS)?;
+        let file = onnx::OnnxFile::open(path)?;
+        let mut model = guard("allocating the model", || ctc::Model::new(&device))?;
+        file.load(&mut model, ctc_weights::WEIGHTS)?;
         Ok(Self { model, device })
     }
 

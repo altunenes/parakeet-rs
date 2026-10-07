@@ -60,6 +60,26 @@ enum Encoder {
     Burn(Box<NemotronEncoder>),
 }
 
+impl Encoder {
+    /// burn runs one streaming profile only; refuse exports made with another.
+    #[cfg_attr(not(feature = "burn"), allow(unused_variables))]
+    fn check_profile(&self, path: &Path, profile: (usize, usize, usize)) -> Result<()> {
+        match self {
+            #[cfg(feature = "ort")]
+            Encoder::Ort(_) => Ok(()),
+            #[cfg(feature = "burn")]
+            Encoder::Burn(encoder) if profile != encoder.profile() => Err(Error::Model(format!(
+                "{}: streaming profile {profile:?} (chunk, pre-encode, left context) differs from \
+                 the one the burn backend implements {:?}; use ONNX Runtime",
+                path.display(),
+                encoder.profile()
+            ))),
+            #[cfg(feature = "burn")]
+            Encoder::Burn(_) => Ok(()),
+        }
+    }
+}
+
 /// The decoder/joint graph, on whichever backend the execution configuration selects.
 enum DecoderJoint {
     #[cfg(feature = "ort")]
@@ -164,6 +184,15 @@ impl NemotronModel {
             }
         }
 
+        encoder.check_profile(
+            &encoder_path,
+            (
+                config.chunk_size_output_frames,
+                config.pre_encode_cache,
+                config.left_context,
+            ),
+        )?;
+
         Ok(Self {
             encoder,
             decoder_joint,
@@ -187,10 +216,9 @@ impl NemotronModel {
     )> {
         #[cfg(feature = "burn")]
         if exec_config.execution_provider.is_burn() {
-            let info = crate::burn_backend::onnx::model_info(encoder_path)?;
-            let multilingual = info.inputs.iter().any(|(name, _)| name == "prompt_index");
             let provider = exec_config.execution_provider;
-            let encoder = NemotronEncoder::load(encoder_path, provider, multilingual)?;
+            let (encoder, info) = NemotronEncoder::load(encoder_path, provider)?;
+            let multilingual = encoder.is_multilingual();
             // The decoder/joint runs once per token: keep it off the GPU.
             let provider = provider.per_token_provider();
             let decoder = NemotronDecoderJoint::load(decoder_path, provider, multilingual)?;

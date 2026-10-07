@@ -21,8 +21,9 @@ pub(crate) type EncoderStep = (Array3<f32>, Array4<f32>, Array4<f32>, Array1<i64
 impl EouEncoder {
     pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
         let device = super::device(provider)?;
-        let mut model = eou_encoder::Model::new(&device);
-        onnx::load(&mut model, path, eou_encoder_weights::WEIGHTS)?;
+        let file = onnx::OnnxFile::open(path)?;
+        let mut model = guard("allocating the model", || eou_encoder::Model::new(&device))?;
+        file.load(&mut model, eou_encoder_weights::WEIGHTS)?;
         Ok(Self { model, device })
     }
 
@@ -65,8 +66,11 @@ pub(crate) struct EouDecoderJoint {
 impl EouDecoderJoint {
     pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
         let device = super::device(provider)?;
-        let mut model = eou_decoder_joint::Model::new(&device);
-        onnx::load(&mut model, path, eou_decoder_joint_weights::WEIGHTS)?;
+        let file = onnx::OnnxFile::open(path)?;
+        let mut model = guard("allocating the model", || {
+            eou_decoder_joint::Model::new(&device)
+        })?;
+        file.load(&mut model, eou_decoder_joint_weights::WEIGHTS)?;
         Ok(Self { model, device })
     }
 
