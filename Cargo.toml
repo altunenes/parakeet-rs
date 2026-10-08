@@ -62,8 +62,8 @@ required-features = ["cohere"]
 
 [dependencies]
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "ndarray"], optional = true }
-# Pure-Rust backend. Pinned exactly: src/burn_backend/generated is generated for this
-# version. Keep burn's default features: they carry its CPU and GPU performance settings.
+# Pinned: src/burn_backend/generated is generated for this exact version.
+# Keep burn's default features, it is much slower without them.
 burn = { version = "=0.22.0", features = ["flex"], optional = true }
 burn-store = { version = "=0.22.0", default-features = false, features = ["std"], optional = true }
 hound = "3.5"
@@ -100,12 +100,12 @@ nnapi = ["ort", "ort/nnapi"]
 load-dynamic = ["ort", "ort/load-dynamic"]
 preload-dylibs = ["ort", "ort/preload-dylibs"]
 
-# Optional models. Sortformer and Multitalker run on either backend; Cohere needs ONNX Runtime.
+# Optional models, on either backend.
 sortformer = []
 multitalker = ["sortformer"]
-cohere = ["ort"]
+cohere = []
 
-# Pure-Rust backend (burn), for every model except Cohere: `burn` runs on the CPU,
+# Pure-Rust backend (burn), for every model: `burn` runs on the CPU,
 # `wgpu` on any GPU (Metal, Vulkan, DX12). Without default features, no ONNX Runtime is built.
 burn = ["dep:burn", "dep:burn-store"]
 wgpu = ["burn", "burn/wgpu"]

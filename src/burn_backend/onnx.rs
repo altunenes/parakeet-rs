@@ -11,9 +11,11 @@
 //! are not read here; burn reads them from the data file when it moves them to the device.
 
 use crate::error::{Error, Result};
-use burn::tensor::{Bytes, DType};
+use burn::module::{Module, ModuleMapper, ModuleVisitor, Param};
+use burn::tensor::{Bytes, DType, Tensor as BurnTensor};
 use burn_store::ModuleSnapshot;
 use burn_store::burn_pack::Tensor as PackTensor;
+use std::any::Any;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -251,6 +253,115 @@ enum Elementwise {
     RowsT(usize, usize, usize),
     /// Element-wise sum of two ranges.
     Sum(Range<usize>, Range<usize>),
+}
+
+/// Give `model` the tensors `source` already holds for the same ONNX weights, instead of
+/// reading them again: the tensors are shared, not copied. Every parameter of `table` must come
+/// from a parameter of `source_table` with the same weight, shape and transform.
+pub(crate) fn share_weights<S: Module, M: Module>(
+    source: &S,
+    source_table: &[Weight],
+    model: M,
+    table: &[Weight],
+) -> Result<M> {
+    let mut by_weight = HashMap::new();
+    for w in source_table {
+        if let Source::Param(key, transform) = &w.source {
+            by_weight.insert((*key, w.shape, format!("{transform:?}")), w.path);
+        }
+    }
+    let mut source_path = HashMap::new();
+    for w in table {
+        let found = match &w.source {
+            Source::Param(key, transform) => {
+                by_weight.get(&(*key, w.shape, format!("{transform:?}")))
+            }
+            _ => None,
+        };
+        let Some(&from) = found else {
+            return Err(Error::Model(format!(
+                "{}: not shared by the source model",
+                w.path
+            )));
+        };
+        source_path.insert(w.path, from);
+    }
+
+    let mut collect = Collect::default();
+    source.visit(&mut collect);
+    let mut share = Share {
+        path: Vec::new(),
+        source_path,
+        tensors: collect.tensors,
+        missing: Vec::new(),
+    };
+    let model = model.map(&mut share);
+    if !share.missing.is_empty() {
+        return Err(Error::Model(format!(
+            "parameters without a shared tensor: {:?}",
+            share.missing.iter().take(3).collect::<Vec<_>>()
+        )));
+    }
+    Ok(model)
+}
+
+/// Every float parameter of a module, by path.
+#[derive(Default)]
+struct Collect {
+    path: Vec<String>,
+    tensors: HashMap<String, Box<dyn Any>>,
+}
+
+impl ModuleVisitor for Collect {
+    fn enter_module(&mut self, name: &str, _container_type: &str) {
+        self.path.push(name.to_string());
+    }
+
+    fn exit_module(&mut self, _name: &str, _container_type: &str) {
+        self.path.pop();
+    }
+
+    fn visit_float<const D: usize>(&mut self, param: &Param<BurnTensor<D>>) {
+        self.tensors
+            .insert(self.path.join("."), Box::new(param.val()));
+    }
+}
+
+/// Sets each float parameter to the collected tensor of its source path.
+struct Share {
+    path: Vec<String>,
+    source_path: HashMap<&'static str, &'static str>,
+    tensors: HashMap<String, Box<dyn Any>>,
+    missing: Vec<String>,
+}
+
+impl ModuleMapper for Share {
+    fn enter_module(&mut self, name: &str, _container_type: &str) {
+        self.path.push(name.to_string());
+    }
+
+    fn exit_module(&mut self, _name: &str, _container_type: &str) {
+        self.path.pop();
+    }
+
+    fn map_float<const D: usize>(&mut self, param: Param<BurnTensor<D>>) -> Param<BurnTensor<D>> {
+        let path = self.path.join(".");
+        let tensor = self
+            .source_path
+            .get(path.as_str())
+            .and_then(|from| self.tensors.get(*from))
+            .and_then(|t| t.downcast_ref::<BurnTensor<D>>());
+        match tensor {
+            Some(tensor) => {
+                let id = param.id;
+                param.transform_for_load(tensor.clone(), id)
+            }
+            None => {
+                self.missing.push(path);
+                param
+            }
+        }
+    }
 }
 
 // ---- reading ONNX ----
