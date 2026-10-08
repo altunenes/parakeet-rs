@@ -80,7 +80,7 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 
 **Cohere Transcribe (Offline Multilingual)**: 14 languages, punctuation & ITN toggles (yes, "parakeets🦜" talk about more than just NVIDIA right?? :-P)
 ```toml
-parakeet-rs = { version = "0.3", features = ["cohere"] }
+parakeet-rs = { version = "0.4", features = ["cohere"] }
 ```
 ```rust
 use parakeet_rs::CohereASR;
@@ -95,7 +95,7 @@ See `examples/cohere.rs` for a runnable demo.
 
 **Multitalker (Streaming Multi-Speaker ASR)**: Speaker-attributed transcription
 ```toml
-parakeet-rs = { version = "0.3", features = ["multitalker"] }
+parakeet-rs = { version = "0.4", features = ["multitalker"] }
 ```
 ```rust
 use parakeet_rs::MultitalkerASR;
@@ -117,7 +117,7 @@ See `examples/multitalker.rs` for full usage with latency modes.
 
 **Nemotron-3 Diarization (Sortformer v3)**: Streaming diarization, up to 8 speakers
 ```toml
-parakeet-rs = { version = "0.3", features = ["sortformer"] }
+parakeet-rs = { version = "0.4", features = ["sortformer"] }
 ```
 ```rust
 use parakeet_rs::sortformer::{Sortformer, StreamingProfile};
@@ -180,7 +180,7 @@ Quantized versions available (int8). All files must be in the same directory.
 
 GPU support (auto-falls back to CPU if fails):
 ```toml
-parakeet-rs = { version = "0.3", features = ["cuda"] }  # or tensorrt, webgpu, directml, migraphx or other ort supported EPs (check cargo features)
+parakeet-rs = { version = "0.4", features = ["cuda"] }  # or tensorrt, webgpu, directml, migraphx or other ort supported EPs (check cargo features)
 ```
 
 ```rust
@@ -198,9 +198,9 @@ let config = ExecutionConfig::new()
 
 ### Pure-Rust backend (experimental)
 
-All models can also run on [burn](https://burn.dev), without ONNX Runtime, on the CPU or GPU. Same model files (fp32), same output. Cohere needs its fp32 export there (about 8.4 GB, held in memory).
+All models can also run on [burn](https://burn.dev), without ONNX Runtime, on the CPU or GPU. Same model files (fp32), matching transcripts. Cohere needs its fp32 export there (about 8.4 GB, held in memory).
 ```toml
-parakeet-rs = { version = "0.3", default-features = false, features = ["metal"] }  # "wgpu" for other GPUs, "burn" for CPU only
+parakeet-rs = { version = "0.4", default-features = false, features = ["metal"] }  # "wgpu" for other GPUs, "burn" for CPU only
 ```
 
 ```rust
