@@ -34,6 +34,10 @@ jobs:
       run: cargo test --verbose --no-default-features --features wgpu,multitalker,cohere
     - name: Build the GPU backends CI cannot run (Vulkan, CUDA, ROCm)
       run: cargo check --verbose --no-default-features --features vulkan,burn-cuda,burn-rocm,multitalker,cohere
+    - name: Build burn without the optional models
+      run: cargo check --verbose --no-default-features --features burn
+    - name: Build both backends together
+      run: cargo check --verbose --features burn,multitalker,cohere
 
   # Apple GPUs (`metal` builds on Apple targets only).
   burn-metal:
