@@ -33,7 +33,7 @@ jobs:
     - name: Run tests
       run: cargo test --verbose --no-default-features --features wgpu,multitalker,cohere
     - name: Build the GPU backends CI cannot run (Vulkan, CUDA, ROCm)
-      run: cargo check --verbose --no-default-features --features vulkan,burn-cuda,burn-rocm,multitalker,cohere
+      run: cargo check --verbose --no-default-features --features vulkan,burn-cuda,burn-rocm,x86-v4,multitalker,cohere
     - name: Build burn without the optional models
       run: cargo check --verbose --no-default-features --features burn
     - name: Build both backends together
@@ -47,7 +47,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
     - name: Build
-      run: cargo build --verbose --no-default-features --features metal,multitalker,cohere
+      run: cargo build --verbose --no-default-features --features metal,apple-amx,multitalker,cohere
 
   release:
     needs: [test, burn, burn-metal]
