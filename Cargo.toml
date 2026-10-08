@@ -1,6 +1,6 @@
 [package]
 name = "parakeet-rs"
-version = "0.3.8"
+version = "0.4.0"
 edition = "2024"
 authors = ["altunenes"]
 description = "Fast ASR & Speaker Diarization with NVIDIA Parakeet via ONNX"

@@ -169,16 +169,22 @@ impl NemotronModel {
         }
 
         let mut has_prompt = false;
+        // Symbolic dims are -1: keep the defaults for those.
+        let set = |field: &mut usize, dim: i64| {
+            if dim > 0 {
+                *field = dim as usize;
+            }
+        };
         for (name, dims) in &inputs {
             match name.as_str() {
                 "prompt_index" => has_prompt = true,
                 "cache_last_channel" if dims.len() == 4 => {
-                    config.num_encoder_layers = dims[0] as usize;
-                    config.left_context = dims[2] as usize;
-                    config.hidden_dim = dims[3] as usize;
+                    set(&mut config.num_encoder_layers, dims[0]);
+                    set(&mut config.left_context, dims[2]);
+                    set(&mut config.hidden_dim, dims[3]);
                 }
                 "cache_last_time" if dims.len() == 4 => {
-                    config.conv_context = dims[3] as usize;
+                    set(&mut config.conv_context, dims[3]);
                 }
                 _ => {}
             }
@@ -272,7 +278,7 @@ impl NemotronModel {
 
     /// Run encoder with cache-aware streaming.
     /// `prompt_index` must be `Some(_)` for multilingual models and `None`
-    /// for eng only mistmaching will produce an ORT InvalidArgument err.
+    /// for English-only ones; a mismatch is an error.
     pub fn run_encoder(
         &mut self,
         features: &Array3<f32>,

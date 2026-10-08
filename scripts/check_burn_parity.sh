@@ -41,6 +41,11 @@ check() {
             return
         fi
     done
+    if ! grep -q '^\[' "$out/$name-ort.txt"; then
+        printf "%-16s FAILED: no output lines from ONNX Runtime\n" "$name"
+        failed=1
+        return
+    fi
     for device in cpu gpu; do
         if diff <(grep '^\[' "$out/$name-ort.txt") <(grep '^\[' "$out/$name-$device.txt") > /dev/null; then
             line="$line $device=same"

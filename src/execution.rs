@@ -7,9 +7,9 @@ use std::sync::Arc;
 #[cfg(feature = "ort")]
 use crate::error::Result;
 #[cfg(feature = "ort")]
-use ort::session::builder::SessionBuilder;
-#[cfg(feature = "ort")]
 use ort::session::Session;
+#[cfg(feature = "ort")]
+use ort::session::builder::SessionBuilder;
 
 // Hardware acceleration options. CPU is default and most reliable.
 // GPU providers (CUDA, TensorRT, MIGraphX) offer 5-10x speedup but require specific hardware.
@@ -19,7 +19,7 @@ use ort::session::Session;
 // the ONNX graphs have dynamic input shapes, preventing CoreML from building optimised
 // execution plans for ANE/GPU. CoreML claims nodes but runs them on CPU with overhead.
 //
-// WebGPU is experimental and may produce incorrect results.
+// WebGPU may produce incorrect results.
 //
 // The Burn* providers run on the pure-Rust burn backend instead of ONNX Runtime.
 // They read the same (fp32) .onnx files; every model runs on them.
@@ -305,7 +305,7 @@ impl ModelConfig {
             #[allow(unreachable_patterns)]
             provider => {
                 return Err(crate::error::Error::Config(format!(
-                    "{provider:?} runs on the burn backend, not ONNX Runtime; this model supports only ONNX Runtime providers"
+                    "{provider:?} is a burn provider; an ONNX Runtime session needs an ONNX Runtime provider"
                 )));
             }
         };

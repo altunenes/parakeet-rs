@@ -6,15 +6,19 @@
 //! weights are not found by the reference export's tensor names but by a key that holds across
 //! exports ([`weight_key`]), with a few known layout differences handled in [`resolve`].
 //!
-//! Only the parts of the ONNX protobuf that hold tensors are read: graph initializers and
-//! `Constant` nodes, plus node names and inputs for the keys. Weights stored as external data
-//! are not read here; burn reads them from the data file when it moves them to the device.
+//! Only what is needed is parsed: initializers, `Constant` nodes, node names and inputs (for the
+//! keys), metadata and graph inputs/outputs. Weight data is not read here; burn reads it from
+//! the file when it moves the weights to the device.
 
 use crate::error::{Error, Result};
+#[cfg(feature = "cohere")]
 use burn::module::{Module, ModuleMapper, ModuleVisitor, Param};
-use burn::tensor::{Bytes, DType, Tensor as BurnTensor};
+#[cfg(feature = "cohere")]
+use burn::tensor::Tensor as BurnTensor;
+use burn::tensor::{Bytes, DType};
 use burn_store::ModuleSnapshot;
 use burn_store::burn_pack::Tensor as PackTensor;
+#[cfg(feature = "cohere")]
 use std::any::Any;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -186,14 +190,24 @@ fn param(
             Elementwise::Rows((rows - want) / 2 * d..((rows - want) / 2 + want) * d)
         }
         Transform::RowsT(a, b) => {
-            check(src.dims.len() == 3 && numel(&target) == (b - a) * src.dims[2])?;
+            check(
+                src.dims.len() == 3
+                    && src.dims[0] == 1
+                    && a <= b
+                    && b <= src.dims[1]
+                    && numel(&target) == (b - a) * src.dims[2],
+            )?;
             Elementwise::RowsT(a, b, src.dims[2])
         }
         Transform::BiasSum(a, b, c, d) => {
             check(
                 src.dims.len() == 2
+                    && src.dims[0] == 1
+                    && a <= b
+                    && c <= d
                     && b - a == d - c
                     && numel(&target) == b - a
+                    && b <= src.dims[1]
                     && d <= src.dims[1],
             )?;
             Elementwise::Sum(a..b, c..d)
@@ -255,6 +269,7 @@ enum Elementwise {
     Sum(Range<usize>, Range<usize>),
 }
 
+#[cfg(feature = "cohere")]
 /// Give `model` the tensors `source` already holds for the same ONNX weights, instead of
 /// reading them again: the tensors are shared, not copied. Every parameter of `table` must come
 /// from a parameter of `source_table` with the same weight, shape and transform.
@@ -306,12 +321,14 @@ pub(crate) fn share_weights<S: Module, M: Module>(
 }
 
 /// Every float parameter of a module, by path.
+#[cfg(feature = "cohere")]
 #[derive(Default)]
 struct Collect {
     path: Vec<String>,
     tensors: HashMap<String, Box<dyn Any>>,
 }
 
+#[cfg(feature = "cohere")]
 impl ModuleVisitor for Collect {
     fn enter_module(&mut self, name: &str, _container_type: &str) {
         self.path.push(name.to_string());
@@ -328,6 +345,7 @@ impl ModuleVisitor for Collect {
 }
 
 /// Sets each float parameter to the collected tensor of its source path.
+#[cfg(feature = "cohere")]
 struct Share {
     path: Vec<String>,
     source_path: HashMap<&'static str, &'static str>,
@@ -335,6 +353,7 @@ struct Share {
     missing: Vec<String>,
 }
 
+#[cfg(feature = "cohere")]
 impl ModuleMapper for Share {
     fn enter_module(&mut self, name: &str, _container_type: &str) {
         self.path.push(name.to_string());
@@ -730,6 +749,16 @@ fn tensor(
         7 => 8,
         _ => 0,
     };
+    // The shape comes from the file: refuse negative or overflowing dims before using it.
+    let numel = dims
+        .iter()
+        .try_fold(1usize, |n, &d| {
+            (d <= i64::MAX as usize).then(|| n.checked_mul(d)).flatten()
+        })
+        .ok_or_else(|| format!("{name}: invalid shape {dims:?}"))?;
+    let expected = numel
+        .checked_mul(elem)
+        .ok_or_else(|| format!("{name}: shape {dims:?} is too large"))? as u64;
     let data = if let Some(location) = external.get("location") {
         let number = |key: &str| {
             external
@@ -738,14 +767,7 @@ fn tensor(
                 .transpose()
         };
         let offset = number("offset")?.unwrap_or(0);
-        let length = match number("length")? {
-            Some(length) => length,
-            None => dims
-                .iter()
-                .try_fold(elem, |n: usize, &d| n.checked_mul(d))
-                .ok_or_else(|| format!("{name}: shape {dims:?} is too large"))?
-                as u64,
-        };
+        let length = number("length")?.unwrap_or(expected);
         // ONNX Runtime refuses locations outside the model's folder; so does this.
         let relative = Path::new(location);
         if relative.is_absolute()
@@ -774,6 +796,17 @@ fn tensor(
     } else {
         Data::Decoded(Arc::new(decoded))
     };
+    let length = match &data {
+        Data::Inline(_, r) => r.len() as u64,
+        Data::Decoded(b) => b.len() as u64,
+        Data::External(_, _, length) => *length,
+    };
+    // Types the loader cannot read (elem 0) are refused when used, with their own error.
+    if elem > 0 && length != expected {
+        return Err(format!(
+            "{name}: {length} bytes of data for shape {dims:?}, expected {expected}"
+        ));
+    }
     Ok((
         name,
         OnnxTensor {
@@ -1130,6 +1163,25 @@ mod tests {
             let err = OnnxFile::open(&path).err().expect("must be refused");
             assert!(err.to_string().contains("past the end"), "{err}");
         }
+    }
+
+    #[test]
+    fn bad_shapes_and_short_data_are_errors() {
+        let dir =
+            std::env::temp_dir().join(format!("parakeet-rs-onnx-shape-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("model.onnx");
+        // a negative dim (-1 as a varint), and 4 elements declared but 2 stored
+        for (dims, values, error) in [
+            (&[u64::MAX][..], &[1.0f32][..], "invalid shape"),
+            (&[4][..], &[1.0, 2.0][..], "bytes of data for shape"),
+        ] {
+            let graph = bytes_field(5, &tensor_proto("w", dims, values, None));
+            std::fs::write(&path, [int_field(1, 8), bytes_field(7, &graph)].concat()).unwrap();
+            let err = OnnxFile::open(&path).err().expect("must be refused");
+            assert!(err.to_string().contains(error), "{err}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

@@ -109,9 +109,13 @@ impl ParakeetTDTModel {
     ) -> Result<Self> {
         let model_dir = model_dir.as_ref();
 
-        // Find encoder and decoder_joint files
-        let encoder_path = Self::find_encoder(model_dir)?;
-        let decoder_joint_path = Self::find_decoder_joint(model_dir)?;
+        if vocab_size == 0 {
+            return Err(Error::Config("TDT vocabulary is empty".into()));
+        }
+        let encoder_int8 = !exec_config.execution_provider.is_burn();
+        let joint_int8 = !joint_config.execution_provider.is_burn();
+        let encoder_path = Self::find_encoder(model_dir, encoder_int8)?;
+        let decoder_joint_path = Self::find_decoder_joint(model_dir, joint_int8)?;
 
         let config = TDTModelConfig::new(vocab_size);
 
@@ -125,7 +129,8 @@ impl ParakeetTDTModel {
         })
     }
     //file names simply from: https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/main
-    fn find_encoder(dir: &Path) -> Result<PathBuf> {
+    /// `int8`: whether int8 exports may be picked (burn runs fp32 exports only).
+    fn find_encoder(dir: &Path, int8: bool) -> Result<PathBuf> {
         let candidates = [
             "encoder-model.onnx",
             "encoder.onnx",
@@ -133,7 +138,7 @@ impl ParakeetTDTModel {
         ];
         for candidate in &candidates {
             let path = dir.join(candidate);
-            if path.exists() {
+            if path.exists() && (int8 || !candidate.contains(".int8.")) {
                 return Ok(path);
             }
         }
@@ -144,6 +149,7 @@ impl ParakeetTDTModel {
                 if let Some(name) = path.file_name().and_then(|s| s.to_str())
                     && name.starts_with("encoder")
                     && name.ends_with(".onnx")
+                    && (int8 || !name.contains(".int8."))
                 {
                     return Ok(path);
                 }
@@ -155,7 +161,7 @@ impl ParakeetTDTModel {
         )))
     }
 
-    fn find_decoder_joint(dir: &Path) -> Result<PathBuf> {
+    fn find_decoder_joint(dir: &Path, int8: bool) -> Result<PathBuf> {
         let candidates = [
             "decoder_joint-model.onnx",
             "decoder_joint-model.int8.onnx",
@@ -164,7 +170,7 @@ impl ParakeetTDTModel {
         ];
         for candidate in &candidates {
             let path = dir.join(candidate);
-            if path.exists() {
+            if path.exists() && (int8 || !candidate.contains(".int8.")) {
                 return Ok(path);
             }
         }
@@ -376,4 +382,17 @@ fn pick(logits: &[f32], vocab_size: usize) -> (usize, usize) {
     let token_id = argmax(vocab_logits).unwrap_or(vocab_size - 1);
     let duration_step = argmax(duration_logits).unwrap_or(0);
     (token_id, duration_step)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick;
+
+    #[test]
+    fn pick_splits_token_and_duration_logits() {
+        // vocabulary of 3, then 2 duration logits
+        assert_eq!(pick(&[0.1, 0.9, 0.2, 0.3, 0.7], 3), (1, 1));
+        // no duration logits: duration 0
+        assert_eq!(pick(&[0.1, 0.2, 0.9], 3), (2, 0));
+    }
 }

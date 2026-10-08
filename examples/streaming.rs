@@ -117,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut full_text = String::new();
 
         for chunk in audio.chunks(chunk_size) {
-            let text = model.transcribe(&chunk.to_vec(), false)?;
+            let text = model.transcribe(chunk, false)?;
             if !text.is_empty() {
                 print!("{}", text);
                 std::io::stdout().flush()?;
