@@ -5,7 +5,7 @@ use super::{array3, guard, ints, onnx, tensor3};
 use crate::error::Result;
 use crate::execution::ExecutionProvider;
 use burn::tensor::Device;
-use ndarray::{Array3, ArrayView3};
+use ndarray::{Array3, ArrayView3, Axis};
 use std::path::Path;
 
 pub(crate) struct SortformerModel {
@@ -45,9 +45,13 @@ impl SortformerModel {
         spkcache: ArrayView3<f32>,
         fifo: ArrayView3<f32>,
     ) -> Result<SortformerStep> {
-        // burn cannot reshape zero-length tensors, and every stream starts with an empty speaker
-        // cache and FIFO. The graph packs only the first `*_lengths` frames of each input, so a
-        // single masked frame with length 0 gives the same result as an empty input.
+        // burn can't take empty tensors, so split the non empty cache across both inputs
+        // (the graph joins them anyway). A placeholder frame would shift the last valid frame.
+        let (spkcache, fifo) = match (spkcache.dim().1, fifo.dim().1) {
+            (0, n) if n > 1 => fifo.split_at(Axis(1), 1),
+            (n, 0) if n > 1 => spkcache.split_at(Axis(1), n - 1),
+            _ => (spkcache, fifo),
+        };
         let placeholder = Array3::<f32>::zeros((1, 1, spkcache.dim().2));
         let spkcache_in = if spkcache.dim().1 == 0 {
             placeholder.view()
