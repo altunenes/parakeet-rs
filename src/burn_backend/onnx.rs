@@ -627,7 +627,14 @@ fn tensor(
                 .transpose()
         };
         let offset = number("offset")?.unwrap_or(0);
-        let length = number("length")?.unwrap_or((dims.iter().product::<usize>() * elem) as u64);
+        let length = match number("length")? {
+            Some(length) => length,
+            None => dims
+                .iter()
+                .try_fold(elem, |n: usize, &d| n.checked_mul(d))
+                .ok_or_else(|| format!("{name}: shape {dims:?} is too large"))?
+                as u64,
+        };
         // ONNX Runtime refuses locations outside the model's folder; so does this.
         let relative = Path::new(location);
         if relative.is_absolute()
@@ -639,7 +646,18 @@ fn tensor(
                 "{name}: external data location {location:?} is outside the model folder"
             ));
         }
-        Data::External(dir.join(relative), offset, length)
+        // The length comes from the file; check it before anything allocates that much.
+        let path = dir.join(relative);
+        let size = std::fs::metadata(&path)
+            .map_err(|e| format!("{name}: {}: {e}", path.display()))?
+            .len();
+        if offset.checked_add(length).is_none_or(|end| end > size) {
+            return Err(format!(
+                "{name}: external data range {offset}+{length} is past the end of {}",
+                path.display()
+            ));
+        }
+        Data::External(path, offset, length)
     } else if let Some(r) = raw {
         Data::Inline(file.to_path_buf(), r)
     } else {
@@ -984,6 +1002,22 @@ mod tests {
                 err.to_string().contains("outside the model folder"),
                 "{err}"
             );
+        }
+    }
+
+    #[test]
+    fn external_data_past_the_end_of_its_file_is_refused() {
+        let dir =
+            std::env::temp_dir().join(format!("parakeet-rs-onnx-short-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("w.data"), f32_bytes(&[1.0, 2.0])).unwrap();
+        for offset in [0u64, u64::MAX] {
+            let tensor = tensor_proto("w", &[4], &[0.0; 4], Some(("w.data", offset)));
+            let path = dir.join("model.onnx");
+            let graph = bytes_field(5, &tensor);
+            std::fs::write(&path, [int_field(1, 8), bytes_field(7, &graph)].concat()).unwrap();
+            let err = OnnxFile::open(&path).err().expect("must be refused");
+            assert!(err.to_string().contains("past the end"), "{err}");
         }
     }
 

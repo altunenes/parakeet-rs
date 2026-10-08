@@ -24,6 +24,7 @@ use ort::session::Session;
 // The Burn* providers run on the pure-Rust burn backend instead of ONNX Runtime.
 // They read the same (fp32) .onnx files; every model except Cohere runs on them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum ExecutionProvider {
     /// ONNX Runtime on the CPU.
     #[cfg(feature = "ort")]
@@ -107,6 +108,7 @@ pub enum CoreMLComputeUnits {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct ModelConfig {
     pub execution_provider: ExecutionProvider,
     pub intra_threads: usize,
