@@ -28,6 +28,7 @@
 
 import argparse
 import hashlib
+import mmap
 import os
 import re
 import struct
@@ -71,7 +72,9 @@ def weight_key(name, consumers):
 
 
 def read_bpk(path):
-    raw = open(path, "rb").read()
+    # Memory-mapped: a .bpk holds every weight of the model (gigabytes for Cohere's encoder).
+    with open(path, "rb") as f:
+        raw = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
     assert raw[:4] == b"NRUB", f"{path} is not a burnpack file"
     meta_len = struct.unpack("<I", raw[6:10])[0]
     entries = cbor2.loads(raw[10:10 + meta_len])["tensors"]
@@ -80,8 +83,13 @@ def read_bpk(path):
 
 def trace(onnx_path, bpk_path):
     """Map each .bpk tensor to (path, shape, source string for the Rust table)."""
-    model = onnx.load(onnx_path)
-    inits = {t.name: numpy_helper.to_array(t) for t in model.graph.initializer}
+    # Weights are read one at a time: a large model does not fit in memory twice.
+    model = onnx.load(onnx_path, load_external_data=False)
+    base_dir = os.path.dirname(onnx_path)
+    protos = {t.name: t for t in model.graph.initializer}
+
+    def init(name):
+        return numpy_helper.to_array(protos[name], base_dir)
     graph_consts = {}
     for node in model.graph.node:
         if node.op_type == "Constant":
@@ -91,13 +99,13 @@ def trace(onnx_path, bpk_path):
     consumers = {}
     for node in model.graph.node:
         for i, name in enumerate(node.input):
-            if name in inits or name in graph_consts:
+            if name in protos or name in graph_consts:
                 consumers.setdefault(name, []).append(f"{node.name}#{i}")
 
     # content hash -> Rust source expression
     by_hash = {}
-    for name, arr in inits.items():
-        by_hash.setdefault(digest(arr), f'Param("{weight_key(name, consumers)}", Copy)')
+    for name in protos:
+        by_hash.setdefault(digest(init(name)), f'Param("{weight_key(name, consumers)}", Copy)')
     for name, arr in graph_consts.items():
         if arr.size > MAX_EMBEDDED:
             # A model buffer exported as a constant (positional encoding tables). Read it from the
@@ -120,10 +128,10 @@ def trace(onnx_path, bpk_path):
         for name in node.input[1:3]:
             key = weight_key(name, consumers)
             for g in range(4):
-                by_hash.setdefault(digest(inits[name][0][g * h:(g + 1) * h].T), f'Param("{key}", RowsT({g * h}, {(g + 1) * h}))')
+                by_hash.setdefault(digest(init(name)[0][g * h:(g + 1) * h].T), f'Param("{key}", RowsT({g * h}, {(g + 1) * h}))')
         if len(node.input) > 3 and node.input[3]:
             name = node.input[3]
-            b = inits[name][0]
+            b = init(name)[0]
             for g in range(4):
                 expr = f'Param("{weight_key(name, consumers)}", BiasSum({g * h}, {(g + 1) * h}, {(g + 4) * h}, {(g + 5) * h}))'
                 bias_sums.append((b[g * h:(g + 1) * h] + b[(g + 4) * h:(g + 5) * h], expr))
@@ -414,6 +422,195 @@ def sortformer_patches(model):
     return declare_opset_19(shape_scatter_to_concat(default_patches(model)))
 
 
+def inline_if(model, branch):
+    """Replace every top-level If with the nodes of one branch ("then_branch" or "else_branch").
+
+    Cohere's merged decoder switches on "is this the first step" (empty encoder cache). parakeet-rs
+    runs the two cases as two graphs, so each is a plain graph without If, and the first one
+    needs no empty past tensors (burn cannot handle zero-length tensors).
+    """
+    graph = model.graph
+    nodes = []
+    for node in graph.node:
+        if node.op_type != "If":
+            nodes.append(node)
+            continue
+        (body,) = [a.g for a in node.attribute if a.name == branch]
+        graph.initializer.extend(body.initializer)
+        nodes.extend(body.node)
+        for inner, outer in zip(body.output, node.output):
+            if inner.name != outer:
+                nodes.append(onnx.helper.make_node("Identity", [inner.name], [outer], name=f"{node.name}/{outer}"))
+    del graph.node[:]
+    graph.node.extend(nodes)
+    return model
+
+
+def prune(model, drop_outputs=()):
+    """Drop the given graph outputs, then every node, input and initializer they no longer need."""
+    graph = model.graph
+    keep = [o for o in graph.output if o.name not in drop_outputs]
+    del graph.output[:]
+    graph.output.extend(keep)
+    needed = {o.name for o in graph.output}
+    nodes = []
+    for node in reversed(graph.node):
+        if any(o in needed for o in node.output):
+            nodes.append(node)
+            needed.update(i for i in node.input if i)
+    del graph.node[:]
+    graph.node.extend(reversed(nodes))
+    for field in (graph.input, graph.initializer):
+        kept = [x for x in field if x.name in needed]
+        del field[:]
+        field.extend(kept)
+    return model
+
+
+def ms_attention_to_onnx(model, causal_without_past=False):
+    """com.microsoft MultiHeadAttention / GroupQueryAttention -> the standard Attention (opset 23).
+
+    burn-onnx has no com.microsoft ops. In the Cohere export they are plain attention:
+    - MultiHeadAttention: Q, K, V and an optional additive attention_bias, nothing else. Q, K, V
+      are [B, S, heads * dim], or K and V already [B, heads, L, dim] (decoder cross-attention).
+    - GroupQueryAttention: as many KV heads as query heads, no rotary, no softcap, no local
+      window, so it is self-attention over past + new keys, with an additive bias and the causal
+      mask. The causal mask only matters when several new tokens attend to each other: true for
+      the first step (no past), where it is the plain square mask (is_causal); a later step must
+      feed one token (checked in Rust), which may attend to everything.
+    """
+    graph = model.graph
+    produced = {o: n for n in graph.node for o in n.output}
+    inputs = {i.name: i for i in graph.input}
+
+    def rank(name):
+        if name in inputs:
+            return len(inputs[name].type.tensor_type.shape.dim)
+        node = produced[name]
+        if node.op_type == "Identity":
+            return rank(node.input[0])
+        if node.op_type == "Transpose":
+            return len(next(a.ints for a in node.attribute if a.name == "perm"))
+        return 3
+
+    out = []
+
+    def add(op, ins, outs, **attrs):
+        out.append(onnx.helper.make_node(op, ins, outs, name=outs[0], **attrs))
+        return outs[0]
+
+    def const(name, values):
+        graph.initializer.append(numpy_helper.from_array(np.array(values, np.int64), name))
+        return name
+
+    def to_4d(x, heads, prefix):
+        r = add("Reshape", [x, const(f"{prefix}/split_shape", [0, 0, heads, -1])], [f"{prefix}/split"])
+        return add("Transpose", [r], [f"{prefix}/bnsh"], perm=[0, 2, 1, 3])
+
+    def to_3d(x, y, prefix):
+        t = add("Transpose", [x], [f"{prefix}/bsnh"], perm=[0, 2, 1, 3])
+        add("Reshape", [t, const(f"{prefix}/merge_shape", [0, 0, -1])], [y])
+
+    for node in graph.node:
+        if node.domain != "com.microsoft":
+            out.append(node)
+            continue
+        attrs = {a.name: onnx.helper.get_attribute_value(a) for a in node.attribute}
+        heads, scale = attrs["num_heads"], attrs["scale"]
+        ins = list(node.input) + [""] * 11
+        p = node.name
+        if node.op_type == "MultiHeadAttention":
+            q, k, v, bias = ins[0], ins[1], ins[2], ins[5]
+            assert not any(ins[3:5]) and not any(ins[6:8]), f"{p}: unsupported MultiHeadAttention inputs"
+            if rank(k) == 4:
+                y4 = add("Attention", [to_4d(q, heads, f"{p}/q"), k, v, bias], [f"{p}/y4"], scale=scale)
+                to_3d(y4, node.output[0], p)
+            else:
+                add("Attention", [q, k, v, bias], [node.output[0]], scale=scale,
+                    q_num_heads=heads, kv_num_heads=heads)
+        elif node.op_type == "GroupQueryAttention":
+            assert attrs["kv_num_heads"] == heads and attrs["do_rotary"] == 0, f"{p}: not plain attention"
+            assert attrs.get("softcap", 0.0) == 0.0 and attrs.get("local_window_size", -1) == -1, f"{p}: windowed or softcapped"
+            assert not ins[7] and not ins[8], f"{p}: rotary inputs"
+            q, k, v, past_k, past_v, bias = ins[0], ins[1], ins[2], ins[3], ins[4], ins[10]
+            y, present_k, present_v = node.output
+            if causal_without_past:
+                k4, v4 = to_4d(k, heads, f"{p}/k"), to_4d(v, heads, f"{p}/v")
+                y4 = add("Attention", [to_4d(q, heads, f"{p}/q"), k4, v4, bias], [f"{p}/y4"], scale=scale, is_causal=1)
+                to_3d(y4, y, p)
+                add("Identity", [k4], [present_k])
+                add("Identity", [v4], [present_v])
+            else:
+                add("Attention", [q, k, v, bias, past_k, past_v], [y, present_k, present_v], scale=scale,
+                    q_num_heads=heads, kv_num_heads=heads)
+        else:
+            raise SystemExit(f"{p}: unsupported com.microsoft op {node.op_type}")
+    del graph.node[:]
+    graph.node.extend(out)
+    opsets = [o for o in model.opset_import if o.domain in ("", "ai.onnx")]
+    del model.opset_import[:]
+    model.opset_import.extend(opsets)
+    return declare_opset_23(model)
+
+
+def declare_opset_23(model):
+    """Declare opset 23 (for Attention) on an opset-21 graph. Between 21 and 23 the other ops
+    used here only gained types; anything else is refused."""
+    from onnx import defs
+    (opset,) = [o for o in model.opset_import if o.domain in ("", "ai.onnx")]
+    assert opset.version == 21, f"expected opset 21, got {opset.version}"
+    for op in {n.op_type for n in model.graph.node} - {"Attention"}:
+        a, b = defs.get_schema(op, 21), defs.get_schema(op, 23)
+        same = sorted(a.attributes) == sorted(b.attributes) and len(a.inputs) == len(b.inputs)
+        assert same, f"{op} changes between opset 21 and 23"
+    opset.version = 23
+    return model
+
+
+def unshare_small_constants(model):
+    """Give every use of a small initializer its own copy with a plain name; values unchanged.
+
+    burn-onnx 0.22 turns ONNX names into Rust identifiers, and Cohere's constant names collide
+    there ("/model/constants/INT64/[-1]" and ".../[1]"), so one value silently replaces the
+    other (a Range step or a reshape size -1 became 1).
+    """
+    graph = model.graph
+    small = {t.name: t for t in graph.initializer if np.prod(t.dims, dtype=np.int64) <= MAX_EMBEDDED}
+    copies = []
+    for node in graph.node:
+        for k, name in enumerate(node.input):
+            if name not in small:
+                continue
+            copy = onnx.TensorProto()
+            copy.CopyFrom(small[name])
+            copy.name = f"small_const_{len(copies)}"
+            copies.append(copy)
+            node.input[k] = copy.name
+    kept = [t for t in graph.initializer if t.name not in small]
+    del graph.initializer[:]
+    graph.initializer.extend(kept + copies)
+    return model
+
+
+def cohere_encoder_patches(model):
+    return unshare_small_constants(prune(default_patches(ms_attention_to_onnx(model))))
+
+
+def cohere_first_step_patches(model):
+    """The decoder's first step: the prompt, no past, computing the cross-attention cache."""
+    model = inline_if(model, "then_branch")
+    model = ms_attention_to_onnx(model, causal_without_past=True)
+    return unshare_small_constants(default_patches(prune(model)))
+
+
+def cohere_next_step_patches(model):
+    """The decoder's later steps: one token, reusing the cross-attention cache from the first step."""
+    model = inline_if(model, "else_branch")
+    model = ms_attention_to_onnx(model)
+    encoder_cache = [o.name for o in model.graph.output if o.name.endswith((".encoder.key", ".encoder.value"))]
+    return unshare_small_constants(default_patches(prune(model, drop_outputs=encoder_cache)))
+
+
 def graph(file, name, post=None, patch=None, simplify=True):
     """One ONNX graph of a model: its file in the model dir and the generated module name.
 
@@ -460,6 +657,14 @@ MODELS = {
         "altunenes/parakeet-rs nemotron-3-diarization (scripts/export_diar_sortformer.py)",
         [graph("nemotron3_diar_v3.onnx", "sortformer", patch=sortformer_patches, simplify=False)],
     ),
+    "cohere": (
+        "onnx-community/cohere-transcribe-03-2026-ONNX (onnx/, fp32)",
+        [
+            graph("encoder_model.onnx", "cohere_encoder", patch=cohere_encoder_patches),
+            graph("decoder_model_merged.onnx", "cohere_decoder_first", patch=cohere_first_step_patches),
+            graph("decoder_model_merged.onnx", "cohere_decoder_next", patch=cohere_next_step_patches),
+        ],
+    ),
 }
 
 
@@ -467,12 +672,19 @@ def generate(onnx_path, out_name, post, patch, simplify, tmp, onnx2burn):
     name = os.path.splitext(os.path.basename(onnx_path))[0]
     source = onnx_path
     if patch:
-        # Rewrite a copy for code generation; weights are still traced to the original file.
-        source = os.path.join(tmp, f"{name}.patched.onnx")
-        onnx.save(patch(onnx.load(onnx_path)), source, save_as_external_data=True, location=f"{name}.patched.data")
+        # Rewrite a copy of the graph for code generation; weights are still traced to the
+        # original file. The copy sits next to the original (removed below), so it reads the same
+        # external data files: no weights are loaded or copied, and ONNX tools refuse data files
+        # outside the model's folder.
+        source = os.path.join(os.path.dirname(onnx_path), f"{name}.burn-patched.onnx")
+        onnx.save(patch(onnx.load(onnx_path, load_external_data=False)), source)
     flags = ["--no-development"] + ([] if simplify else ["--no-simplify"])
-    run = subprocess.run([onnx2burn, *flags, source, os.path.join(tmp, name)],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, env={**os.environ, "RUST_LOG": "error"})
+    try:
+        run = subprocess.run([onnx2burn, *flags, source, os.path.join(tmp, name)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, env={**os.environ, "RUST_LOG": "error"})
+    finally:
+        if source != onnx_path:
+            os.remove(source)
     if run.returncode != 0:
         reason = [line for line in run.stderr.splitlines() if "Failed" in line or "panicked" in line]
         raise SystemExit(f"onnx2burn failed on {onnx_path}:\n" + "\n".join(reason[-2:] or run.stderr.splitlines()[-5:]))

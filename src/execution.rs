@@ -22,7 +22,7 @@ use ort::session::Session;
 // WebGPU is experimental and may produce incorrect results.
 //
 // The Burn* providers run on the pure-Rust burn backend instead of ONNX Runtime.
-// They read the same (fp32) .onnx files; every model except Cohere runs on them.
+// They read the same (fp32) .onnx files; every model runs on them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum ExecutionProvider {
@@ -46,12 +46,12 @@ pub enum ExecutionProvider {
     WebGPU,
     #[cfg(feature = "nnapi")]
     NNAPI,
-    /// burn on the CPU (no ONNX Runtime). Not for Cohere. Uses all cores
+    /// burn on the CPU (no ONNX Runtime). Uses all cores
     /// (`RAYON_NUM_THREADS` limits them); `intra_threads` applies to ONNX Runtime only.
     #[cfg(feature = "burn")]
     #[cfg_attr(not(feature = "ort"), default)]
     BurnCpu,
-    /// burn on the GPU through wgpu (Metal, Vulkan, DX12). Not for Cohere.
+    /// burn on the GPU through wgpu (Metal, Vulkan, DX12).
     /// Build with `metal` on Apple GPUs. The first run on a machine compiles and tunes kernels
     /// (seconds); they are cached on disk.
     #[cfg(feature = "wgpu")]

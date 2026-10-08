@@ -198,7 +198,7 @@ let config = ExecutionConfig::new()
 
 ### Pure-Rust backend (experimental)
 
-All models except Cohere can also run on [burn](https://burn.dev), without ONNX Runtime, on the CPU or GPU. Same model files (fp32), same output.
+All models can also run on [burn](https://burn.dev), without ONNX Runtime, on the CPU or GPU. Same model files (fp32), same output. Cohere needs its fp32 export there (about 8.4 GB, held in memory).
 ```toml
 parakeet-rs = { version = "0.3", default-features = false, features = ["metal"] }  # "wgpu" for other GPUs, "burn" for CPU only
 ```
@@ -208,7 +208,7 @@ let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::B
 let mut parakeet = ParakeetTDT::from_pretrained("./tdt", Some(config))?;
 ```
 
-On Apple silicon with `metal`, every model is faster than ONNX Runtime on the CPU. Also available: `vulkan`, `burn-cuda` and `burn-rocm`. See `examples/burn.rs`.
+Other GPU features: `vulkan`, `burn-cuda` and `burn-rocm`. See `examples/burn.rs`.
 
 ## Features
 

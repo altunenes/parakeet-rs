@@ -13,6 +13,8 @@ They read the same model files as the ONNX Runtime backend:
         5th argument: nemotron3_diar_v3.onnx (needs --features multitalker)
   diar  nemotron3_diar_v3.onnx (Nemotron-3 Diarization; needs --features sortformer),
         optional 5th argument: latency preset offline (default) | low | very-low | ultra
+  cohere  Cohere Transcribe folder (fp32 encoder_model.onnx + .onnx_data*, decoder_model_merged.onnx
+        + .onnx_data, tokenizer.json; needs --features cohere), 16 kHz mono audio in 30 s chunks
 
 GPU (wgpu: Metal on macOS, DX12/Vulkan on Windows, Vulkan on Linux), without ONNX Runtime:
   cargo run --release --example burn --no-default-features --features wgpu -- tdt audio.wav ./tdt gpu
@@ -37,7 +39,7 @@ type Run = Box<dyn FnMut() -> Result<Vec<String>, Box<dyn std::error::Error>>>;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let usage = "usage: burn <tdt|ctc|unified|eou|nemotron|multitalker|diar> <audio.wav> <model path> [cpu|gpu|ort] [diar preset | diar model]";
+    let usage = "usage: burn <tdt|ctc|unified|eou|nemotron|multitalker|diar|cohere> <audio.wav> <model path> [cpu|gpu|ort] [diar preset | diar model]";
     let (Some(kind), Some(audio_path), Some(model_path)) = (args.get(1), args.get(2), args.get(3))
     else {
         return Err(usage.into());
@@ -184,6 +186,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )
                     })
                     .collect())
+            })
+        }
+        #[cfg(feature = "cohere")]
+        "cohere" => {
+            let mut asr = parakeet_rs::CohereASR::from_pretrained(model_path, Some(config))?;
+            Box::new(move || {
+                let mut lines = Vec::new();
+                for (i, chunk) in audio.chunks(30 * 16000).enumerate() {
+                    let text = asr.transcribe_audio(chunk, "en", true, true)?;
+                    lines.push(format!("[chunk {i}] {text}"));
+                }
+                Ok(lines)
             })
         }
         other => return Err(format!("unknown model {other}; {usage}").into()),

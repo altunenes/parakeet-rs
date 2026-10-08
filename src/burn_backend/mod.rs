@@ -6,6 +6,8 @@
 //! uses (see [`onnx`]). Regenerate with scripts/generate_burn.py when upgrading burn, then check
 //! with scripts/check_burn_parity.sh.
 
+#[cfg(feature = "cohere")]
+pub(crate) mod cohere;
 pub(crate) mod ctc;
 pub(crate) mod eou;
 #[cfg(feature = "multitalker")]
@@ -33,6 +35,12 @@ macro_rules! generated {
 #[allow(clippy::all, unused, non_snake_case)]
 mod generated {
     generated!(
+        #[cfg(feature = "cohere")] cohere_encoder,
+        #[cfg(feature = "cohere")] cohere_encoder_weights,
+        #[cfg(feature = "cohere")] cohere_decoder_first,
+        #[cfg(feature = "cohere")] cohere_decoder_first_weights,
+        #[cfg(feature = "cohere")] cohere_decoder_next,
+        #[cfg(feature = "cohere")] cohere_decoder_next_weights,
         ctc, ctc_weights,
         eou_encoder, eou_encoder_weights, eou_decoder_joint, eou_decoder_joint_weights,
         nemotron_encoder, nemotron_encoder_weights,
