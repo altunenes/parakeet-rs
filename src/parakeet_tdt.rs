@@ -164,7 +164,7 @@ impl Transcriber for ParakeetTDT {
 mod tests {
     use super::*;
 
-    // Apps share models across threads; the burn backend must not take that away.
+    // Apps share models across threads, on every backend.
     #[test]
     fn parakeet_tdt_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
