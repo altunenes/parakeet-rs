@@ -1,5 +1,5 @@
-//! Pure-Rust backend on [burn](https://burn.dev): runs models without ONNX Runtime,
-//! on the CPU or on the GPU through wgpu (Metal, Vulkan, DX12).
+//! Pure-Rust backend on [burn](https://burn.dev): runs models without ONNX Runtime, on the CPU
+//! or on the GPU (wgpu: Metal, Vulkan, DX12; or CUDA, ROCm).
 //!
 //! The model code in `generated/` comes from burn-onnx and is checked in, so building
 //! parakeet-rs never converts models. Weights are read from the same `.onnx` files ONNX Runtime
@@ -66,45 +66,61 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 /// The burn device for `provider`, or an error if `provider` is not a burn provider or the
 /// device cannot be used (for the GPU providers: no usable GPU or driver).
 pub(crate) fn device(provider: ExecutionProvider) -> Result<Device> {
-    let device = match provider {
-        ExecutionProvider::BurnCpu => Device::flex(),
-        #[cfg(feature = "wgpu")]
-        ExecutionProvider::BurnWgpu => Device::wgpu(burn::tensor::DeviceKind::DefaultDevice),
-        #[cfg(feature = "burn-cuda")]
-        ExecutionProvider::BurnCuda => Device::cuda(0),
-        #[cfg(feature = "burn-rocm")]
-        ExecutionProvider::BurnRocm => Device::rocm(0),
-        #[allow(unreachable_patterns)]
-        other => {
-            return Err(Error::Config(format!(
-                "{other:?} is not a burn execution provider"
-            )));
+    let unusable = |e: String| {
+        Error::Config(format!(
+            "{provider:?} is not usable on this machine (no matching GPU or driver?): {e}"
+        ))
+    };
+    let create = || -> Option<Device> {
+        match provider {
+            ExecutionProvider::BurnCpu => Some(Device::flex()),
+            #[cfg(feature = "wgpu")]
+            ExecutionProvider::BurnWgpu => {
+                Some(Device::wgpu(burn::tensor::DeviceKind::DefaultDevice))
+            }
+            #[cfg(feature = "burn-cuda")]
+            ExecutionProvider::BurnCuda => Some(Device::cuda(0)),
+            #[cfg(feature = "burn-rocm")]
+            ExecutionProvider::BurnRocm => Some(Device::rocm(0)),
+            #[allow(unreachable_patterns)]
+            _ => None,
         }
     };
     // Devices start lazily; touch this one now so a missing GPU or driver is an error at load
     // time instead of a failure during transcription.
-    let probe = guard("initializing the burn device", || {
-        burn::tensor::Tensor::<1>::zeros([1], &device).try_into_data()
-    })?;
-    probe.map_err(|e| {
-        Error::Config(format!(
-            "{provider:?} is not usable on this machine (no matching GPU or driver?): {e:?}"
-        ))
-    })?;
-    Ok(device)
+    let probe = catch_unwind(AssertUnwindSafe(|| {
+        create().map(|device| {
+            let data = burn::tensor::Tensor::<1>::zeros([1], &device).try_into_data();
+            (device, data)
+        })
+    }));
+    match probe {
+        Ok(None) => Err(Error::Config(format!(
+            "{provider:?} is not a burn execution provider"
+        ))),
+        Ok(Some((device, Ok(_)))) => Ok(device),
+        Ok(Some((_, Err(e)))) => Err(unusable(format!("{e:?}"))),
+        Err(panic) => Err(unusable(panic_message(&*panic).to_string())),
+    }
 }
 
 /// Run `f`, turning a burn panic into an error. burn reports device and shape problems by
 /// panicking; parakeet-rs returns them as errors.
 pub(crate) fn guard<T>(what: &str, f: impl FnOnce() -> T) -> Result<T> {
     catch_unwind(AssertUnwindSafe(f)).map_err(|panic| {
-        let msg = panic
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| panic.downcast_ref::<&str>().copied())
-            .unwrap_or("unknown error");
-        Error::Model(format!("burn backend failed while {what}: {msg}"))
+        Error::Model(format!(
+            "burn backend failed while {what}: {}",
+            panic_message(&*panic)
+        ))
     })
+}
+
+fn panic_message(panic: &(dyn std::any::Any + Send)) -> &str {
+    panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .unwrap_or("unknown error")
 }
 
 // ---- ndarray <-> burn ----
@@ -167,4 +183,36 @@ pub(crate) fn array3(t: burn::tensor::Tensor<3>) -> Result<ndarray::Array3<f32>>
     let [x, y, z] = t.dims();
     ndarray::Array3::from_shape_vec((x, y, z), vec_f32(t)?)
         .map_err(|e| Error::Model(format!("burn output shape: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn guard_turns_panics_into_errors() {
+        let text = guard("testing", || panic!("{}", "formatted")).unwrap_err();
+        assert!(
+            text.to_string().contains("while testing: formatted"),
+            "{text}"
+        );
+        let literal = guard("testing", || panic!("literal")).unwrap_err();
+        assert!(literal.to_string().contains("literal"), "{literal}");
+        assert_eq!(guard("testing", || 7).unwrap(), 7);
+    }
+
+    #[cfg(feature = "ort")]
+    #[test]
+    fn device_refuses_onnx_runtime_providers() {
+        let err = device(ExecutionProvider::Cpu).unwrap_err();
+        assert!(
+            err.to_string().contains("not a burn execution provider"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn cpu_device_works() {
+        assert!(device(ExecutionProvider::BurnCpu).is_ok());
+    }
 }
