@@ -1,6 +1,7 @@
 //! # parakeet-rs
 //!
-//! Rust bindings for NVIDIA's Parakeet speech recognition model using ONNX Runtime.
+//! Rust bindings for NVIDIA's Parakeet speech recognition models, on ONNX Runtime or the
+//! pure-Rust burn backend.
 //!
 //! Parakeet is a state-of-the-art automatic speech recognition (ASR) model developed by NVIDIA,
 //! based on the FastConformer-TDT architecture with 600 million parameters.
