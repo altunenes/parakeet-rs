@@ -208,7 +208,7 @@ let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::B
 let mut parakeet = ParakeetTDT::from_pretrained("./tdt", Some(config))?;
 ```
 
-Other GPU features: `vulkan`, `burn-cuda` and `burn-rocm`. See `examples/burn.rs`.
+Other GPU features: `vulkan`, `burn-cuda` and `burn-rocm`. For burn on the CPU, `apple-amx` (Apple Silicon) or `x86-v4` (AVX-512) speed up matrix multiplication. See `examples/burn.rs`.
 
 ## Features
 

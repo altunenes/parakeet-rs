@@ -118,3 +118,6 @@ vulkan = ["wgpu", "burn/vulkan"]
 # the vendor's driver and toolkit. `cuda` is ONNX Runtime's.
 burn-cuda = ["burn", "burn/cuda"]
 burn-rocm = ["burn", "burn/rocm"]
+# for faster matrix multiplication on cpus
+apple-amx = ["burn", "burn/apple-amx"]
+x86-v4 = ["burn", "burn/x86-v4"]
