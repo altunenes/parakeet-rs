@@ -6,6 +6,7 @@ use ndarray::{Array1, Array2, Array3, Array4};
 #[cfg(feature = "ort")]
 use ort::session::Session;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Cohere Transcribe architecture constants.
 /// Verified against `CohereLabs/cohere-transcribe-03-2026` config and the
@@ -31,12 +32,14 @@ type LayerCache = Array4<f32>;
 /// On the first decoder call all caches are zero-length; the model
 /// populates the cross-attention caches from `encoder_hidden_states`. On
 /// subsequent calls the model writes new self-attention K/V into the
-/// growing decoder caches and reuses the encoder caches as-is.
+/// growing decoder caches and reuses the encoder caches as-is. The merged
+/// decoder returns empty encoder caches after the first step, so they are
+/// kept from that step (shared, never copied).
 pub(crate) struct CoherePastKv {
     pub(crate) decoder_k: Vec<LayerCache>,
     pub(crate) decoder_v: Vec<LayerCache>,
-    pub(crate) encoder_k: Vec<LayerCache>,
-    pub(crate) encoder_v: Vec<LayerCache>,
+    pub(crate) encoder_k: Arc<Vec<LayerCache>>,
+    pub(crate) encoder_v: Arc<Vec<LayerCache>>,
 }
 
 impl CoherePastKv {
@@ -45,8 +48,8 @@ impl CoherePastKv {
         Self {
             decoder_k: vec![zero.clone(); NUM_DECODER_LAYERS],
             decoder_v: vec![zero.clone(); NUM_DECODER_LAYERS],
-            encoder_k: vec![zero.clone(); NUM_DECODER_LAYERS],
-            encoder_v: vec![zero; NUM_DECODER_LAYERS],
+            encoder_k: Arc::new(vec![zero.clone(); NUM_DECODER_LAYERS]),
+            encoder_v: Arc::new(vec![zero; NUM_DECODER_LAYERS]),
         }
     }
 
@@ -353,8 +356,7 @@ fn ort_decoder_step(
     let last_start = n_positions.saturating_sub(1) * vocab_size;
     let logits = Array1::from_vec(l_data[last_start..last_start + vocab_size].to_vec());
 
-    // Read all 32 present.* tensors into a new CoherePastKv
-    let new_past = read_past_kv(&outputs)?;
+    let new_past = read_past_kv(&outputs, past_kv)?;
 
     Ok((logits, new_past))
 }
@@ -379,23 +381,34 @@ fn extract_cache(outputs: &ort::session::SessionOutputs, name: &str) -> Result<L
 }
 
 #[cfg(feature = "ort")]
-fn read_past_kv(outputs: &ort::session::SessionOutputs) -> Result<CoherePastKv> {
+fn read_past_kv(
+    outputs: &ort::session::SessionOutputs,
+    past: &CoherePastKv,
+) -> Result<CoherePastKv> {
     let mut decoder_k = Vec::with_capacity(NUM_DECODER_LAYERS);
     let mut decoder_v = Vec::with_capacity(NUM_DECODER_LAYERS);
-    let mut encoder_k = Vec::with_capacity(NUM_DECODER_LAYERS);
-    let mut encoder_v = Vec::with_capacity(NUM_DECODER_LAYERS);
     for i in 0..NUM_DECODER_LAYERS {
         decoder_k.push(extract_cache(outputs, &format!("present.{i}.decoder.key"))?);
         decoder_v.push(extract_cache(
             outputs,
             &format!("present.{i}.decoder.value"),
         )?);
-        encoder_k.push(extract_cache(outputs, &format!("present.{i}.encoder.key"))?);
-        encoder_v.push(extract_cache(
-            outputs,
-            &format!("present.{i}.encoder.value"),
-        )?);
     }
+    // Only the first step computes the encoder caches; later steps return them empty.
+    let (encoder_k, encoder_v) = if past.encoder_k[0].shape()[2] > 0 {
+        (Arc::clone(&past.encoder_k), Arc::clone(&past.encoder_v))
+    } else {
+        let mut encoder_k = Vec::with_capacity(NUM_DECODER_LAYERS);
+        let mut encoder_v = Vec::with_capacity(NUM_DECODER_LAYERS);
+        for i in 0..NUM_DECODER_LAYERS {
+            encoder_k.push(extract_cache(outputs, &format!("present.{i}.encoder.key"))?);
+            encoder_v.push(extract_cache(
+                outputs,
+                &format!("present.{i}.encoder.value"),
+            )?);
+        }
+        (Arc::new(encoder_k), Arc::new(encoder_v))
+    };
     Ok(CoherePastKv {
         decoder_k,
         decoder_v,

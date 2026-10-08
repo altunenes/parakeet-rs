@@ -12,6 +12,7 @@ use crate::model_cohere::CoherePastKv;
 use burn::tensor::{Device, Tensor};
 use ndarray::{Array3, ArrayView3};
 use std::path::Path;
+use std::sync::Arc;
 
 pub(crate) struct CohereEncoder {
     model: cohere_encoder::Model,
@@ -85,13 +86,20 @@ impl CohereDecoder {
                 1,
                 tensor3(encoder, d),
             ));
-            let mut cache = CoherePastKv::empty();
-            for (layer, [dk, dv, ek, ev]) in rest.into_iter().enumerate() {
-                cache.decoder_k[layer] = array4(dk)?;
-                cache.decoder_v[layer] = array4(dv)?;
-                cache.encoder_k[layer] = array4(ek)?;
-                cache.encoder_v[layer] = array4(ev)?;
+            let (mut decoder_k, mut decoder_v) = (Vec::new(), Vec::new());
+            let (mut encoder_k, mut encoder_v) = (Vec::new(), Vec::new());
+            for [dk, dv, ek, ev] in rest {
+                decoder_k.push(array4(dk)?);
+                decoder_v.push(array4(dv)?);
+                encoder_k.push(array4(ek)?);
+                encoder_v.push(array4(ev)?);
             }
+            let cache = CoherePastKv {
+                decoder_k,
+                decoder_v,
+                encoder_k: Arc::new(encoder_k),
+                encoder_v: Arc::new(encoder_v),
+            };
             Ok((vec_f32(logits)?, cache))
         })?
     }
@@ -164,8 +172,8 @@ impl CohereDecoder {
             let mut cache = CoherePastKv {
                 decoder_k: Vec::with_capacity(8),
                 decoder_v: Vec::with_capacity(8),
-                encoder_k: past.encoder_k.clone(),
-                encoder_v: past.encoder_v.clone(),
+                encoder_k: Arc::clone(&past.encoder_k),
+                encoder_v: Arc::clone(&past.encoder_v),
             };
             for (k, v) in [
                 (k0, v0),
