@@ -395,7 +395,7 @@ def declare_opset_19(model):
     """Declare opset 19 on an opset-17 graph, unchanged otherwise.
 
     burn-onnx 0.22 only reads AveragePool's ceil_mode from opset 19, although ONNX has had it
-    since opset 7. Between 17 and 19 the ops used here only gained types and optional
+    since opset 10. Between 17 and 19 the ops used here only gained types and optional
     attributes, except Split, which then needs explicit sizes; anything else is refused.
     """
     from onnx import defs
