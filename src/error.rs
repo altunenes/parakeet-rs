@@ -3,8 +3,10 @@ use std::fmt;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     Io(std::io::Error),
+    #[cfg(feature = "ort")]
     Ort(ort::Error),
     Audio(String),
     Model(String),
@@ -16,6 +18,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Io(e) => write!(f, "IO error: {e}"),
+            #[cfg(feature = "ort")]
             Error::Ort(e) => write!(f, "ONNX Runtime error: {e}"),
             Error::Audio(msg) => write!(f, "Audio processing error: {msg}"),
             Error::Model(msg) => write!(f, "Model error: {msg}"),
@@ -33,6 +36,7 @@ impl From<std::io::Error> for Error {
     }
 }
 
+#[cfg(feature = "ort")]
 impl<R> From<ort::Error<R>> for Error
 where
     ort::Error<R>: Into<ort::Error<()>>,

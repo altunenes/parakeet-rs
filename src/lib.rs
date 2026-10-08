@@ -12,6 +12,8 @@
 //! - 16kHz mono audio input
 //! - Punctuation and capitalization included in output
 //! - Fast inference using ONNX Runtime
+//! - Pure-Rust backend (`burn`, `wgpu`, `metal` features): every model except Cohere
+//!   on the CPU or GPU without ONNX Runtime, from the same `.onnx` files
 //!
 //! ## Quick Start
 //!
@@ -43,7 +45,12 @@
 //! - Channels: Mono (stereo will be converted automatically)
 //! - Bit Depth: 16-bit PCM or 32-bit float
 
+#[cfg(not(any(feature = "ort", feature = "burn")))]
+compile_error!("parakeet-rs needs a backend: enable the `ort` feature (default) or `burn`.");
+
 mod audio;
+#[cfg(feature = "burn")]
+mod burn_backend;
 mod config;
 mod decoder;
 mod decoder_tdt;
@@ -75,7 +82,9 @@ mod transcriber;
 mod vocab;
 
 pub use error::{Error, Result};
-pub use execution::{CoreMLComputeUnits, ExecutionProvider, ModelConfig as ExecutionConfig};
+#[cfg(feature = "ort")]
+pub use execution::CoreMLComputeUnits;
+pub use execution::{ExecutionProvider, ModelConfig as ExecutionConfig};
 pub use parakeet::Parakeet;
 pub use parakeet_tdt::ParakeetTDT;
 pub use timestamps::TimestampMode;

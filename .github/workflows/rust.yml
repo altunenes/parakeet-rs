@@ -23,8 +23,30 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
 
+  # The burn backend, built without ONNX Runtime.
+  burn:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+    - name: Run tests
+      run: cargo test --verbose --no-default-features --features wgpu,multitalker
+    - name: Build the GPU backends CI cannot run (Vulkan, CUDA, ROCm)
+      run: cargo check --verbose --no-default-features --features vulkan,burn-cuda,burn-rocm,multitalker
+
+  # Apple GPUs (`metal` builds on Apple targets only).
+  burn-metal:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+    - name: Build
+      run: cargo build --verbose --no-default-features --features metal,multitalker
+
   release:
-    needs: test
+    needs: [test, burn, burn-metal]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

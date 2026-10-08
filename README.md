@@ -2,9 +2,7 @@
 [![Rust](https://github.com/altunenes/parakeet-rs/actions/workflows/rust.yml/badge.svg)](https://github.com/altunenes/parakeet-rs/actions/workflows/rust.yml)
 [![crates.io](https://img.shields.io/crates/v/parakeet-rs.svg)](https://crates.io/crates/parakeet-rs)
 
-Fast speech recognition with NVIDIA's Parakeet models via ONNX Runtime.
-
-Note: CoreML is unstable with this model. For Apple, use WebGPU EP (uses metal under the hood,dont confuse by its name :-). it's a native GPU standard, not only web) or CPU. But even CPU alone is significantly faster on my Mac M3 16GB compared to Whisper metal! :-)
+Fast speech recognition and diarization with NVIDIA's Parakeet models, on ONNX Runtime or pure Rust with [burn](#pure-rust-backend-experimental).
 
 ## Models
 
@@ -197,6 +195,20 @@ Advanced session configuration via [ort SessionBuilder](https://docs.rs/ort/late
 let config = ExecutionConfig::new()
     .with_custom_configure(|builder| builder.with_memory_pattern(false));
 ```
+
+### Pure-Rust backend (experimental)
+
+All models except Cohere can also run on [burn](https://burn.dev), without ONNX Runtime, on the CPU or GPU. Same model files (fp32), same output.
+```toml
+parakeet-rs = { version = "0.3", default-features = false, features = ["metal"] }  # "wgpu" for other GPUs, "burn" for CPU only
+```
+
+```rust
+let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::BurnWgpu);
+let mut parakeet = ParakeetTDT::from_pretrained("./tdt", Some(config))?;
+```
+
+On Apple silicon with `metal`, every model is faster than ONNX Runtime on the CPU. Also available: `vulkan`, `burn-cuda` and `burn-rocm`. See `examples/burn.rs`.
 
 ## Features
 

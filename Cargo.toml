@@ -20,10 +20,12 @@ path = "examples/diarization.rs"
 [[example]]
 name = "raw"
 path = "examples/raw.rs"
+required-features = ["ort"]
 
 [[example]]
 name = "streaming"
 path = "examples/streaming.rs"
+required-features = ["ort"]
 
 [[example]]
 name = "multitalker"
@@ -36,6 +38,22 @@ path = "examples/streaming_diarization.rs"
 [[example]]
 name = "shared_model"
 path = "examples/shared_model.rs"
+required-features = ["ort"]
+
+[[example]]
+name = "unified"
+path = "examples/unified.rs"
+required-features = ["ort"]
+
+[[example]]
+name = "orukeet"
+path = "examples/orukeet.rs"
+required-features = ["ort"]
+
+[[example]]
+name = "burn"
+path = "examples/burn.rs"
+required-features = ["burn"]
 
 [[example]]
 name = "cohere"
@@ -43,7 +61,11 @@ path = "examples/cohere.rs"
 required-features = ["cohere"]
 
 [dependencies]
-ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "ndarray"] }
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "ndarray"], optional = true }
+# Pure-Rust backend. Pinned exactly: src/burn_backend/generated is generated for this
+# version. Keep burn's default features: they carry its CPU and GPU performance settings.
+burn = { version = "=0.22.0", features = ["flex"], optional = true }
+burn-store = { version = "=0.22.0", default-features = false, features = ["std"], optional = true }
 hound = "3.5"
 eyre = "0.6"
 ndarray = "0.17"
@@ -56,24 +78,43 @@ realfft = "3"
 
 [features]
 default = ["cpu", "ort-defaults", "api-28"]
-cpu = []
-ort-defaults = ["ort/default"]
 
-api-24 = ["ort/api-24"]
-api-25 = ["ort/api-25"]
-api-26 = ["ort/api-26"]
-api-27 = ["ort/api-27"]
-api-28 = ["ort/api-28"]
-cuda = ["ort/cuda"]
-tensorrt = ["ort/tensorrt"]
-coreml = ["ort/coreml"]
-directml = ["ort/directml"]
-migraphx = ["ort/migraphx"]
-openvino = ["ort/openvino"]
-webgpu = ["ort/webgpu"]
-nnapi = ["ort/nnapi"]
+# ONNX Runtime backend. Every ONNX Runtime related feature below turns it on.
+ort = ["dep:ort"]
+cpu = ["ort"]
+ort-defaults = ["ort", "ort/default"]
+
+api-24 = ["ort", "ort/api-24"]
+api-25 = ["ort", "ort/api-25"]
+api-26 = ["ort", "ort/api-26"]
+api-27 = ["ort", "ort/api-27"]
+api-28 = ["ort", "ort/api-28"]
+cuda = ["ort", "ort/cuda"]
+tensorrt = ["ort", "ort/tensorrt"]
+coreml = ["ort", "ort/coreml"]
+directml = ["ort", "ort/directml"]
+migraphx = ["ort", "ort/migraphx"]
+openvino = ["ort", "ort/openvino"]
+webgpu = ["ort", "ort/webgpu"]
+nnapi = ["ort", "ort/nnapi"]
+load-dynamic = ["ort", "ort/load-dynamic"]
+preload-dylibs = ["ort", "ort/preload-dylibs"]
+
+# Optional models. Sortformer and Multitalker run on either backend; Cohere needs ONNX Runtime.
 sortformer = []
 multitalker = ["sortformer"]
-cohere = []
-load-dynamic = ["ort/load-dynamic"]
-preload-dylibs = ["ort/preload-dylibs"]
+cohere = ["ort"]
+
+# Pure-Rust backend (burn), for every model except Cohere: `burn` runs on the CPU,
+# `wgpu` on any GPU (Metal, Vulkan, DX12). Without default features, no ONNX Runtime is built.
+burn = ["dep:burn", "dep:burn-store"]
+wgpu = ["burn", "burn/wgpu"]
+# Apple GPUs: `wgpu` with kernels compiled to Metal (MSL) instead of WGSL, much faster on Apple
+# silicon. Apple targets only.
+metal = ["wgpu", "burn/metal"]
+# Vulkan GPUs: `wgpu` with kernels compiled to SPIR-V.
+vulkan = ["wgpu", "burn/vulkan"]
+# NVIDIA and AMD GPUs through burn's own backends (ExecutionProvider::BurnCuda / BurnRocm); need
+# the vendor's driver and toolkit. `cuda` is ONNX Runtime's.
+burn-cuda = ["burn", "burn/cuda"]
+burn-rocm = ["burn", "burn/rocm"]

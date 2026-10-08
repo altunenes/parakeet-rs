@@ -25,11 +25,19 @@ impl ParakeetTDT {
     /// # Arguments
     /// * `path` - Directory containing encoder-model.onnx, decoder_joint-model.onnx, and vocab.txt
     /// * `config` - Optional execution configuration (defaults to CPU if None)
+    ///
+    /// With a burn GPU provider (e.g. [`ExecutionProvider::BurnWgpu`](crate::ExecutionProvider))
+    /// the encoder runs on the GPU and the decoder/joint, which runs once per token, on burn's CPU
+    /// backend: a GPU round trip per token costs more than the step itself. Use
+    /// [`from_pretrained_with_joint_config`](Self::from_pretrained_with_joint_config) to choose.
     pub fn from_pretrained<P: AsRef<Path>>(
         path: P,
         config: Option<ExecutionConfig>,
     ) -> Result<Self> {
-        let joint_config = config.clone();
+        let mut joint_config = config.clone();
+        if let Some(c) = joint_config.as_mut() {
+            c.execution_provider = c.execution_provider.per_token_provider();
+        }
         Self::from_pretrained_with_joint_config(path, config, joint_config)
     }
 
@@ -149,5 +157,17 @@ impl Transcriber for ParakeetTDT {
         result.text = rebuild_text(&result.tokens, mode);
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Apps share models across threads, on every backend.
+    #[test]
+    fn parakeet_tdt_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ParakeetTDT>();
     }
 }

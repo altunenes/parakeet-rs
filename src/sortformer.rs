@@ -17,12 +17,17 @@
 //! Reference: https://huggingface.co/nvidia/Nemotron-3-Diarization
 //! Note, my stft code is adapted from: https://librosa.org/doc/main/generated/librosa.stft.html
 
+#[cfg(feature = "burn")]
+use crate::burn_backend::sortformer::SortformerModel;
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig;
+#[cfg(feature = "ort")]
 use crate::tensor_utils::extract_3d_f32;
 use ndarray::{s, Array1, Array2, Array3, Axis};
+#[cfg(feature = "ort")]
 use ort::session::Session;
 use realfft::RealFftPlanner;
+use std::collections::HashMap;
 use std::path::Path;
 
 // Model constants
@@ -238,6 +243,7 @@ pub struct RawDiarizationPredictions {
 pub type StreamingWindow = (usize, usize, usize);
 
 /// Supplies a session per streaming window, for graphs with fixed input shapes.
+#[cfg(feature = "ort")]
 pub trait SessionRouter: Send + Sync {
     /// The session for this call, or `None` to use the one [`Sortformer`] owns.
     fn session_for(&mut self, window: StreamingWindow) -> Result<Option<&mut Session>>;
@@ -252,6 +258,7 @@ pub trait SessionRouter: Send + Sync {
 }
 
 /// The window a graph is pinned to, or `None` if any input dim is symbolic.
+#[cfg(feature = "ort")]
 pub fn graph_window(session: &Session) -> Option<StreamingWindow> {
     let dim = |name: &str| -> Option<usize> {
         let shape = session
@@ -270,7 +277,8 @@ pub fn graph_window(session: &Session) -> Option<StreamingWindow> {
 
 /// Streaming Sortformer speaker diarization engine
 pub struct Sortformer {
-    session: Session,
+    backend: Backend,
+    #[cfg(feature = "ort")]
     router: Option<Box<dyn SessionRouter>>,
     // The owned graph has fixed input shapes, so short chunks must be padded to full size.
     pinned: bool,
@@ -295,6 +303,14 @@ pub struct Sortformer {
     mel_basis: Array2<f32>,
 }
 
+/// The model, on whichever backend its execution configuration selects.
+enum Backend {
+    #[cfg(feature = "ort")]
+    Ort(Session),
+    #[cfg(feature = "burn")]
+    Burn(Box<SortformerModel>),
+}
+
 impl Sortformer {
     /// a new Sortformer instance from ONNX model path
     pub fn new<P: AsRef<Path>>(model_path: P) -> Result<Self> {
@@ -308,9 +324,9 @@ impl Sortformer {
         config: DiarizationConfig,
     ) -> Result<Self> {
         let config_to_use = execution_config.unwrap_or_default();
-        let session = config_to_use.build_session(model_path.as_ref())?;
+        let (backend, outputs, metadata) = Self::load(model_path.as_ref(), &config_to_use)?;
 
-        let has_output = |name: &str| session.outputs().iter().any(|o| o.name() == name);
+        let has_output = |name: &str| outputs.iter().any(|o| o == name);
         if !has_output("preds_diar") || !has_output("preds_hires") {
             return Err(Error::Config(
                 "this ONNX has no preds_diar/preds_hires outputs; it looks like a Sortformer v2 \
@@ -321,17 +337,14 @@ impl Sortformer {
 
         // Read streaming constants and the silence embedding from ONNX metadata.
         let (chunk_len, fifo_len, spkcache_len, right_context, spkcache_update_period, sil_emb) = {
-            let metadata = session.metadata().ok();
             let get = |key: &str, default: usize| -> usize {
                 metadata
-                    .as_ref()
-                    .and_then(|m| m.custom(key))
+                    .get(key)
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(default)
             };
             let sil_emb = metadata
-                .as_ref()
-                .and_then(|m| m.custom("learnable_sil_emb"))
+                .get("learnable_sil_emb")
                 .map(|raw| {
                     raw.split(',')
                         .filter_map(|v| v.trim().parse().ok())
@@ -353,9 +366,15 @@ impl Sortformer {
         let mel_basis =
             crate::audio::create_mel_filterbank(N_FFT, N_MELS, SAMPLE_RATE).mapv(to_bf16);
 
-        let pinned = graph_window(&session).is_some();
+        let pinned = match &backend {
+            #[cfg(feature = "ort")]
+            Backend::Ort(session) => graph_window(session).is_some(),
+            #[cfg(feature = "burn")]
+            Backend::Burn(_) => false,
+        };
         let mut instance = Self {
-            session,
+            backend,
+            #[cfg(feature = "ort")]
             router: None,
             pinned,
             config,
@@ -383,12 +402,63 @@ impl Sortformer {
         (self.chunk_len + self.right_context) as f32 * FRAME_DURATION
     }
 
-    /// The session this instance owns.
+    /// Load the model on the backend `config` selects, with its output names and metadata.
+    fn load(
+        path: &Path,
+        config: &ModelConfig,
+    ) -> Result<(Backend, Vec<String>, HashMap<String, String>)> {
+        #[cfg(feature = "burn")]
+        if config.execution_provider.is_burn() {
+            let (model, info) = SortformerModel::load(path, config.execution_provider)?;
+            return Ok((Backend::Burn(Box::new(model)), info.outputs, info.metadata));
+        }
+        #[cfg(feature = "ort")]
+        {
+            let session = config.build_session(path)?;
+            let outputs = session
+                .outputs()
+                .iter()
+                .map(|o| o.name().to_string())
+                .collect();
+            let metadata = session
+                .metadata()
+                .ok()
+                .and_then(|m| m.custom_keys().ok().map(|keys| (m, keys)))
+                .map(|(m, keys)| {
+                    keys.into_iter()
+                        .filter_map(|k| m.custom(&k).map(|v| (k, v)))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Ok((Backend::Ort(session), outputs, metadata))
+        }
+        #[cfg(not(feature = "ort"))]
+        {
+            Err(Error::Config(format!(
+                "{:?} needs the `ort` feature",
+                config.execution_provider
+            )))
+        }
+    }
+
+    /// The ONNX Runtime session this instance owns.
+    ///
+    /// # Panics
+    /// If this instance runs on a burn execution provider.
+    #[cfg(feature = "ort")]
     pub fn session(&self) -> &Session {
-        &self.session
+        match &self.backend {
+            Backend::Ort(session) => session,
+            #[cfg(feature = "burn")]
+            Backend::Burn(_) => {
+                panic!("this Sortformer runs on burn and has no ONNX Runtime session")
+            }
+        }
     }
 
     /// Route streaming calls through `router`; calls it declines run on this instance's session.
+    /// Has no effect on an instance running on a burn execution provider.
+    #[cfg(feature = "ort")]
     pub fn set_session_router(&mut self, router: Box<dyn SessionRouter>) {
         self.router = Some(router);
     }
@@ -443,6 +513,7 @@ impl Sortformer {
 
     /// Reset streaming state
     pub fn reset_state(&mut self) {
+        #[cfg(feature = "ort")]
         if let Some(router) = self.router.as_mut() {
             router.stream_reset();
         }
@@ -732,11 +803,6 @@ impl Sortformer {
         let spkcache_len = self.spkcache.shape()[1];
         let fifo_len = self.fifo.shape()[1];
 
-        // Prepare inputs
-        let chunk_lengths = Array1::from_vec(vec![current_len as i64]);
-        let spkcache_lengths = Array1::from_vec(vec![spkcache_len as i64]);
-        let fifo_lengths = Array1::from_vec(vec![fifo_len as i64]);
-
         // Use empty arrays as fallbacks when lengths are zero (avoids cloning self fields)
         let empty_3d = Array3::<f32>::zeros((1, 0, EMB_DIM));
         let fifo_ref = if fifo_len > 0 { &self.fifo } else { &empty_3d };
@@ -746,46 +812,67 @@ impl Sortformer {
             &empty_3d
         };
 
-        // Create borrowed tensor views instead of cloning arrays
-        let chunk_value = ort::value::TensorRef::<f32>::from_array_view(chunk_feat.view())?;
-        let chunk_lengths_value = ort::value::Value::from_array(chunk_lengths)?;
-        let spkcache_value = ort::value::TensorRef::<f32>::from_array_view(spkcache_ref.view())?;
-        let spkcache_lengths_value = ort::value::Value::from_array(spkcache_lengths)?;
-        let fifo_value = ort::value::TensorRef::<f32>::from_array_view(fifo_ref.view())?;
-        let fifo_lengths_value = ort::value::Value::from_array(fifo_lengths)?;
+        let (preds_diar, preds_hires, new_embs) = match &mut self.backend {
+            #[cfg(feature = "ort")]
+            Backend::Ort(session) => {
+                let chunk_lengths = Array1::from_vec(vec![current_len as i64]);
+                let spkcache_lengths = Array1::from_vec(vec![spkcache_len as i64]);
+                let fifo_lengths = Array1::from_vec(vec![fifo_len as i64]);
 
-        let window = (chunk_feat.shape()[1], spkcache_len, fifo_len);
-        let inference_start = self.router.is_some().then(std::time::Instant::now);
-        let routed = match self.router.as_mut() {
-            Some(router) => router.session_for(window)?,
-            None => None,
+                // Create borrowed tensor views instead of cloning arrays
+                let chunk_value = ort::value::TensorRef::<f32>::from_array_view(chunk_feat.view())?;
+                let chunk_lengths_value = ort::value::Value::from_array(chunk_lengths)?;
+                let spkcache_value =
+                    ort::value::TensorRef::<f32>::from_array_view(spkcache_ref.view())?;
+                let spkcache_lengths_value = ort::value::Value::from_array(spkcache_lengths)?;
+                let fifo_value = ort::value::TensorRef::<f32>::from_array_view(fifo_ref.view())?;
+                let fifo_lengths_value = ort::value::Value::from_array(fifo_lengths)?;
+
+                let window = (chunk_feat.shape()[1], spkcache_len, fifo_len);
+                let inference_start = self.router.is_some().then(std::time::Instant::now);
+                let routed = match self.router.as_mut() {
+                    Some(router) => router.session_for(window)?,
+                    None => None,
+                };
+
+                // Run ONNX inference and extract all data in a block to release borrow
+                let outputs = {
+                    let session = match routed {
+                        Some(session) => session,
+                        None => session,
+                    };
+                    let outputs = session.run(ort::inputs!(
+                        "chunk" => chunk_value,
+                        "chunk_lengths" => chunk_lengths_value,
+                        "spkcache" => spkcache_value,
+                        "spkcache_lengths" => spkcache_lengths_value,
+                        "fifo" => fifo_value,
+                        "fifo_lengths" => fifo_lengths_value
+                    ))?;
+
+                    (
+                        extract_3d_f32(&outputs["preds_diar"], "preds_diar")?,
+                        extract_3d_f32(&outputs["preds_hires"], "preds_hires")?,
+                        extract_3d_f32(&outputs["chunk_pre_encode_embs"], "chunk_pre_encode_embs")?,
+                    )
+                };
+
+                if let (Some(router), Some(started)) = (self.router.as_mut(), inference_start) {
+                    router.call_finished(window, started.elapsed());
+                }
+                outputs
+            }
+            #[cfg(feature = "burn")]
+            Backend::Burn(model) => {
+                let step = model.run(
+                    chunk_feat.view(),
+                    current_len,
+                    spkcache_ref.view(),
+                    fifo_ref.view(),
+                )?;
+                (step.preds_diar, step.preds_hires, step.chunk_embs)
+            }
         };
-
-        // Run ONNX inference and extract all data in a block to release borrow
-        let (preds_diar, preds_hires, new_embs) = {
-            let session = match routed {
-                Some(session) => session,
-                None => &mut self.session,
-            };
-            let outputs = session.run(ort::inputs!(
-                "chunk" => chunk_value,
-                "chunk_lengths" => chunk_lengths_value,
-                "spkcache" => spkcache_value,
-                "spkcache_lengths" => spkcache_lengths_value,
-                "fifo" => fifo_value,
-                "fifo_lengths" => fifo_lengths_value
-            ))?;
-
-            (
-                extract_3d_f32(&outputs["preds_diar"], "preds_diar")?,
-                extract_3d_f32(&outputs["preds_hires"], "preds_hires")?,
-                extract_3d_f32(&outputs["chunk_pre_encode_embs"], "chunk_pre_encode_embs")?,
-            )
-        };
-
-        if let (Some(router), Some(started)) = (self.router.as_mut(), inference_start) {
-            router.call_finished(window, started.elapsed());
-        }
 
         // only keep chunk_len predictions/embeddings... right_context frames
         // participaded in attenttion (__providing lookahead__) but are discarded here.
