@@ -12,8 +12,8 @@
 //! - 16kHz mono audio input
 //! - Punctuation and capitalization included in output
 //! - Fast inference using ONNX Runtime
-//! - Pure-Rust backend (`burn`, `wgpu`, `metal` features): every model except Cohere
-//!   on the CPU or GPU without ONNX Runtime, from the same `.onnx` files
+//! - Pure-Rust backend (`burn`, `wgpu`, `metal` features): every model on the CPU or GPU
+//!   without ONNX Runtime, from the same `.onnx` files
 //!
 //! ## Quick Start
 //!
