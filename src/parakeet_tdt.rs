@@ -139,12 +139,13 @@ impl Transcriber for ParakeetTDT {
             &self.preprocessor_config,
             &self.feature_cache,
         )?;
-        let (tokens, frame_indices, durations) = self.model.forward(features)?;
+        let (tokens, frame_indices, durations, probs) = self.model.forward(features)?;
 
         let mut result = self.decoder.decode_with_timestamps(
             &tokens,
             &frame_indices,
             &durations,
+            &probs,
             self.preprocessor_config.hop_length,
             self.preprocessor_config.sampling_rate,
         )?;
