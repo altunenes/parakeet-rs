@@ -14,12 +14,13 @@ Files: encoder.onnx, encoder.onnx.data, decoder_joint.onnx, tokenizer.model
 Place in: ./unified/
 */
 
-use parakeet_rs::{ParakeetUnified, TimestampMode, Transcriber};
+use parakeet_rs::{ExecutionConfig, ParakeetUnified, TimestampMode, Transcriber};
 use std::env;
 use std::io::Write;
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ExecutionConfig::new().with_environment(parakeet_rs::ort::init().build()?);
     let start_time = Instant::now();
     let args: Vec<String> = env::args().collect();
 
@@ -55,9 +56,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let duration = audio.len() as f32 / 16000.0;
-    println!("Audio: {:.1}s, {}Hz, {} ch", duration, spec.sample_rate, spec.channels);
+    println!(
+        "Audio: {:.1}s, {}Hz, {} ch",
+        duration, spec.sample_rate, spec.channels
+    );
 
-    let mut model = ParakeetUnified::from_pretrained("./unified", None)?;
+    let mut model = ParakeetUnified::from_pretrained("./unified", Some(config))?;
     let load_time = start_time.elapsed();
     println!("Model loaded in {:.2}s", load_time.as_secs_f32());
 
@@ -87,7 +91,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("\nSentences:");
         for segment in &result.tokens {
-            println!("[{:.2}s - {:.2}s]: {}", segment.start, segment.end, segment.text);
+            println!(
+                "[{:.2}s - {:.2}s]: {}",
+                segment.start, segment.end, segment.text
+            );
         }
 
         let elapsed = transcribe_start.elapsed();

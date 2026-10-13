@@ -74,6 +74,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let (rate, channels) = (spec.sample_rate, spec.channels);
     let config = ExecutionConfig::new().with_execution_provider(provider);
+    // ONNX Runtime sessions need an environment; burn doesn't use one.
+    #[cfg(feature = "ort")]
+    let config = if provider.is_burn() {
+        config
+    } else {
+        config.with_environment(parakeet_rs::ort::init().build()?)
+    };
     let lines = |tokens: &[parakeet_rs::TimedToken]| -> Vec<String> {
         tokens
             .iter()

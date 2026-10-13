@@ -18,7 +18,7 @@ Unified: https://huggingface.co/bobNight/parakeet-unified-en-0.6b-onnx/tree/main
 */
 
 use parakeet_rs::{
-    Nemotron, NemotronHandle, ParakeetEOU, ParakeetEOUHandle, ParakeetUnified,
+    ExecutionConfig, Nemotron, NemotronHandle, ParakeetEOU, ParakeetEOUHandle, ParakeetUnified,
     ParakeetUnifiedHandle,
 };
 
@@ -41,8 +41,12 @@ fn load_wav(path: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
     Ok(audio)
 }
 
-fn run_nemotron(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = NemotronHandle::from_pretrained(model_dir, None)?;
+fn run_nemotron(
+    model_dir: &str,
+    audio: &[f32],
+    config: ExecutionConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = NemotronHandle::from_pretrained(model_dir, Some(config))?;
     let mut a = Nemotron::from_shared(&handle);
     let mut b = Nemotron::from_shared(&handle);
 
@@ -65,8 +69,12 @@ fn run_nemotron(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-fn run_eou(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = ParakeetEOUHandle::from_pretrained(model_dir, None)?;
+fn run_eou(
+    model_dir: &str,
+    audio: &[f32],
+    config: ExecutionConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = ParakeetEOUHandle::from_pretrained(model_dir, Some(config))?;
     let mut a = ParakeetEOU::from_shared(&handle);
     let mut b = ParakeetEOU::from_shared(&handle);
 
@@ -92,8 +100,12 @@ fn run_eou(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-fn run_unified(model_dir: &str, audio: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = ParakeetUnifiedHandle::from_pretrained(model_dir, None)?;
+fn run_unified(
+    model_dir: &str,
+    audio: &[f32],
+    config: ExecutionConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = ParakeetUnifiedHandle::from_pretrained(model_dir, Some(config))?;
     let mut a = ParakeetUnified::from_shared(&handle)?;
     let mut b = ParakeetUnified::from_shared(&handle)?;
 
@@ -127,10 +139,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let variant = args.get(3).map(String::as_str).unwrap_or("nemotron");
 
     let audio = load_wav(audio_path)?;
+    let config = ExecutionConfig::new().with_environment(parakeet_rs::ort::init().build()?);
 
     match variant {
-        "eou" => run_eou(model_dir, &audio),
-        "unified" => run_unified(model_dir, &audio),
-        _ => run_nemotron(model_dir, &audio),
+        "eou" => run_eou(model_dir, &audio, config),
+        "unified" => run_unified(model_dir, &audio, config),
+        _ => run_nemotron(model_dir, &audio, config),
     }
 }

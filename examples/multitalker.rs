@@ -19,7 +19,7 @@ Latency modes: normal (1.12s), low (0.56s), very-low (0.16s), ultra (0.08s)
 
 #[cfg(feature = "multitalker")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use parakeet_rs::{LatencyMode, MultitalkerASR};
+    use parakeet_rs::{ExecutionConfig, LatencyMode, MultitalkerASR};
     use std::env;
     use std::io::Write;
     use std::time::Instant;
@@ -65,7 +65,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let duration = audio.len() as f32 / 16000.0;
 
     // Load models
-    let mut model = MultitalkerASR::from_pretrained(asr_model_dir, sortformer_path, None)?;
+    // ONNX Runtime needs an environment; without the `ort` feature this runs on burn.
+    #[cfg(feature = "ort")]
+    let config = ExecutionConfig::new().with_environment(parakeet_rs::ort::init().build()?);
+    #[cfg(not(feature = "ort"))]
+    let config = ExecutionConfig::new();
+    let mut model = MultitalkerASR::from_pretrained(asr_model_dir, sortformer_path, Some(config))?;
 
     if let Some(max_spk_str) = args.get(4) {
         let max_spk: usize = max_spk_str
@@ -140,5 +145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(not(feature = "multitalker"))]
 fn main() {
     eprintln!("This example requires the 'multitalker' feature.");
-    eprintln!("Run with: cargo run --example multitalker --features multitalker -- <audio.wav> <model_dir> <sortformer.onnx>");
+    eprintln!(
+        "Run with: cargo run --example multitalker --features multitalker -- <audio.wav> <model_dir> <sortformer.onnx>"
+    );
 }

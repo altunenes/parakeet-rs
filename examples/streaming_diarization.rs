@@ -24,7 +24,9 @@ Usage:
 */
 
 #[cfg(feature = "sortformer")]
-use parakeet_rs::sortformer::{Sortformer, StreamingProfile};
+use parakeet_rs::ExecutionConfig;
+#[cfg(feature = "sortformer")]
+use parakeet_rs::sortformer::{DiarizationConfig, Sortformer, StreamingProfile};
 #[cfg(feature = "sortformer")]
 use std::env;
 #[cfg(feature = "sortformer")]
@@ -35,7 +37,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "sortformer"))]
     {
         eprintln!("Error: This example requires the 'sortformer' feature.");
-        eprintln!("Run with: cargo run --example streaming-diarization --features sortformer -- <audio.wav>");
+        eprintln!(
+            "Run with: cargo run --example streaming-diarization --features sortformer -- <audio.wav>"
+        );
         return Err("sortformer feature not enabled".into());
     }
 
@@ -46,7 +50,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let audio_path = args
             .get(1)
             .expect("usage: streaming-diarization --features sortformer -- <audio.wav> [onnx]");
-        let onnx = args.get(2).map(String::as_str).unwrap_or("nemotron3_diar_v3.onnx");
+        let onnx = args
+            .get(2)
+            .map(String::as_str)
+            .unwrap_or("nemotron3_diar_v3.onnx");
 
         let mut reader = hound::WavReader::open(audio_path)?;
         let spec = reader.spec();
@@ -68,7 +75,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         println!("Loaded {:.1}s of audio", audio.len() as f32 / 16_000.0);
 
-        let mut diarizer = Sortformer::new(onnx)?;
+        // ONNX Runtime needs an environment; without the `ort` feature this runs on burn.
+        #[cfg(feature = "ort")]
+        let config = ExecutionConfig::new().with_environment(parakeet_rs::ort::init().build()?);
+        #[cfg(not(feature = "ort"))]
+        let config = ExecutionConfig::new();
+        let mut diarizer =
+            Sortformer::with_config(onnx, Some(config), DiarizationConfig::default())?;
         diarizer.set_profile(StreamingProfile::low_latency())?;
         let p = diarizer.profile();
         println!(
@@ -81,7 +94,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Simulate real-time streaming: feed 20ms chunks (in practice, from a mic/GStreamer).
         let feed_chunk_size = 320; // 20ms at 16kHz
         let mut total_segments = 0;
-        println!("\nStreaming diarization (feeding {}ms chunks):", feed_chunk_size * 1000 / 16_000);
+        println!(
+            "\nStreaming diarization (feeding {}ms chunks):",
+            feed_chunk_size * 1000 / 16_000
+        );
         println!("{}", "-".repeat(60));
 
         for chunk in audio.chunks(feed_chunk_size) {
@@ -106,7 +122,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         println!("{}", "-".repeat(60));
-        println!("Done: {} segments in {:.2}s", total_segments, start_time.elapsed().as_secs_f32());
+        println!(
+            "Done: {} segments in {:.2}s",
+            total_segments,
+            start_time.elapsed().as_secs_f32()
+        );
         Ok(())
     }
 
