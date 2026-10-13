@@ -25,6 +25,8 @@ impl Parakeet {
     ///
     /// # Examples
     /// ```no_run
+    /// # #[cfg(feature = "ort")]
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use parakeet_rs::{ExecutionConfig, Parakeet};
     ///
     /// // One ONNX Runtime environment per process, shared by every model
@@ -36,7 +38,10 @@ impl Parakeet {
     ///
     /// // Or load from specific model file
     /// let parakeet = Parakeet::from_pretrained("model_q4.onnx", Some(config))?;
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # Ok(())
+    /// # }
+    /// # #[cfg(not(feature = "ort"))]
+    /// # fn main() {}
     /// ```
     ///
     /// For GPU acceleration, enable the corresponding feature (cuda, tensorrt, webgpu, etc.)
