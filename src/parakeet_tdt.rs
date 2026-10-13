@@ -91,7 +91,15 @@ impl ParakeetTDT {
         };
 
         let exec_config = config.unwrap_or_default();
-        let joint_exec_config = joint_config.unwrap_or_default();
+        let joint_exec_config = joint_config.unwrap_or_else(|| {
+            #[allow(unused_mut)]
+            let mut joint = ExecutionConfig::default();
+            #[cfg(feature = "ort")]
+            {
+                joint.environment = exec_config.environment.clone();
+            }
+            joint
+        });
 
         // Load vocab first to get the actual vocabulary size
         let vocab = Vocabulary::from_file(&vocab_path)?;

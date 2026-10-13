@@ -84,6 +84,8 @@ mod vocab;
 
 pub use error::{Error, Result};
 #[cfg(feature = "ort")]
+pub use ort;
+#[cfg(feature = "ort")]
 pub use execution::CoreMLComputeUnits;
 pub use execution::{ExecutionProvider, ModelConfig as ExecutionConfig};
 pub use parakeet::Parakeet;

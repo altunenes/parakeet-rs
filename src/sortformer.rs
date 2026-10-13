@@ -312,7 +312,9 @@ enum Backend {
 }
 
 impl Sortformer {
-    /// a new Sortformer instance from ONNX model path
+    /// A new Sortformer instance from an ONNX model path, with the default execution config.
+    /// On ONNX Runtime use [`with_config`](Self::with_config) and pass an environment
+    /// ([`ExecutionConfig::with_environment`](crate::ExecutionConfig::with_environment)).
     pub fn new<P: AsRef<Path>>(model_path: P) -> Result<Self> {
         Self::with_config(model_path, None, DiarizationConfig::default())
     }
