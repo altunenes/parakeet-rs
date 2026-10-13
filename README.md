@@ -6,11 +6,19 @@ Fast speech recognition and diarization with NVIDIA's Parakeet models, on ONNX R
 
 ## Models
 
+ONNX Runtime (the default backend) needs one environment per process, shared by every model. Create it once; the snippets below use this `config`:
+```rust
+use parakeet_rs::ExecutionConfig;
+
+let env = parakeet_rs::ort::init().build()?;
+let config = ExecutionConfig::new().with_environment(env);
+```
+
 **CTC (English-only)**:
 ```rust
 use parakeet_rs::{Parakeet, Transcriber, TimestampMode};
 
-let mut parakeet = Parakeet::from_pretrained(".", None)?;
+let mut parakeet = Parakeet::from_pretrained(".", Some(config.clone()))?;
 
 // Load and transcribe audio (see examples/raw.rs for full example)
 let result = parakeet.transcribe_samples(audio, 1600, 1, Some(TimestampMode::Words))?;
@@ -26,7 +34,7 @@ for token in result.tokens {
 ```rust
 use parakeet_rs::{ParakeetTDT, Transcriber, TimestampMode};
 
-let mut parakeet = ParakeetTDT::from_pretrained("./tdt", None)?;
+let mut parakeet = ParakeetTDT::from_pretrained("./tdt", Some(config.clone()))?;
 let result = parakeet.transcribe_samples(audio, 16000, 1, Some(TimestampMode::Sentences))?;
 println!("{}", result.text);
 
@@ -40,7 +48,7 @@ for token in result.tokens {
 ```rust
 use parakeet_rs::ParakeetEOU;
 
-let mut parakeet = ParakeetEOU::from_pretrained("./eou", None)?;
+let mut parakeet = ParakeetEOU::from_pretrained("./eou", Some(config.clone()))?;
 
 // Prepare your audio (Vec<f32>, 16kHz mono, normalized)
 let audio: Vec<f32> = /* your audio samples */;
@@ -61,7 +69,7 @@ for chunk in audio.chunks(CHUNK_SIZE) {
 ```rust
 use parakeet_rs::{Nemotron, NemotronMode};
 
-let mut model = Nemotron::from_pretrained(path, None)?;
+let mut model = Nemotron::from_pretrained(path, Some(config.clone()))?;
 
 // Multilingual variant: optionally pick a target language. Defaults to "auto"
 // (the model picks the language itself). Pass a specific code when you know
@@ -85,7 +93,7 @@ parakeet-rs = { version = "0.4", features = ["cohere"] }
 ```rust
 use parakeet_rs::CohereASR;
 
-let mut model = CohereASR::from_pretrained("./cohere", None)?;
+let mut model = CohereASR::from_pretrained("./cohere", Some(config.clone()))?;
 
 // audio: Vec<f32>, 16kHz mono (long-form supported)
 let text = model.transcribe_audio(&audio, "en", true, false)?; // lang, pnc, itn
@@ -103,7 +111,7 @@ use parakeet_rs::MultitalkerASR;
 let mut model = MultitalkerASR::from_pretrained(
     "./multitalker",             // encoder, decoder, tokenizer
     "nemotron3_diar_v3.onnx",    // Nemotron-3 (Sortformer v3) for diarization
-    None,
+    Some(config.clone()),
 )?;
 
 for chunk in audio.chunks(17920) {  // ~1.12s at 16kHz
@@ -120,9 +128,13 @@ See `examples/multitalker.rs` for full usage with latency modes.
 parakeet-rs = { version = "0.4", features = ["sortformer"] }
 ```
 ```rust
-use parakeet_rs::sortformer::{Sortformer, StreamingProfile};
+use parakeet_rs::sortformer::{DiarizationConfig, Sortformer, StreamingProfile};
 
-let mut diarizer = Sortformer::new("nemotron3_diar_v3.onnx")?;
+let mut diarizer = Sortformer::with_config(
+    "nemotron3_diar_v3.onnx",
+    Some(config.clone()),
+    DiarizationConfig::default(),
+)?;
 let segments = diarizer.diarize(audio, 16000, 1)?;
 for seg in segments {
     println!("speaker_{} [{:.2}s - {:.2}s]", seg.speaker_id,
@@ -186,7 +198,9 @@ parakeet-rs = { version = "0.4", features = ["cuda"] }  # or tensorrt, webgpu, d
 ```rust
 use parakeet_rs::{Parakeet, ExecutionConfig, ExecutionProvider};
 
-let config = ExecutionConfig::new().with_execution_provider(ExecutionProvider::Cuda);
+let config = ExecutionConfig::new()
+    .with_environment(parakeet_rs::ort::init().build()?)
+    .with_execution_provider(ExecutionProvider::Cuda);
 let mut parakeet = Parakeet::from_pretrained(".", Some(config))?;
 ```
 
@@ -195,6 +209,8 @@ Advanced session configuration via [ort SessionBuilder](https://docs.rs/ort/late
 let config = ExecutionConfig::new()
     .with_custom_configure(|builder| builder.with_memory_pattern(false));
 ```
+
+If your app also uses `ort` directly, use the same environment for both: ONNX Runtime allows only one per process. `parakeet_rs::ort` is the `ort` version parakeet-rs is built with.
 
 ### Pure-Rust backend (experimental)
 

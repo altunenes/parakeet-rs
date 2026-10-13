@@ -7,6 +7,8 @@ use std::sync::Arc;
 #[cfg(feature = "ort")]
 use crate::error::Result;
 #[cfg(feature = "ort")]
+use ort::environment::Environment;
+#[cfg(feature = "ort")]
 use ort::session::Session;
 #[cfg(feature = "ort")]
 use ort::session::builder::SessionBuilder;
@@ -122,6 +124,10 @@ pub struct ModelConfig {
     pub coreml_cache_dir: Option<PathBuf>,
     #[cfg(feature = "ort")]
     pub coreml_compute_units: CoreMLComputeUnits,
+    /// The ONNX Runtime environment sessions are created in. Required for ONNX Runtime
+    /// providers; burn providers don't use it.
+    #[cfg(feature = "ort")]
+    pub environment: Option<Environment>,
 }
 
 impl fmt::Debug for ModelConfig {
@@ -140,7 +146,8 @@ impl fmt::Debug for ModelConfig {
             },
         )
         .field("coreml_cache_dir", &self.coreml_cache_dir)
-        .field("coreml_compute_units", &self.coreml_compute_units);
+        .field("coreml_compute_units", &self.coreml_compute_units)
+        .field("environment", &self.environment);
         s.finish()
     }
 }
@@ -157,6 +164,8 @@ impl Default for ModelConfig {
             coreml_cache_dir: None,
             #[cfg(feature = "ort")]
             coreml_compute_units: CoreMLComputeUnits::default(),
+            #[cfg(feature = "ort")]
+            environment: None,
         }
     }
 }
@@ -205,10 +214,25 @@ impl ModelConfig {
         self.coreml_compute_units = units;
         self
     }
+    /// Create ONNX Runtime sessions in `environment`, from `parakeet_rs::ort::init().build()`.
+    #[cfg(feature = "ort")]
+    pub fn with_environment(mut self, environment: Environment) -> Self {
+        self.environment = Some(environment);
+        self
+    }
+
     /// Build a session for `path` under this configuration.
     #[cfg(feature = "ort")]
     pub fn build_session(&self, path: &Path) -> Result<Session> {
-        let builder = Session::builder()?;
+        let Some(environment) = &self.environment else {
+            return Err(crate::error::Error::Config(
+                "ONNX Runtime needs an environment: create one with \
+                 `parakeet_rs::ort::init().build()?` and pass it with \
+                 `ExecutionConfig::new().with_environment(env)`"
+                    .into(),
+            ));
+        };
+        let builder = Session::builder(environment)?;
         let mut builder = self.apply_to_session_builder(builder)?;
         Ok(builder.commit_from_file(path)?)
     }
@@ -237,7 +261,9 @@ impl ModelConfig {
             .with_inter_threads(self.inter_threads)?;
 
         builder = match self.execution_provider {
-            ExecutionProvider::Cpu => builder,
+            ExecutionProvider::Cpu => {
+                builder.with_auto_device(ort::session::builder::AutoDevicePolicy::PreferCPU)?
+            }
 
             #[cfg(feature = "cuda")]
             ExecutionProvider::Cuda => builder.with_execution_providers([
@@ -315,5 +341,17 @@ impl ModelConfig {
         }
 
         Ok(builder)
+    }
+}
+#[cfg(all(test, feature = "ort"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_session_without_an_environment_is_an_error() {
+        let err = ModelConfig::new()
+            .build_session(Path::new("missing.onnx"))
+            .unwrap_err();
+        assert!(err.to_string().contains("with_environment"), "{err}");
     }
 }

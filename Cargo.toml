@@ -1,6 +1,6 @@
 [package]
 name = "parakeet-rs"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 authors = ["altunenes"]
 description = "Fast ASR & Speaker Diarization with NVIDIA Parakeet via ONNX"
@@ -61,7 +61,7 @@ path = "examples/cohere.rs"
 required-features = ["cohere"]
 
 [dependencies]
-ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "ndarray"], optional = true }
+ort = { version = "=2.0.0-rc.14", default-features = false, features = ["std", "ndarray"], optional = true }
 # Pinned: src/burn_backend/generated is generated for this exact version.
 # Keep burn's default features, it is much slower without them.
 burn = { version = "=0.22.0", features = ["flex"], optional = true }
@@ -80,7 +80,7 @@ realfft = "3"
 default = ["cpu", "ort-defaults", "api-28"]
 
 # ONNX Runtime backend. Every ONNX Runtime related feature below turns it on.
-ort = ["dep:ort"]
+ort = ["dep:ort", "ort/api-22"]
 cpu = ["ort"]
 ort-defaults = ["ort", "ort/default"]
 
@@ -89,6 +89,9 @@ api-25 = ["ort", "ort/api-25"]
 api-26 = ["ort", "ort/api-26"]
 api-27 = ["ort", "ort/api-27"]
 api-28 = ["ort", "ort/api-28"]
+api-29 = ["ort", "ort/api-29"]
+api-30 = ["ort", "ort/api-30"]
+api-31 = ["ort", "ort/api-31"]
 cuda = ["ort", "ort/cuda"]
 tensorrt = ["ort", "ort/tensorrt"]
 coreml = ["ort", "ort/coreml"]

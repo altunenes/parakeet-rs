@@ -17,11 +17,12 @@ Otherwise you will likely get a error like:
 "Error: Ort(Error { code: RuntimeException, msg: "Non-zero status code returned while running Add node. Name:'/layers.0/self_attn/Add_2' Status Message: /Users/runner/work/ort-artifacts/ort-artifacts/onnxruntime/onnxruntime/core/providers/cpu/math/element_wise_ops.h:540 void onnxruntime::BroadcastIterator::Init(ptrdiff_t, ptrdiff_t) axis == 1 || axis == largest was false. })"
 */
 
-use parakeet_rs::{Parakeet, ParakeetTDT, TimestampMode, Transcriber};
+use parakeet_rs::{ExecutionConfig, Parakeet, ParakeetTDT, TimestampMode, Transcriber};
 use std::env;
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ExecutionConfig::new().with_environment(parakeet_rs::ort::init().build()?);
     let start_time = Instant::now();
     let args: Vec<String> = env::args().collect();
     let audio_path = if args.len() > 1 {
@@ -53,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if use_tdt {
         println!("Loading TDT model...");
         let tdt_dir = args.get(3).map(String::as_str).unwrap_or("./tdt");
-        let mut parakeet = ParakeetTDT::from_pretrained(tdt_dir, None)?;
+        let mut parakeet = ParakeetTDT::from_pretrained(tdt_dir, Some(config.clone()))?;
 
         // Use transcribe_samples() with raw parameters and timestamp mode
         let result = parakeet.transcribe_samples(
@@ -73,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else {
         println!("Loading CTC model...");
-        let mut parakeet = Parakeet::from_pretrained(".", None)?;
+        let mut parakeet = Parakeet::from_pretrained(".", Some(config.clone()))?;
 
         // CTC model doesn't predict punctuation (lowercase alphabet only)
         // This means no sentence boundaries. we use Words mode instead of Sentences

@@ -21,18 +21,27 @@ impl Parakeet {
     ///
     /// # Arguments
     /// * `path` - Directory containing model files, or path to specific model file
-    /// * `config` - Optional execution configuration (defaults to CPU if None)
+    /// * `config` - Execution configuration; ONNX Runtime needs one with an environment
     ///
     /// # Examples
     /// ```no_run
-    /// use parakeet_rs::Parakeet;
+    /// # #[cfg(feature = "ort")]
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use parakeet_rs::{ExecutionConfig, Parakeet};
     ///
-    /// // Load from directory with CPU (default)
-    /// let parakeet = Parakeet::from_pretrained(".", None)?;
+    /// // One ONNX Runtime environment per process, shared by every model
+    /// let env = parakeet_rs::ort::init().build()?;
+    /// let config = ExecutionConfig::new().with_environment(env);
+    ///
+    /// // Load from directory on the CPU
+    /// let parakeet = Parakeet::from_pretrained(".", Some(config.clone()))?;
     ///
     /// // Or load from specific model file
-    /// let parakeet = Parakeet::from_pretrained("model_q4.onnx", None)?;
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// let parakeet = Parakeet::from_pretrained("model_q4.onnx", Some(config))?;
+    /// # Ok(())
+    /// # }
+    /// # #[cfg(not(feature = "ort"))]
+    /// # fn main() {}
     /// ```
     ///
     /// For GPU acceleration, enable the corresponding feature (cuda, tensorrt, webgpu, etc.)

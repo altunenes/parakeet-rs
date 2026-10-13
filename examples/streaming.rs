@@ -49,12 +49,13 @@ let reset_on_eou: bool = false;
 I must admit that this is not work very well on my real world tests :/
 */
 
-use parakeet_rs::{Nemotron, NemotronMode, ParakeetEOU};
+use parakeet_rs::{ExecutionConfig, Nemotron, NemotronMode, ParakeetEOU};
 use std::env;
 use std::io::Write;
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ExecutionConfig::new().with_environment(parakeet_rs::ort::init().build()?);
     let start_time = Instant::now();
     let args: Vec<String> = env::args().collect();
 
@@ -110,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if use_eou {
         // EOU model
-        let mut model = ParakeetEOU::from_pretrained("./fullstr", None)?;
+        let mut model = ParakeetEOU::from_pretrained("./fullstr", Some(config.clone()))?;
         let chunk_size = 2560; // 160ms
 
         print!("Streaming: ");
@@ -158,7 +159,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         "./nemotron_multi"
     };
-    let mut model = Nemotron::from_pretrained(model_dir, None)?;
+    let mut model = Nemotron::from_pretrained(model_dir, Some(config.clone()))?;
     let chunk_size = 8960; // 560ms
 
     match model.mode() {

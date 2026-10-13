@@ -33,7 +33,8 @@ fn main() {
 
 #[cfg(feature = "sortformer")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use parakeet_rs::sortformer::{Sortformer, StreamingProfile};
+    use parakeet_rs::ExecutionConfig;
+    use parakeet_rs::sortformer::{DiarizationConfig, Sortformer, StreamingProfile};
     use std::env;
     use std::time::Instant;
 
@@ -41,13 +42,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let audio_path = args
         .get(1)
         .expect("usage: diarization <audio.wav> [offline|low|very-low|ultra] [model.onnx]");
-    let onnx = args.get(3).map(String::as_str).unwrap_or("nemotron3_diar_v3.onnx");
+    let onnx = args
+        .get(3)
+        .map(String::as_str)
+        .unwrap_or("nemotron3_diar_v3.onnx");
     let profile = match args.get(2).map(String::as_str).unwrap_or("offline") {
         "offline" => StreamingProfile::offline(),
         "low" => StreamingProfile::low_latency(),
         "very-low" => StreamingProfile::very_low_latency(),
         "ultra" => StreamingProfile::ultra_low_latency(),
-        other => return Err(format!("unknown preset {other}: offline | low | very-low | ultra").into()),
+        other => {
+            return Err(format!("unknown preset {other}: offline | low | very-low | ultra").into());
+        }
     };
 
     let mut reader = hound::WavReader::open(audio_path)?;
@@ -60,9 +66,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Result<_, _>>()?,
     };
     let duration = audio.len() as f32 / spec.sample_rate as f32 / spec.channels as f32;
-    println!("Loaded {:.1}s ({} Hz, {} ch)", duration, spec.sample_rate, spec.channels);
+    println!(
+        "Loaded {:.1}s ({} Hz, {} ch)",
+        duration, spec.sample_rate, spec.channels
+    );
 
-    let mut diarizer = Sortformer::new(onnx)?;
+    // ONNX Runtime needs an environment; without the `ort` feature this runs on burn.
+    #[cfg(feature = "ort")]
+    let config = ExecutionConfig::new().with_environment(parakeet_rs::ort::init().build()?);
+    #[cfg(not(feature = "ort"))]
+    let config = ExecutionConfig::new();
+    let mut diarizer = Sortformer::with_config(onnx, Some(config), DiarizationConfig::default())?;
     diarizer.set_profile(profile)?;
     println!("Latency profile: {:.2}s buffer", diarizer.latency());
 

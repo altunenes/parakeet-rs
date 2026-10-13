@@ -27,8 +27,8 @@ for instance `nano-cohere-transcribe` (python one) shows a energy based splitter
 `get_chunk_separator` in:
   https://github.com/Deep-unlearning/nano-cohere-transcribe/blob/main/nano_cohere_transcribe/chunk.py
 It splits at the quietest 100 ms RMS window in the last 5 s of each 35 s
-chunk and joins per-chunk text with "" for ja/zh, " " elsewhere. So its one of the 
-nice strategy for chuking. 
+chunk and joins per-chunk text with "" for ja/zh, " " elsewhere. So its one of the
+nice strategy for chuking.
 
 Other valid strategies could be fixed size windows with
 overlap, or VAD driven boundaries (for instance try it with examples/diarization.rs via parakeet sortformer). I
@@ -38,7 +38,7 @@ fits your pipeline or share your favor strategy if you find one that works well 
 
 #[cfg(feature = "cohere")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use parakeet_rs::CohereASR;
+    use parakeet_rs::{CohereASR, ExecutionConfig};
     use std::env;
     use std::time::Instant;
 
@@ -85,7 +85,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Loading Cohere model...");
     let load_start = Instant::now();
-    let mut model = CohereASR::from_pretrained(model_dir, None)?;
+    // ONNX Runtime needs an environment; without the `ort` feature this runs on burn.
+    #[cfg(feature = "ort")]
+    let config = ExecutionConfig::new().with_environment(parakeet_rs::ort::init().build()?);
+    #[cfg(not(feature = "ort"))]
+    let config = ExecutionConfig::new();
+    let mut model = CohereASR::from_pretrained(model_dir, Some(config))?;
     println!("Loaded in {:.2}s", load_start.elapsed().as_secs_f32());
 
     let start = Instant::now();

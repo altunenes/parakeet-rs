@@ -442,8 +442,10 @@ impl OnnxTensor {
 }
 
 fn le_f32s(raw: &[u8]) -> Vec<f32> {
-    raw.chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+    raw.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| f32::from_le_bytes(*c))
         .collect()
 }
 
@@ -1005,8 +1007,10 @@ mod tests {
     fn values(t: PackTensor) -> Vec<f32> {
         t.to_bytes()
             .unwrap()
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| f32::from_le_bytes(*c))
             .collect()
     }
 
