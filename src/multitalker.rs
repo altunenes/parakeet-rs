@@ -642,6 +642,7 @@ impl MultitalkerASR {
                 text: self.vocab.decode_single(id),
                 start: frame as f32 * SECONDS_PER_ENCODED_FRAME,
                 end: (frame + 1) as f32 * SECONDS_PER_ENCODED_FRAME,
+                confidence: None,
             })
             .collect();
 
