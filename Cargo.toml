@@ -61,7 +61,7 @@ path = "examples/cohere.rs"
 required-features = ["cohere"]
 
 [dependencies]
-ort = { version = "=2.0.0-rc.14", default-features = false, features = ["std", "ndarray"], optional = true }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "ndarray"], optional = true }
 # Pinned: src/burn_backend/generated is generated for this exact version.
 # Keep burn's default features, it is much slower without them.
 burn = { version = "=0.22.0", features = ["flex"], optional = true }
