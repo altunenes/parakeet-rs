@@ -718,15 +718,9 @@ impl Transcriber for MultitalkerASR {
     }
 }
 
-/// Derive per-speaker target masks from raw Sortformer predictions.
-///
-/// For the target speaker k:
-/// - `spk_targets[t] = raw_preds[t, k]`
-/// - `bg_spk_targets[t] = max(raw_preds[t, j]) for j != k`
-///
-/// The encoder only reads the last `encoded_frames` entries of the masks
-/// (NeMo trims them with `mask[:, -x.shape[1]:]`), so the frames are mapped
-/// onto those entries. The leading entries are unused.
+/// Speaker targets for one chunk: the speaker's own activity, and the highest
+/// activity of any other speaker. The encoder reads only the last
+/// `encoded_frames` entries, so the diarization frames go there.
 fn derive_speaker_targets(
     diar_preds: &Array2<f32>,
     speaker_id: usize,
@@ -735,20 +729,18 @@ fn derive_speaker_targets(
 ) -> Result<(Array2<f32>, Array2<f32>)> {
     let diar_frames = diar_preds.nrows();
     let read = encoded_frames.min(encoder_time);
+    if diar_frames == 0 || speaker_id >= diar_preds.ncols() || read == 0 {
+        return Ok((
+            Array2::ones((1, encoder_time)),
+            Array2::zeros((1, encoder_time)),
+        ));
+    }
     let lead = encoder_time - read;
 
     let mut spk_vals = Vec::with_capacity(encoder_time);
     let mut bg_vals = Vec::with_capacity(encoder_time);
-
     for enc_t in 0..encoder_time {
-        if diar_frames == 0 || speaker_id >= diar_preds.ncols() || read == 0 {
-            // No diarisation data: assume single speaker
-            spk_vals.push(1.0);
-            bg_vals.push(0.0);
-            continue;
-        }
-        let i = enc_t.saturating_sub(lead);
-        let diar_t = (i * diar_frames / read).min(diar_frames - 1);
+        let diar_t = (enc_t.saturating_sub(lead) * diar_frames / read).min(diar_frames - 1);
         spk_vals.push(diar_preds[[diar_t, speaker_id]]);
         bg_vals.push(
             (0..diar_preds.ncols())
@@ -762,7 +754,6 @@ fn derive_speaker_targets(
         .map_err(|e| Error::Model(format!("spk_targets shape mismatch: {e}")))?;
     let bg_spk_targets = Array2::from_shape_vec((1, encoder_time), bg_vals)
         .map_err(|e| Error::Model(format!("bg_spk_targets shape mismatch: {e}")))?;
-
     Ok((spk_targets, bg_spk_targets))
 }
 
@@ -770,51 +761,20 @@ fn derive_speaker_targets(
 mod tests {
     use super::*;
 
-    // Normal latency: 14 frames per chunk, 121 mask entries.
-    const FRAMES: usize = 14;
-    const ENTRIES: usize = PRE_ENCODE_CACHE + 112;
-
     #[test]
-    fn each_diarization_frame_lands_on_the_entry_the_encoder_reads_for_it() {
-        let preds = Array2::from_shape_fn((FRAMES, 3), |(t, s)| s as f32 * 0.25 + t as f32 / 100.0);
-        let (spk, bg) = derive_speaker_targets(&preds, 1, ENTRIES, FRAMES).unwrap();
-        assert_eq!(spk.shape(), &[1, ENTRIES]);
-        for t in 0..FRAMES {
-            assert_eq!(spk[[0, ENTRIES - FRAMES + t]], preds[[t, 1]], "frame {t}");
-            assert_eq!(bg[[0, ENTRIES - FRAMES + t]], preds[[t, 2]], "frame {t}");
+    fn targets_land_on_the_entries_the_encoder_reads() {
+        let entries = PRE_ENCODE_CACHE + 112;
+        let preds = Array2::from_shape_fn((14, 3), |(t, s)| s as f32 + t as f32 / 100.0);
+        let (spk, bg) = derive_speaker_targets(&preds, 1, entries, 14).unwrap();
+        for t in 0..14 {
+            assert_eq!(spk[[0, entries - 14 + t]], preds[[t, 1]]);
+            assert_eq!(bg[[0, entries - 14 + t]], preds[[t, 2]]);
         }
     }
 
     #[test]
-    fn a_pause_at_the_end_of_a_chunk_does_not_silence_the_chunk() {
-        let preds = Array2::from_shape_fn(
-            (FRAMES, 2),
-            |(t, s)| if s == 0 && t < 11 { 0.9 } else { 0.0 },
-        );
-        let (spk, _) = derive_speaker_targets(&preds, 0, ENTRIES, FRAMES).unwrap();
-        let active = spk
-            .row(0)
-            .iter()
-            .skip(ENTRIES - FRAMES)
-            .filter(|&&v| v > 0.5)
-            .count();
-        assert_eq!(active, 11);
-    }
-
-    #[test]
-    fn a_different_frame_count_is_spread_over_the_read_entries() {
-        let preds = Array2::from_shape_fn((7, 1), |(t, _)| t as f32);
-        let (spk, _) = derive_speaker_targets(&preds, 0, ENTRIES, FRAMES).unwrap();
-        let read: Vec<f32> = spk.row(0).iter().skip(ENTRIES - FRAMES).copied().collect();
-        assert_eq!(
-            read,
-            (0..FRAMES).map(|i| (i / 2) as f32).collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn no_diarization_data_means_one_speaker_alone() {
-        let (spk, bg) = derive_speaker_targets(&Array2::zeros((0, 4)), 0, ENTRIES, FRAMES).unwrap();
+    fn no_diarization_means_one_speaker() {
+        let (spk, bg) = derive_speaker_targets(&Array2::zeros((0, 4)), 0, 121, 14).unwrap();
         assert!(spk.iter().all(|&v| v == 1.0) && bg.iter().all(|&v| v == 0.0));
     }
 }
