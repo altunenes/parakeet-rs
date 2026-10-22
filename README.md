@@ -156,11 +156,11 @@ self-describing metadata) with custom streaming parameters.
 
 ## Setup
 
-**CTC**: Download from [HuggingFace](https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx): `model.onnx`, `model.onnx_data`, `tokenizer.json`
+**CTC**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ctc-0.6b): `model.onnx`, `model.onnx_data`, `tokenizer.json`. Or export it yourself with `scripts/export_parakeet_ctc.py`.
 
-**TDT**: Download from [HuggingFace](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx): `encoder-model.onnx`, `encoder-model.onnx.data`, `decoder_joint-model.onnx`, `vocab.txt`
+**TDT**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-tdt-0.6b-v3): `encoder-model.onnx`, `encoder-model.onnx.data`, `decoder_joint-model.onnx`, `vocab.txt`. Or export it yourself with `scripts/export_parakeet_tdt.py`.
 
-**Parakeet Ultra (optional TDT fine-tune)**: Moondream's post-trained parakeet-tdt-0.6b-v3 with better accuracy. Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ultra): same files as TDT, loads with `ParakeetTDT` (CC-BY-4.0). Or export it yourself with `scripts/export_parakeet_ultra.py`.
+**Parakeet Ultra (optional TDT fine-tune)**: Moondream's post-trained parakeet-tdt-0.6b-v3 with better accuracy. Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ultra): same files as TDT, loads with `ParakeetTDT` (CC-BY-4.0). Or export it yourself with `scripts/export_parakeet_tdt.py --ultra`.
 
 **Orukeet (optional TDT fine-tune)**: the [pinned Hugging Face INT8 export](https://huggingface.co/oruk/orukeet/tree/eac739d754bb171287930e6e63386f5b88f8179e/onnx/combined-v0.1.0-int8) works with `ParakeetTDT`. The downloader verifies a release manifest and all required file hashes, including licenses, then prints the cached model directory:
 
@@ -174,21 +174,23 @@ model_dir=$(python3 scripts/download_orukeet.py --offline)
 
 This uses the existing local TDT runtime; it does not add streaming support or change defaults. The ~672 MB weights are licensed under [CC BY-SA 4.0](https://huggingface.co/oruk/orukeet/blob/eac739d754bb171287930e6e63386f5b88f8179e/onnx/combined-v0.1.0-int8/LICENSE-WEIGHTS), as recorded in the downloaded `LICENSE-WEIGHTS`; `NOTICE.md` preserves the NVIDIA/Parakeet attribution. Model downloads use normal Hugging Face accounting through the required verification manifest. Audio stays local; cached files cause no counting requests. Accuracy numbers on the model card describe its NeMo evaluation, not a benchmark of this Rust runtime.
 
-**EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`
+**EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`. Or export it yourself with `scripts/export_realtime_eou_120m.py`.
 
-**Nemotron (English-only)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model` (*[int8](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int8) / [int4](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int4)*)
+**Nemotron (English-only)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`. Or export it yourself with `scripts/export_nemotron_streaming.py`. (*[int8](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int8) / [int4](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int4)*)
 
 **Nemotron (Multilingual 3.5)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3.5-asr-streaming-0.6b-onnx): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`. Or export it yourself from the [base model](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) with `scripts/export_nemotron_streaming_multilingual.py`.
 
-**Unified**: Download from [HuggingFace](https://huggingface.co/bobNight/parakeet-unified-en-0.6b-onnx): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`
+**Unified**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-unified-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`. Or export it yourself with `scripts/export_parakeet_unified.py`.
 
-**Multitalker**: Download from [HuggingFace](https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8/tree/main): `encoder.int8.onnx`, `decoder_joint.int8.onnx`, `tokenizer.model` (also needs the Nemotron-3 diarization ONNX below)
+**Multitalker**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-parakeet-streaming-0.6b-v1): `encoder.onnx` + `encoder.onnx.data` and `decoder_joint.onnx` (fp32), or `encoder.int8.onnx` and `decoder_joint.int8.onnx`, plus `tokenizer.model` (also needs the Nemotron-3 diarization ONNX below). Or export it yourself with `scripts/export_multitalker.py`.
 
 **Cohere Transcribe**: Download from [HuggingFace](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX): `encoder_model.onnx` (+ `.onnx_data*`), `decoder_model_merged.onnx` (+ `.onnx_data`), `tokenizer.json` (FP32, FP16, INT8, INT4 variants available)
 
 **Diarization (Nemotron-3 / Sortformer v3)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization): `nemotron3_diar_v3.onnx`. Or export it yourself from the [base model](https://huggingface.co/nvidia/Nemotron-3-Diarization) with `scripts/export_diar_sortformer.py`.
 
 Quantized versions available (int8). All files must be in the same directory.
+
+The `scripts/export_*.py` scripts export every model above from NVIDIA's NeMo checkpoints (except Cohere, which comes from Optimum), with PyTorch's dynamo exporter at ONNX opset 23.
 
 GPU support (auto-falls back to CPU if fails):
 ```toml
@@ -234,7 +236,7 @@ Other GPU features: `vulkan`, `burn-cuda` and `burn-rocm`. For burn on the CPU, 
 - [EOU: Streaming ASR with end-of-utterance detection](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1)
 - [Nemotron: Cache aware streaming ASR (600M params,EN only)](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b)
 - [Unified: Offline + buffered streaming RNNT ASR (600M params, EN only)](https://huggingface.co/nvidia/parakeet-unified-en-0.6b)
-- [Multitalker: Streaming multi-speaker ASR with speaker-kernel injection](https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1) ([ONNX int8](https://huggingface.co/smcleod/multitalker-parakeet-streaming-0.6b-v1-onnx-int8))
+- [Multitalker: Streaming multi-speaker ASR with speaker-kernel injection](https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1) ([ONNX](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-parakeet-streaming-0.6b-v1))
 - [Cohere Transcribe: Offline multilingual ASR (14 languages, long-form supported)](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026) ([ONNX](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX))
 - [Nemotron-3 Diarization (Sortformer v3): Streaming speaker diarization (up to 8 speakers)](https://huggingface.co/nvidia/Nemotron-3-Diarization) ([ONNX](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization))
 - Token-level timestamps (CTC, TDT)
