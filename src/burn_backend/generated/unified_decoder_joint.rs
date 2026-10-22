@@ -97,18 +97,49 @@ impl Model {
                 final_state.cell.unsqueeze_dims::<3>(&[0]),
             )
         };
-        let squeeze1_out1 = lstm1_out1.squeeze_dims::<3>(&[1]);
-        let slice3_out1 = input_states_1.slice(s![1..2, .., ..]);
-        let slice4_out1 = input_states_2.slice(s![1..2, .., ..]);
+        let transpose2_out1 = lstm1_out1.permute([0, 2, 1, 3]);
+        let shape1_out1: [i64; 4] = {
+            let axes = &transpose2_out1.clone().dims()[0..4];
+            let mut output = [0i64; 4];
+            for i in 0..4 {
+                output[i] = axes[i] as i64;
+            }
+            output
+        };
+        let slice3_out1: [i64; 1] = shape1_out1[0..1].try_into().unwrap();
+        let slice4_out1: [i64; 1] = shape1_out1[1..2].try_into().unwrap();
+        let slice5_out1: [i64; 1] = shape1_out1[2..3].try_into().unwrap();
+        let slice6_out1: [i64; 1] = shape1_out1[3..4].try_into().unwrap();
+        let mul1_out1 = {
+            let __lhs = slice5_out1;
+            let __rhs = slice6_out1;
+            core::array::from_fn::<
+                i64,
+                1usize,
+                _,
+            >(|__i| (__lhs[__i]).saturating_mul(__rhs[__i]))
+        };
+        let reshape1_out1 = mul1_out1;
+        let concat1_out1: [i64; 3usize] = [
+            &slice3_out1[..],
+            &slice4_out1[..],
+            &reshape1_out1[..],
+        ]
+            .concat()
+            .try_into()
+            .unwrap();
+        let reshape2_out1 = transpose2_out1.reshape(concat1_out1);
+        let slice7_out1 = input_states_1.slice(s![1..2, .., ..]);
+        let slice8_out1 = input_states_2.slice(s![1..2, .., ..]);
         let (lstm2_out1, lstm2_out2, lstm2_out3) = {
             let (output_seq, final_state) = self
                 .lstm2
                 .forward(
-                    squeeze1_out1,
+                    reshape2_out1,
                     Some(
                         LstmState::new(
-                            slice4_out1.squeeze_dim(0),
-                            slice3_out1.squeeze_dim(0),
+                            slice8_out1.squeeze_dim(0),
+                            slice7_out1.squeeze_dim(0),
                         ),
                     ),
                 );
@@ -118,18 +149,19 @@ impl Model {
                 final_state.cell.unsqueeze_dims::<3>(&[0]),
             )
         };
-        let squeeze2_out1 = lstm2_out1.squeeze_dims::<3>(&[1]);
-        let concat1_out1 = burn::tensor::Tensor::cat([lstm1_out2, lstm2_out2].into(), 0);
-        let concat2_out1 = burn::tensor::Tensor::cat([lstm1_out3, lstm2_out3].into(), 0);
-        let transpose2_out1 = encoder_outputs.permute([0, 2, 1]);
-        let transpose3_out1 = squeeze2_out1.permute([1, 0, 2]);
-        let linear1_out1 = self.linear1.forward(transpose2_out1);
-        let linear2_out1 = self.linear2.forward(transpose3_out1);
+        let transpose3_out1 = lstm2_out1.permute([0, 2, 1, 3]);
+        let reshape3_out1 = transpose3_out1.reshape([1, -1, 640]);
+        let concat2_out1 = burn::tensor::Tensor::cat([lstm1_out2, lstm2_out2].into(), 0);
+        let concat3_out1 = burn::tensor::Tensor::cat([lstm1_out3, lstm2_out3].into(), 0);
+        let transpose4_out1 = encoder_outputs.permute([0, 2, 1]);
+        let transpose5_out1 = reshape3_out1.permute([1, 0, 2]);
+        let linear1_out1 = self.linear1.forward(transpose4_out1);
+        let linear2_out1 = self.linear2.forward(transpose5_out1);
         let unsqueeze1_out1: Tensor<4> = linear1_out1.unsqueeze_dims::<4>(&[2]);
         let unsqueeze2_out1: Tensor<4> = linear2_out1.unsqueeze_dims::<4>(&[1]);
         let add1_out1 = unsqueeze1_out1.add(unsqueeze2_out1);
         let relu1_out1 = burn::tensor::activation::relu(add1_out1);
         let linear3_out1 = self.linear3.forward(relu1_out1);
-        (linear3_out1, target_length, concat1_out1, concat2_out1)
+        (linear3_out1, target_length, concat2_out1, concat3_out1)
     }
 }

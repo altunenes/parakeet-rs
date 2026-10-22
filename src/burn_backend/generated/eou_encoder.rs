@@ -15,26 +15,57 @@ use burn::nn::conv::Conv2dConfig;
 
 #[derive(Module, Debug)]
 pub struct Submodule1 {
+    constant302: burn::module::Param<Tensor<1, Int>>,
+    constant483: burn::module::Param<Tensor<1, Int>>,
     conv2d1: Conv2d,
-    constant535: burn::module::Param<Tensor<1>>,
-    constant536: burn::module::Param<Tensor<1>>,
-    constant537: burn::module::Param<Tensor<1>>,
-    constant538: burn::module::Param<Tensor<1>>,
-    constant539: burn::module::Param<Tensor<1>>,
+    constant304: burn::module::Param<Tensor<1>>,
+    constant305: burn::module::Param<Tensor<1>>,
+    constant306: burn::module::Param<Tensor<1>>,
+    conv2d2: Conv2d,
+    conv2d3: Conv2d,
+    conv2d4: Conv2d,
+    conv2d5: Conv2d,
+    linear1: Linear,
     #[module(skip)]
     device: Device,
 }
 impl Submodule1 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
+        let constant302: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
+            burn::module::ParamId::new(),
+            move |device, _require_grad| Tensor::<
+                1,
+                Int,
+            >::from_data(
+                burn::tensor::TensorData::from([0i64]),
+                (device, burn::tensor::DType::I64),
+            ),
+            device.clone(),
+            false,
+            [1].into(),
+        );
+        let constant483: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
+            burn::module::ParamId::new(),
+            move |device, _require_grad| Tensor::<
+                1,
+                Int,
+            >::from_data(
+                burn::tensor::TensorData::from([139i64]),
+                (device, burn::tensor::DType::I64),
+            ),
+            device.clone(),
+            false,
+            [1].into(),
+        );
         let conv2d1 = Conv2dConfig::new([1, 256], [3, 3])
             .with_stride([2, 2])
-            .with_padding(PaddingConfig2d::Valid)
+            .with_padding(PaddingConfig2d::Explicit(2, 2, 1, 1))
             .with_dilation([1, 1])
             .with_groups(1)
             .with_bias(true)
             .init(device);
-        let constant535: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
+        let constant304: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 1,
@@ -46,7 +77,7 @@ impl Submodule1 {
             false,
             [1].into(),
         );
-        let constant536: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
+        let constant305: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 1,
@@ -58,7 +89,7 @@ impl Submodule1 {
             false,
             [1].into(),
         );
-        let constant537: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
+        let constant306: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 1,
@@ -70,37 +101,47 @@ impl Submodule1 {
             false,
             [1].into(),
         );
-        let constant538: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([2f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant539: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([1f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
+        let conv2d2 = Conv2dConfig::new([256, 256], [3, 3])
+            .with_stride([2, 2])
+            .with_padding(PaddingConfig2d::Explicit(2, 2, 1, 1))
+            .with_dilation([1, 1])
+            .with_groups(256)
+            .with_bias(true)
+            .init(device);
+        let conv2d3 = Conv2dConfig::new([256, 256], [1, 1])
+            .with_stride([1, 1])
+            .with_padding(PaddingConfig2d::Valid)
+            .with_dilation([1, 1])
+            .with_groups(1)
+            .with_bias(true)
+            .init(device);
+        let conv2d4 = Conv2dConfig::new([256, 256], [3, 3])
+            .with_stride([2, 2])
+            .with_padding(PaddingConfig2d::Explicit(2, 2, 1, 1))
+            .with_dilation([1, 1])
+            .with_groups(256)
+            .with_bias(true)
+            .init(device);
+        let conv2d5 = Conv2dConfig::new([256, 256], [1, 1])
+            .with_stride([1, 1])
+            .with_padding(PaddingConfig2d::Valid)
+            .with_dilation([1, 1])
+            .with_groups(1)
+            .with_bias(true)
+            .init(device);
+        let linear1 = LinearConfig::new(4352, 512).with_bias(true).init(device);
         Self {
+            constant302,
+            constant483,
             conv2d1,
-            constant535,
-            constant536,
-            constant537,
-            constant538,
-            constant539,
+            constant304,
+            constant305,
+            constant306,
+            conv2d2,
+            conv2d3,
+            conv2d4,
+            conv2d5,
+            linear1,
             device: device.clone(),
         }
     }
@@ -109,27 +150,55 @@ impl Submodule1 {
         &self,
         audio_signal: Tensor<3>,
         length: Tensor<1, Int>,
-    ) -> (Tensor<4>, Tensor<1>) {
-        let transpose1_out1 = audio_signal.permute([0, 2, 1]);
-        let unsqueeze1_out1: Tensor<4> = transpose1_out1.unsqueeze_dims::<4>(&[1]);
-        let cast1_out1 = length.float().cast(burn::tensor::DType::F32);
-        let cast2_out1 = cast1_out1.clone().int().cast(burn::tensor::DType::I64);
-        let shape1_out1: [i64; 4] = {
-            let axes = &unsqueeze1_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
+    ) -> (
+        Tensor<1, Int>,
+        Tensor<1, Int>,
+        i64,
+        [i64; 1],
+        Tensor<1>,
+        Tensor<3>,
+        Tensor<1, Int>,
+    ) {
+        let shape1_out1: [i64; 1] = {
+            let axes = &audio_signal.clone().dims()[2..3];
+            let mut output = [0i64; 1];
+            for i in 0..1 {
                 output[i] = axes[i] as i64;
             }
             output
         };
-        let gather1_out1 = shape1_out1[0] as i64;
-        let gather2_out1 = shape1_out1[2] as i64;
-        let gather3_out1 = shape1_out1[3] as i64;
+        let squeeze1_out1 = shape1_out1[0] as i64;
+        let constant480_out1 = 2i64;
+        let div1_out1 = squeeze1_out1 / constant480_out1;
+        let constant303_out1 = 1i64;
+        let add1_out1 = constant303_out1 + div1_out1;
+        let div2_out1 = add1_out1 / constant480_out1;
+        let add2_out1 = constant303_out1 + div2_out1;
+        let div3_out1 = add2_out1 / constant480_out1;
+        let add3_out1 = constant303_out1 + div3_out1;
+        let constant511_out1 = -1i64;
+        let mul1_out1 = constant480_out1 * constant511_out1;
+        let mul2_out1 = add3_out1 * constant511_out1;
+        let max1_out1 = mul1_out1.max(mul2_out1);
+        let mul3_out1 = max1_out1 * constant511_out1;
+        let constant481_out1 = -1i64;
+        let mul4_out1 = constant481_out1 * mul3_out1;
+        let add4_out1 = constant303_out1 + mul4_out1;
+        let add5_out1 = add4_out1 + div3_out1;
+        let constant302_out1 = self.constant302.val();
+        let max2_out1 = constant302_out1.clamp_min(add5_out1);
+        let mul5_out1 = constant480_out1 * max2_out1.clone();
+        let constant483_out1 = self.constant483.val();
+        let add6_out1 = constant483_out1.add(mul5_out1);
+        let transpose1_out1 = audio_signal.permute([0, 2, 1]);
+        let unsqueeze1_out1: Tensor<4> = transpose1_out1.unsqueeze_dims::<4>(&[1]);
+        let cast1_out1 = length.float().cast(burn::tensor::DType::F32);
+        let cast2_out1 = cast1_out1.clone().int().cast(burn::tensor::DType::I64);
         let range1_out1 = {
             let start = 0i64;
             let delta = 1i64;
             assert!(delta != 0);
-            let n = (((gather2_out1 as i128 - start as i128) as f64) / delta as f64)
+            let n = (((squeeze1_out1 as i128 - start as i128) as f64) / delta as f64)
                 .ceil()
                 .max(0.0) as i64;
             Tensor::arange(0..n, &self.device)
@@ -137,29 +206,13 @@ impl Submodule1 {
                 .mul_scalar(delta)
                 .add_scalar(start)
         };
-        let unsqueeze2_out1 = [gather1_out1 as i64];
-        let unsqueeze3_out1 = [gather2_out1 as i64];
-        let concat1_out1: [i64; 2usize] = [&unsqueeze2_out1[..], &unsqueeze3_out1[..]]
+        let constant310_out1: [i64; 1] = [1i64];
+        let concat1_out1: [i64; 2usize] = [&constant310_out1[..], &shape1_out1[..]]
             .concat()
             .try_into()
             .unwrap();
-        let reshape1_out1 = concat1_out1;
-        let constant509_out1 = -1i64;
-        let mul2_out1 = {
-            let mut result = reshape1_out1;
-            let scalar = constant509_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max1_out1 = {
-            let __lhs = reshape1_out1;
-            let __rhs = mul2_out1;
-            core::array::from_fn::<i64, 2usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
         let expand1_out1 = {
-            let onnx_shape: [i64; 2usize] = max1_out1;
+            let onnx_shape: [i64; 2usize] = concat1_out1;
             let input_dims = range1_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
@@ -171,38 +224,21 @@ impl Submodule1 {
             }
             range1_out1.expand(shape)
         };
-        let unsqueeze4_out1: Tensor<2, Int> = cast2_out1.unsqueeze_dims::<2>(&[1]);
-        let less1_out1 = expand1_out1.lower(unsqueeze4_out1);
-        let unsqueeze5_out1: Tensor<3, Bool> = less1_out1.unsqueeze_dims::<3>(&[-1]);
-        let unsqueeze6_out1 = [gather1_out1 as i64];
-        let unsqueeze7_out1 = [gather2_out1 as i64];
-        let unsqueeze8_out1 = [gather3_out1 as i64];
+        let unsqueeze2_out1: Tensor<2, Int> = cast2_out1.unsqueeze_dims::<2>(&[1]);
+        let less1_out1 = expand1_out1.lower(unsqueeze2_out1);
+        let unsqueeze3_out1: Tensor<3, Bool> = less1_out1.unsqueeze_dims::<3>(&[-1]);
+        let constant484_out1: [i64; 1] = [128i64];
         let concat2_out1: [i64; 3usize] = [
-            &unsqueeze6_out1[..],
-            &unsqueeze7_out1[..],
-            &unsqueeze8_out1[..],
+            &constant310_out1[..],
+            &shape1_out1[..],
+            &constant484_out1[..],
         ]
             .concat()
             .try_into()
             .unwrap();
-        let reshape2_out1 = concat2_out1;
-        let constant517_out1 = -1i64;
-        let mul4_out1 = {
-            let mut result = reshape2_out1;
-            let scalar = constant517_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max2_out1 = {
-            let __lhs = reshape2_out1;
-            let __rhs = mul4_out1;
-            core::array::from_fn::<i64, 3usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
         let expand2_out1 = {
-            let onnx_shape: [i64; 3usize] = max2_out1;
-            let input_dims = unsqueeze5_out1.dims();
+            let onnx_shape: [i64; 3usize] = concat2_out1;
+            let input_dims = unsqueeze3_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
             for i in 0..3usize {
@@ -211,88 +247,27 @@ impl Submodule1 {
                     shape[dim_offset] = input_dims[i] as i64;
                 }
             }
-            unsqueeze5_out1.expand(shape)
+            unsqueeze3_out1.expand(shape)
         };
-        let cast4_out1 = expand2_out1.float().cast(burn::tensor::DType::F32);
-        let gather4_out1 = shape1_out1[1] as i64;
-        let unsqueeze9_out1: Tensor<4> = cast4_out1.unsqueeze_dims::<4>(&[1]);
-        let unsqueeze10_out1 = [gather1_out1 as i64];
-        let unsqueeze11_out1 = [gather4_out1 as i64];
-        let unsqueeze12_out1 = [gather2_out1 as i64];
-        let unsqueeze13_out1 = [gather3_out1 as i64];
-        let concat3_out1: [i64; 4usize] = [
-            &unsqueeze10_out1[..],
-            &unsqueeze11_out1[..],
-            &unsqueeze12_out1[..],
-            &unsqueeze13_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape3_out1 = concat3_out1;
-        let constant526_out1 = -1i64;
-        let mul6_out1 = {
-            let mut result = reshape3_out1;
-            let scalar = constant526_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max3_out1 = {
-            let __lhs = reshape3_out1;
-            let __rhs = mul6_out1;
-            core::array::from_fn::<i64, 4usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand3_out1 = {
-            let onnx_shape: [i64; 4usize] = max3_out1;
-            let input_dims = unsqueeze9_out1.dims();
-            let mut shape = onnx_shape;
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..4usize {
-                let dim_offset = i;
-                if shape[dim_offset] == 1 && input_dims[i] > 1 {
-                    shape[dim_offset] = input_dims[i] as i64;
-                }
-            }
-            unsqueeze9_out1.expand(shape)
-        };
-        let mul7_out1 = unsqueeze1_out1.mul(expand3_out1);
-        let pad1_out1 = mul7_out1
-            .pad(
-                [(0usize, 0usize), (0usize, 0usize), (2usize, 1usize), (2usize, 1usize)],
-                burn::tensor::ops::PadMode::Constant(0f32),
-            );
-        let conv2d1_out1 = self.conv2d1.forward(pad1_out1);
-        let constant535_out1 = self.constant535.val();
-        let add1_out1 = cast1_out1.add(constant535_out1);
-        let constant536_out1 = self.constant536.val();
-        let add2_out1 = add1_out1.add(constant536_out1);
-        let constant537_out1 = self.constant537.val();
-        let sub1_out1 = add2_out1.sub(constant537_out1);
-        let constant538_out1 = self.constant538.val();
-        let div1_out1 = sub1_out1.div(constant538_out1);
-        let cast6_out1 = div1_out1.int().cast(burn::tensor::DType::I64);
-        let cast7_out1 = cast6_out1.float().cast(burn::tensor::DType::F32);
-        let constant539_out1 = self.constant539.val();
-        let add3_out1 = cast7_out1.add(constant539_out1);
-        let cast8_out1 = add3_out1.clone().int().cast(burn::tensor::DType::I64);
-        let shape8_out1: [i64; 4] = {
-            let axes = &conv2d1_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather5_out1 = shape8_out1[0] as i64;
-        let gather6_out1 = shape8_out1[2] as i64;
-        let gather7_out1 = shape8_out1[3] as i64;
+        let cast3_out1 = expand2_out1.float().cast(burn::tensor::DType::F32);
+        let unsqueeze4_out1: Tensor<4> = cast3_out1.unsqueeze_dims::<4>(&[1]);
+        let mul6_out1 = unsqueeze1_out1.mul(unsqueeze4_out1);
+        let conv2d1_out1 = self.conv2d1.forward(mul6_out1);
+        let constant304_out1 = self.constant304.val();
+        let add7_out1 = cast1_out1.add(constant304_out1.clone());
+        let constant305_out1 = self.constant305.val();
+        let add8_out1 = add7_out1.add(constant305_out1.clone());
+        let constant306_out1 = self.constant306.val();
+        let sub1_out1 = add8_out1.sub(constant306_out1.clone());
+        let div4_out1 = sub1_out1.div(constant304_out1.clone());
+        let floor1_out1 = div4_out1.floor();
+        let add9_out1 = floor1_out1.add(constant305_out1.clone());
+        let cast4_out1 = add9_out1.clone().int().cast(burn::tensor::DType::I64);
         let range2_out1 = {
             let start = 0i64;
             let delta = 1i64;
             assert!(delta != 0);
-            let n = (((gather6_out1 as i128 - start as i128) as f64) / delta as f64)
+            let n = (((add1_out1 as i128 - start as i128) as f64) / delta as f64)
                 .ceil()
                 .max(0.0) as i64;
             Tensor::arange(0..n, &self.device)
@@ -300,29 +275,13 @@ impl Submodule1 {
                 .mul_scalar(delta)
                 .add_scalar(start)
         };
-        let unsqueeze14_out1 = [gather5_out1 as i64];
-        let unsqueeze15_out1 = [gather6_out1 as i64];
-        let concat5_out1: [i64; 2usize] = [&unsqueeze14_out1[..], &unsqueeze15_out1[..]]
+        let unsqueeze5_out1 = [add1_out1 as i64];
+        let concat3_out1: [i64; 2usize] = [&constant310_out1[..], &unsqueeze5_out1[..]]
             .concat()
             .try_into()
             .unwrap();
-        let reshape6_out1 = concat5_out1;
-        let constant549_out1 = -1i64;
-        let mul9_out1 = {
-            let mut result = reshape6_out1;
-            let scalar = constant549_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max4_out1 = {
-            let __lhs = reshape6_out1;
-            let __rhs = mul9_out1;
-            core::array::from_fn::<i64, 2usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand4_out1 = {
-            let onnx_shape: [i64; 2usize] = max4_out1;
+        let expand3_out1 = {
+            let onnx_shape: [i64; 2usize] = concat3_out1;
             let input_dims = range2_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
@@ -334,38 +293,21 @@ impl Submodule1 {
             }
             range2_out1.expand(shape)
         };
-        let unsqueeze16_out1: Tensor<2, Int> = cast8_out1.unsqueeze_dims::<2>(&[1]);
-        let less2_out1 = expand4_out1.lower(unsqueeze16_out1);
-        let unsqueeze17_out1: Tensor<3, Bool> = less2_out1.unsqueeze_dims::<3>(&[-1]);
-        let unsqueeze18_out1 = [gather5_out1 as i64];
-        let unsqueeze19_out1 = [gather6_out1 as i64];
-        let unsqueeze20_out1 = [gather7_out1 as i64];
-        let concat6_out1: [i64; 3usize] = [
-            &unsqueeze18_out1[..],
-            &unsqueeze19_out1[..],
-            &unsqueeze20_out1[..],
+        let unsqueeze6_out1: Tensor<2, Int> = cast4_out1.unsqueeze_dims::<2>(&[1]);
+        let less2_out1 = expand3_out1.lower(unsqueeze6_out1);
+        let unsqueeze7_out1: Tensor<3, Bool> = less2_out1.unsqueeze_dims::<3>(&[-1]);
+        let constant486_out1: [i64; 1] = [65i64];
+        let concat4_out1: [i64; 3usize] = [
+            &constant310_out1[..],
+            &unsqueeze5_out1[..],
+            &constant486_out1[..],
         ]
             .concat()
             .try_into()
             .unwrap();
-        let reshape7_out1 = concat6_out1;
-        let constant557_out1 = -1i64;
-        let mul11_out1 = {
-            let mut result = reshape7_out1;
-            let scalar = constant557_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max5_out1 = {
-            let __lhs = reshape7_out1;
-            let __rhs = mul11_out1;
-            core::array::from_fn::<i64, 3usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand5_out1 = {
-            let onnx_shape: [i64; 3usize] = max5_out1;
-            let input_dims = unsqueeze17_out1.dims();
+        let expand4_out1 = {
+            let onnx_shape: [i64; 3usize] = concat4_out1;
+            let input_dims = unsqueeze7_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
             for i in 0..3usize {
@@ -374,42 +316,23 @@ impl Submodule1 {
                     shape[dim_offset] = input_dims[i] as i64;
                 }
             }
-            unsqueeze17_out1.expand(shape)
+            unsqueeze7_out1.expand(shape)
         };
-        let cast10_out1 = expand5_out1.float().cast(burn::tensor::DType::F32);
-        let gather8_out1 = shape8_out1[1] as i64;
-        let unsqueeze21_out1: Tensor<4> = cast10_out1.unsqueeze_dims::<4>(&[1]);
-        let unsqueeze22_out1 = [gather5_out1 as i64];
-        let unsqueeze23_out1 = [gather8_out1 as i64];
-        let unsqueeze24_out1 = [gather6_out1 as i64];
-        let unsqueeze25_out1 = [gather7_out1 as i64];
-        let concat7_out1: [i64; 4usize] = [
-            &unsqueeze22_out1[..],
-            &unsqueeze23_out1[..],
-            &unsqueeze24_out1[..],
-            &unsqueeze25_out1[..],
+        let cast5_out1 = expand4_out1.float().cast(burn::tensor::DType::F32);
+        let unsqueeze8_out1: Tensor<4> = cast5_out1.unsqueeze_dims::<4>(&[1]);
+        let constant487_out1: [i64; 1] = [256i64];
+        let concat5_out1: [i64; 4usize] = [
+            &constant310_out1[..],
+            &constant487_out1[..],
+            &unsqueeze5_out1[..],
+            &constant486_out1[..],
         ]
             .concat()
             .try_into()
             .unwrap();
-        let reshape8_out1 = concat7_out1;
-        let constant566_out1 = -1i64;
-        let mul13_out1 = {
-            let mut result = reshape8_out1;
-            let scalar = constant566_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max6_out1 = {
-            let __lhs = reshape8_out1;
-            let __rhs = mul13_out1;
-            core::array::from_fn::<i64, 4usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand6_out1 = {
-            let onnx_shape: [i64; 4usize] = max6_out1;
-            let input_dims = unsqueeze21_out1.clone().dims();
+        let expand5_out1 = {
+            let onnx_shape: [i64; 4usize] = concat5_out1;
+            let input_dims = unsqueeze8_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
             for i in 0..4usize {
@@ -418,208 +341,24 @@ impl Submodule1 {
                     shape[dim_offset] = input_dims[i] as i64;
                 }
             }
-            unsqueeze21_out1.clone().expand(shape)
+            unsqueeze8_out1.expand(shape)
         };
-        let mul14_out1 = conv2d1_out1.mul(expand6_out1);
-        let relu1_out1 = burn::tensor::activation::relu(mul14_out1);
-        let shape15_out1: [i64; 4] = {
-            let axes = &relu1_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather9_out1 = shape15_out1[0] as i64;
-        let gather10_out1 = shape15_out1[1] as i64;
-        let gather11_out1 = shape15_out1[2] as i64;
-        let gather12_out1 = shape15_out1[3] as i64;
-        let unsqueeze26_out1 = [gather9_out1 as i64];
-        let unsqueeze27_out1 = [gather10_out1 as i64];
-        let unsqueeze28_out1 = [gather11_out1 as i64];
-        let unsqueeze29_out1 = [gather12_out1 as i64];
-        let concat8_out1: [i64; 4usize] = [
-            &unsqueeze26_out1[..],
-            &unsqueeze27_out1[..],
-            &unsqueeze28_out1[..],
-            &unsqueeze29_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape9_out1 = concat8_out1;
-        let constant577_out1 = -1i64;
-        let mul16_out1 = {
-            let mut result = reshape9_out1;
-            let scalar = constant577_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max7_out1 = {
-            let __lhs = reshape9_out1;
-            let __rhs = mul16_out1;
-            core::array::from_fn::<i64, 4usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand7_out1 = {
-            let onnx_shape: [i64; 4usize] = max7_out1;
-            let input_dims = unsqueeze21_out1.dims();
-            let mut shape = onnx_shape;
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..4usize {
-                let dim_offset = i;
-                if shape[dim_offset] == 1 && input_dims[i] > 1 {
-                    shape[dim_offset] = input_dims[i] as i64;
-                }
-            }
-            unsqueeze21_out1.expand(shape)
-        };
-        let mul17_out1 = relu1_out1.mul(expand7_out1);
-        (mul17_out1, add3_out1)
-    }
-}
-#[derive(Module, Debug)]
-pub struct Submodule2 {
-    conv2d2: Conv2d,
-    constant586: burn::module::Param<Tensor<1>>,
-    constant587: burn::module::Param<Tensor<1>>,
-    constant588: burn::module::Param<Tensor<1>>,
-    constant589: burn::module::Param<Tensor<1>>,
-    constant590: burn::module::Param<Tensor<1>>,
-    conv2d3: Conv2d,
-    #[module(skip)]
-    device: Device,
-}
-impl Submodule2 {
-    #[allow(unused_variables)]
-    pub fn new(device: &Device) -> Self {
-        let conv2d2 = Conv2dConfig::new([256, 256], [3, 3])
-            .with_stride([2, 2])
-            .with_padding(PaddingConfig2d::Valid)
-            .with_dilation([1, 1])
-            .with_groups(256)
-            .with_bias(true)
-            .init(device);
-        let constant586: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([2f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant587: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([1f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant588: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([3f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant589: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([2f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant590: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([1f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let conv2d3 = Conv2dConfig::new([256, 256], [1, 1])
-            .with_stride([1, 1])
-            .with_padding(PaddingConfig2d::Valid)
-            .with_dilation([1, 1])
-            .with_groups(1)
-            .with_bias(true)
-            .init(device);
-        Self {
-            conv2d2,
-            constant586,
-            constant587,
-            constant588,
-            constant589,
-            constant590,
-            conv2d3,
-            device: device.clone(),
-        }
-    }
-    #[allow(clippy::let_and_return, clippy::approx_constant)]
-    pub fn forward(
-        &self,
-        mul17_out1: Tensor<4>,
-        add3_out1: Tensor<1>,
-    ) -> (Tensor<4>, Tensor<1>) {
-        let pad2_out1 = mul17_out1
-            .pad(
-                [(0usize, 0usize), (0usize, 0usize), (2usize, 1usize), (2usize, 1usize)],
-                burn::tensor::ops::PadMode::Constant(0f32),
-            );
-        let conv2d2_out1 = self.conv2d2.forward(pad2_out1);
-        let constant586_out1 = self.constant586.val();
-        let add4_out1 = add3_out1.add(constant586_out1);
-        let constant587_out1 = self.constant587.val();
-        let add5_out1 = add4_out1.add(constant587_out1);
-        let constant588_out1 = self.constant588.val();
-        let sub2_out1 = add5_out1.sub(constant588_out1);
-        let constant589_out1 = self.constant589.val();
-        let div2_out1 = sub2_out1.div(constant589_out1);
-        let cast12_out1 = div2_out1.int().cast(burn::tensor::DType::I64);
-        let cast13_out1 = cast12_out1.float().cast(burn::tensor::DType::F32);
-        let constant590_out1 = self.constant590.val();
-        let add6_out1 = cast13_out1.add(constant590_out1);
-        let cast14_out1 = add6_out1.clone().int().cast(burn::tensor::DType::I64);
-        let shape20_out1: [i64; 4] = {
-            let axes = &conv2d2_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather13_out1 = shape20_out1[0] as i64;
-        let gather14_out1 = shape20_out1[2] as i64;
-        let gather15_out1 = shape20_out1[3] as i64;
+        let mul7_out1 = conv2d1_out1.mul(expand5_out1.clone());
+        let relu1_out1 = burn::tensor::activation::relu(mul7_out1);
+        let mul8_out1 = relu1_out1.mul(expand5_out1);
+        let conv2d2_out1 = self.conv2d2.forward(mul8_out1);
+        let add10_out1 = add9_out1.add(constant304_out1.clone());
+        let add11_out1 = add10_out1.add(constant305_out1.clone());
+        let sub2_out1 = add11_out1.sub(constant306_out1.clone());
+        let div5_out1 = sub2_out1.div(constant304_out1.clone());
+        let floor2_out1 = div5_out1.floor();
+        let add12_out1 = floor2_out1.add(constant305_out1.clone());
+        let cast6_out1 = add12_out1.clone().int().cast(burn::tensor::DType::I64);
         let range3_out1 = {
             let start = 0i64;
             let delta = 1i64;
             assert!(delta != 0);
-            let n = (((gather14_out1 as i128 - start as i128) as f64) / delta as f64)
+            let n = (((add2_out1 as i128 - start as i128) as f64) / delta as f64)
                 .ceil()
                 .max(0.0) as i64;
             Tensor::arange(0..n, &self.device)
@@ -627,29 +366,13 @@ impl Submodule2 {
                 .mul_scalar(delta)
                 .add_scalar(start)
         };
-        let unsqueeze30_out1 = [gather13_out1 as i64];
-        let unsqueeze31_out1 = [gather14_out1 as i64];
-        let concat10_out1: [i64; 2usize] = [&unsqueeze30_out1[..], &unsqueeze31_out1[..]]
+        let unsqueeze9_out1 = [add2_out1 as i64];
+        let concat6_out1: [i64; 2usize] = [&constant310_out1[..], &unsqueeze9_out1[..]]
             .concat()
             .try_into()
             .unwrap();
-        let reshape12_out1 = concat10_out1;
-        let constant600_out1 = -1i64;
-        let mul19_out1 = {
-            let mut result = reshape12_out1;
-            let scalar = constant600_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max8_out1 = {
-            let __lhs = reshape12_out1;
-            let __rhs = mul19_out1;
-            core::array::from_fn::<i64, 2usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand8_out1 = {
-            let onnx_shape: [i64; 2usize] = max8_out1;
+        let expand6_out1 = {
+            let onnx_shape: [i64; 2usize] = concat6_out1;
             let input_dims = range3_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
@@ -661,38 +384,21 @@ impl Submodule2 {
             }
             range3_out1.expand(shape)
         };
-        let unsqueeze32_out1: Tensor<2, Int> = cast14_out1.unsqueeze_dims::<2>(&[1]);
-        let less3_out1 = expand8_out1.lower(unsqueeze32_out1);
-        let unsqueeze33_out1: Tensor<3, Bool> = less3_out1.unsqueeze_dims::<3>(&[-1]);
-        let unsqueeze34_out1 = [gather13_out1 as i64];
-        let unsqueeze35_out1 = [gather14_out1 as i64];
-        let unsqueeze36_out1 = [gather15_out1 as i64];
-        let concat11_out1: [i64; 3usize] = [
-            &unsqueeze34_out1[..],
-            &unsqueeze35_out1[..],
-            &unsqueeze36_out1[..],
+        let unsqueeze10_out1: Tensor<2, Int> = cast6_out1.unsqueeze_dims::<2>(&[1]);
+        let less3_out1 = expand6_out1.lower(unsqueeze10_out1);
+        let unsqueeze11_out1: Tensor<3, Bool> = less3_out1.unsqueeze_dims::<3>(&[-1]);
+        let constant488_out1: [i64; 1] = [33i64];
+        let concat7_out1: [i64; 3usize] = [
+            &constant310_out1[..],
+            &unsqueeze9_out1[..],
+            &constant488_out1[..],
         ]
             .concat()
             .try_into()
             .unwrap();
-        let reshape13_out1 = concat11_out1;
-        let constant608_out1 = -1i64;
-        let mul21_out1 = {
-            let mut result = reshape13_out1;
-            let scalar = constant608_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max9_out1 = {
-            let __lhs = reshape13_out1;
-            let __rhs = mul21_out1;
-            core::array::from_fn::<i64, 3usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand9_out1 = {
-            let onnx_shape: [i64; 3usize] = max9_out1;
-            let input_dims = unsqueeze33_out1.dims();
+        let expand7_out1 = {
+            let onnx_shape: [i64; 3usize] = concat7_out1;
+            let input_dims = unsqueeze11_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
             for i in 0..3usize {
@@ -701,42 +407,22 @@ impl Submodule2 {
                     shape[dim_offset] = input_dims[i] as i64;
                 }
             }
-            unsqueeze33_out1.expand(shape)
+            unsqueeze11_out1.expand(shape)
         };
-        let cast16_out1 = expand9_out1.float().cast(burn::tensor::DType::F32);
-        let gather16_out1 = shape20_out1[1] as i64;
-        let unsqueeze37_out1: Tensor<4> = cast16_out1.unsqueeze_dims::<4>(&[1]);
-        let unsqueeze38_out1 = [gather13_out1 as i64];
-        let unsqueeze39_out1 = [gather16_out1 as i64];
-        let unsqueeze40_out1 = [gather14_out1 as i64];
-        let unsqueeze41_out1 = [gather15_out1 as i64];
-        let concat12_out1: [i64; 4usize] = [
-            &unsqueeze38_out1[..],
-            &unsqueeze39_out1[..],
-            &unsqueeze40_out1[..],
-            &unsqueeze41_out1[..],
+        let cast7_out1 = expand7_out1.float().cast(burn::tensor::DType::F32);
+        let unsqueeze12_out1: Tensor<4> = cast7_out1.unsqueeze_dims::<4>(&[1]);
+        let concat8_out1: [i64; 4usize] = [
+            &constant310_out1[..],
+            &constant487_out1[..],
+            &unsqueeze9_out1[..],
+            &constant488_out1[..],
         ]
             .concat()
             .try_into()
             .unwrap();
-        let reshape14_out1 = concat12_out1;
-        let constant617_out1 = -1i64;
-        let mul23_out1 = {
-            let mut result = reshape14_out1;
-            let scalar = constant617_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max10_out1 = {
-            let __lhs = reshape14_out1;
-            let __rhs = mul23_out1;
-            core::array::from_fn::<i64, 4usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand10_out1 = {
-            let onnx_shape: [i64; 4usize] = max10_out1;
-            let input_dims = unsqueeze37_out1.clone().dims();
+        let expand8_out1 = {
+            let onnx_shape: [i64; 4usize] = concat8_out1;
+            let input_dims = unsqueeze12_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
             for i in 0..4usize {
@@ -745,263 +431,26 @@ impl Submodule2 {
                     shape[dim_offset] = input_dims[i] as i64;
                 }
             }
-            unsqueeze37_out1.clone().expand(shape)
+            unsqueeze12_out1.expand(shape)
         };
-        let mul24_out1 = conv2d2_out1.mul(expand10_out1);
-        let conv2d3_out1 = self.conv2d3.forward(mul24_out1);
-        let shape27_out1: [i64; 4] = {
-            let axes = &conv2d3_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather17_out1 = shape27_out1[0] as i64;
-        let gather18_out1 = shape27_out1[1] as i64;
-        let gather19_out1 = shape27_out1[2] as i64;
-        let gather20_out1 = shape27_out1[3] as i64;
-        let unsqueeze42_out1 = [gather17_out1 as i64];
-        let unsqueeze43_out1 = [gather18_out1 as i64];
-        let unsqueeze44_out1 = [gather19_out1 as i64];
-        let unsqueeze45_out1 = [gather20_out1 as i64];
-        let concat13_out1: [i64; 4usize] = [
-            &unsqueeze42_out1[..],
-            &unsqueeze43_out1[..],
-            &unsqueeze44_out1[..],
-            &unsqueeze45_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape15_out1 = concat13_out1;
-        let constant628_out1 = -1i64;
-        let mul26_out1 = {
-            let mut result = reshape15_out1;
-            let scalar = constant628_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max11_out1 = {
-            let __lhs = reshape15_out1;
-            let __rhs = mul26_out1;
-            core::array::from_fn::<i64, 4usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand11_out1 = {
-            let onnx_shape: [i64; 4usize] = max11_out1;
-            let input_dims = unsqueeze37_out1.clone().dims();
-            let mut shape = onnx_shape;
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..4usize {
-                let dim_offset = i;
-                if shape[dim_offset] == 1 && input_dims[i] > 1 {
-                    shape[dim_offset] = input_dims[i] as i64;
-                }
-            }
-            unsqueeze37_out1.clone().expand(shape)
-        };
-        let mul27_out1 = conv2d3_out1.mul(expand11_out1);
-        let relu2_out1 = burn::tensor::activation::relu(mul27_out1);
-        let shape32_out1: [i64; 4] = {
-            let axes = &relu2_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather21_out1 = shape32_out1[0] as i64;
-        let gather22_out1 = shape32_out1[1] as i64;
-        let gather23_out1 = shape32_out1[2] as i64;
-        let gather24_out1 = shape32_out1[3] as i64;
-        let unsqueeze46_out1 = [gather21_out1 as i64];
-        let unsqueeze47_out1 = [gather22_out1 as i64];
-        let unsqueeze48_out1 = [gather23_out1 as i64];
-        let unsqueeze49_out1 = [gather24_out1 as i64];
-        let concat14_out1: [i64; 4usize] = [
-            &unsqueeze46_out1[..],
-            &unsqueeze47_out1[..],
-            &unsqueeze48_out1[..],
-            &unsqueeze49_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape16_out1 = concat14_out1;
-        let constant639_out1 = -1i64;
-        let mul29_out1 = {
-            let mut result = reshape16_out1;
-            let scalar = constant639_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max12_out1 = {
-            let __lhs = reshape16_out1;
-            let __rhs = mul29_out1;
-            core::array::from_fn::<i64, 4usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand12_out1 = {
-            let onnx_shape: [i64; 4usize] = max12_out1;
-            let input_dims = unsqueeze37_out1.dims();
-            let mut shape = onnx_shape;
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..4usize {
-                let dim_offset = i;
-                if shape[dim_offset] == 1 && input_dims[i] > 1 {
-                    shape[dim_offset] = input_dims[i] as i64;
-                }
-            }
-            unsqueeze37_out1.expand(shape)
-        };
-        let mul30_out1 = relu2_out1.mul(expand12_out1);
-        (mul30_out1, add6_out1)
-    }
-}
-#[derive(Module, Debug)]
-pub struct Submodule3 {
-    conv2d4: Conv2d,
-    constant648: burn::module::Param<Tensor<1>>,
-    constant649: burn::module::Param<Tensor<1>>,
-    constant650: burn::module::Param<Tensor<1>>,
-    constant651: burn::module::Param<Tensor<1>>,
-    constant652: burn::module::Param<Tensor<1>>,
-    conv2d5: Conv2d,
-    #[module(skip)]
-    device: Device,
-}
-impl Submodule3 {
-    #[allow(unused_variables)]
-    pub fn new(device: &Device) -> Self {
-        let conv2d4 = Conv2dConfig::new([256, 256], [3, 3])
-            .with_stride([2, 2])
-            .with_padding(PaddingConfig2d::Valid)
-            .with_dilation([1, 1])
-            .with_groups(256)
-            .with_bias(true)
-            .init(device);
-        let constant648: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([2f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant649: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([1f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant650: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([3f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant651: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([2f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant652: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([1f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let conv2d5 = Conv2dConfig::new([256, 256], [1, 1])
-            .with_stride([1, 1])
-            .with_padding(PaddingConfig2d::Valid)
-            .with_dilation([1, 1])
-            .with_groups(1)
-            .with_bias(true)
-            .init(device);
-        Self {
-            conv2d4,
-            constant648,
-            constant649,
-            constant650,
-            constant651,
-            constant652,
-            conv2d5,
-            device: device.clone(),
-        }
-    }
-    #[allow(clippy::let_and_return, clippy::approx_constant)]
-    pub fn forward(
-        &self,
-        mul30_out1: Tensor<4>,
-        add6_out1: Tensor<1>,
-    ) -> (Tensor<4>, Tensor<1, Int>) {
-        let pad3_out1 = mul30_out1
-            .pad(
-                [(0usize, 0usize), (0usize, 0usize), (2usize, 1usize), (2usize, 1usize)],
-                burn::tensor::ops::PadMode::Constant(0f32),
-            );
-        let conv2d4_out1 = self.conv2d4.forward(pad3_out1);
-        let constant648_out1 = self.constant648.val();
-        let add7_out1 = add6_out1.add(constant648_out1);
-        let constant649_out1 = self.constant649.val();
-        let add8_out1 = add7_out1.add(constant649_out1);
-        let constant650_out1 = self.constant650.val();
-        let sub3_out1 = add8_out1.sub(constant650_out1);
-        let constant651_out1 = self.constant651.val();
-        let div3_out1 = sub3_out1.div(constant651_out1);
-        let cast18_out1 = div3_out1.int().cast(burn::tensor::DType::I64);
-        let cast19_out1 = cast18_out1.float().cast(burn::tensor::DType::F32);
-        let constant652_out1 = self.constant652.val();
-        let add9_out1 = cast19_out1.add(constant652_out1);
-        let cast20_out1 = add9_out1.int().cast(burn::tensor::DType::I64);
-        let shape37_out1: [i64; 4] = {
-            let axes = &conv2d4_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather25_out1 = shape37_out1[0] as i64;
-        let gather26_out1 = shape37_out1[2] as i64;
-        let gather27_out1 = shape37_out1[3] as i64;
+        let mul9_out1 = conv2d2_out1.mul(expand8_out1.clone());
+        let conv2d3_out1 = self.conv2d3.forward(mul9_out1);
+        let mul10_out1 = conv2d3_out1.mul(expand8_out1.clone());
+        let relu2_out1 = burn::tensor::activation::relu(mul10_out1);
+        let mul11_out1 = relu2_out1.mul(expand8_out1);
+        let conv2d4_out1 = self.conv2d4.forward(mul11_out1);
+        let add13_out1 = add12_out1.add(constant304_out1.clone());
+        let add14_out1 = add13_out1.add(constant305_out1.clone());
+        let sub3_out1 = add14_out1.sub(constant306_out1);
+        let div6_out1 = sub3_out1.div(constant304_out1.clone());
+        let floor3_out1 = div6_out1.floor();
+        let add15_out1 = floor3_out1.add(constant305_out1);
+        let cast8_out1 = add15_out1.int().cast(burn::tensor::DType::I64);
         let range4_out1 = {
             let start = 0i64;
             let delta = 1i64;
             assert!(delta != 0);
-            let n = (((gather26_out1 as i128 - start as i128) as f64) / delta as f64)
+            let n = (((add3_out1 as i128 - start as i128) as f64) / delta as f64)
                 .ceil()
                 .max(0.0) as i64;
             Tensor::arange(0..n, &self.device)
@@ -1009,29 +458,13 @@ impl Submodule3 {
                 .mul_scalar(delta)
                 .add_scalar(start)
         };
-        let unsqueeze50_out1 = [gather25_out1 as i64];
-        let unsqueeze51_out1 = [gather26_out1 as i64];
-        let concat16_out1: [i64; 2usize] = [&unsqueeze50_out1[..], &unsqueeze51_out1[..]]
+        let unsqueeze13_out1 = [add3_out1 as i64];
+        let concat9_out1: [i64; 2usize] = [&constant310_out1[..], &unsqueeze13_out1[..]]
             .concat()
             .try_into()
             .unwrap();
-        let reshape19_out1 = concat16_out1;
-        let constant662_out1 = -1i64;
-        let mul32_out1 = {
-            let mut result = reshape19_out1;
-            let scalar = constant662_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max13_out1 = {
-            let __lhs = reshape19_out1;
-            let __rhs = mul32_out1;
-            core::array::from_fn::<i64, 2usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand13_out1 = {
-            let onnx_shape: [i64; 2usize] = max13_out1;
+        let expand9_out1 = {
+            let onnx_shape: [i64; 2usize] = concat9_out1;
             let input_dims = range4_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
@@ -1043,40 +476,23 @@ impl Submodule3 {
             }
             range4_out1.expand(shape)
         };
-        let unsqueeze52_out1: Tensor<2, Int> = cast20_out1
+        let unsqueeze14_out1: Tensor<2, Int> = cast8_out1
             .clone()
             .unsqueeze_dims::<2>(&[1]);
-        let less4_out1 = expand13_out1.lower(unsqueeze52_out1);
-        let unsqueeze53_out1: Tensor<3, Bool> = less4_out1.unsqueeze_dims::<3>(&[-1]);
-        let unsqueeze54_out1 = [gather25_out1 as i64];
-        let unsqueeze55_out1 = [gather26_out1 as i64];
-        let unsqueeze56_out1 = [gather27_out1 as i64];
-        let concat17_out1: [i64; 3usize] = [
-            &unsqueeze54_out1[..],
-            &unsqueeze55_out1[..],
-            &unsqueeze56_out1[..],
+        let less4_out1 = expand9_out1.lower(unsqueeze14_out1);
+        let unsqueeze15_out1: Tensor<3, Bool> = less4_out1.unsqueeze_dims::<3>(&[-1]);
+        let constant489_out1: [i64; 1] = [17i64];
+        let concat10_out1: [i64; 3usize] = [
+            &constant310_out1[..],
+            &unsqueeze13_out1[..],
+            &constant489_out1[..],
         ]
             .concat()
             .try_into()
             .unwrap();
-        let reshape20_out1 = concat17_out1;
-        let constant670_out1 = -1i64;
-        let mul34_out1 = {
-            let mut result = reshape20_out1;
-            let scalar = constant670_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max14_out1 = {
-            let __lhs = reshape20_out1;
-            let __rhs = mul34_out1;
-            core::array::from_fn::<i64, 3usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand14_out1 = {
-            let onnx_shape: [i64; 3usize] = max14_out1;
-            let input_dims = unsqueeze53_out1.dims();
+        let expand10_out1 = {
+            let onnx_shape: [i64; 3usize] = concat10_out1;
+            let input_dims = unsqueeze15_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
             for i in 0..3usize {
@@ -1085,42 +501,22 @@ impl Submodule3 {
                     shape[dim_offset] = input_dims[i] as i64;
                 }
             }
-            unsqueeze53_out1.expand(shape)
+            unsqueeze15_out1.expand(shape)
         };
-        let cast22_out1 = expand14_out1.float().cast(burn::tensor::DType::F32);
-        let gather28_out1 = shape37_out1[1] as i64;
-        let unsqueeze57_out1: Tensor<4> = cast22_out1.unsqueeze_dims::<4>(&[1]);
-        let unsqueeze58_out1 = [gather25_out1 as i64];
-        let unsqueeze59_out1 = [gather28_out1 as i64];
-        let unsqueeze60_out1 = [gather26_out1 as i64];
-        let unsqueeze61_out1 = [gather27_out1 as i64];
-        let concat18_out1: [i64; 4usize] = [
-            &unsqueeze58_out1[..],
-            &unsqueeze59_out1[..],
-            &unsqueeze60_out1[..],
-            &unsqueeze61_out1[..],
+        let cast9_out1 = expand10_out1.float().cast(burn::tensor::DType::F32);
+        let unsqueeze16_out1: Tensor<4> = cast9_out1.unsqueeze_dims::<4>(&[1]);
+        let concat11_out1: [i64; 4usize] = [
+            &constant310_out1[..],
+            &constant487_out1[..],
+            &unsqueeze13_out1[..],
+            &constant489_out1[..],
         ]
             .concat()
             .try_into()
             .unwrap();
-        let reshape21_out1 = concat18_out1;
-        let constant679_out1 = -1i64;
-        let mul36_out1 = {
-            let mut result = reshape21_out1;
-            let scalar = constant679_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max15_out1 = {
-            let __lhs = reshape21_out1;
-            let __rhs = mul36_out1;
-            core::array::from_fn::<i64, 4usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand15_out1 = {
-            let onnx_shape: [i64; 4usize] = max15_out1;
-            let input_dims = unsqueeze57_out1.clone().dims();
+        let expand11_out1 = {
+            let onnx_shape: [i64; 4usize] = concat11_out1;
+            let input_dims = unsqueeze16_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
             for i in 0..4usize {
@@ -1129,151 +525,45 @@ impl Submodule3 {
                     shape[dim_offset] = input_dims[i] as i64;
                 }
             }
-            unsqueeze57_out1.clone().expand(shape)
+            unsqueeze16_out1.expand(shape)
         };
-        let mul37_out1 = conv2d4_out1.mul(expand15_out1);
-        let conv2d5_out1 = self.conv2d5.forward(mul37_out1);
-        let shape44_out1: [i64; 4] = {
-            let axes = &conv2d5_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather29_out1 = shape44_out1[0] as i64;
-        let gather30_out1 = shape44_out1[1] as i64;
-        let gather31_out1 = shape44_out1[2] as i64;
-        let gather32_out1 = shape44_out1[3] as i64;
-        let unsqueeze62_out1 = [gather29_out1 as i64];
-        let unsqueeze63_out1 = [gather30_out1 as i64];
-        let unsqueeze64_out1 = [gather31_out1 as i64];
-        let unsqueeze65_out1 = [gather32_out1 as i64];
-        let concat19_out1: [i64; 4usize] = [
-            &unsqueeze62_out1[..],
-            &unsqueeze63_out1[..],
-            &unsqueeze64_out1[..],
-            &unsqueeze65_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape22_out1 = concat19_out1;
-        let constant690_out1 = -1i64;
-        let mul39_out1 = {
-            let mut result = reshape22_out1;
-            let scalar = constant690_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max16_out1 = {
-            let __lhs = reshape22_out1;
-            let __rhs = mul39_out1;
-            core::array::from_fn::<i64, 4usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand16_out1 = {
-            let onnx_shape: [i64; 4usize] = max16_out1;
-            let input_dims = unsqueeze57_out1.clone().dims();
-            let mut shape = onnx_shape;
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..4usize {
-                let dim_offset = i;
-                if shape[dim_offset] == 1 && input_dims[i] > 1 {
-                    shape[dim_offset] = input_dims[i] as i64;
-                }
-            }
-            unsqueeze57_out1.clone().expand(shape)
-        };
-        let mul40_out1 = conv2d5_out1.mul(expand16_out1);
-        let relu3_out1 = burn::tensor::activation::relu(mul40_out1);
-        let shape49_out1: [i64; 4] = {
-            let axes = &relu3_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather33_out1 = shape49_out1[0] as i64;
-        let gather34_out1 = shape49_out1[1] as i64;
-        let gather35_out1 = shape49_out1[2] as i64;
-        let gather36_out1 = shape49_out1[3] as i64;
-        let unsqueeze66_out1 = [gather33_out1 as i64];
-        let unsqueeze67_out1 = [gather34_out1 as i64];
-        let unsqueeze68_out1 = [gather35_out1 as i64];
-        let unsqueeze69_out1 = [gather36_out1 as i64];
-        let concat20_out1: [i64; 4usize] = [
-            &unsqueeze66_out1[..],
-            &unsqueeze67_out1[..],
-            &unsqueeze68_out1[..],
-            &unsqueeze69_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape23_out1 = concat20_out1;
-        let constant701_out1 = -1i64;
-        let mul42_out1 = {
-            let mut result = reshape23_out1;
-            let scalar = constant701_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max17_out1 = {
-            let __lhs = reshape23_out1;
-            let __rhs = mul42_out1;
-            core::array::from_fn::<i64, 4usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand17_out1 = {
-            let onnx_shape: [i64; 4usize] = max17_out1;
-            let input_dims = unsqueeze57_out1.dims();
-            let mut shape = onnx_shape;
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..4usize {
-                let dim_offset = i;
-                if shape[dim_offset] == 1 && input_dims[i] > 1 {
-                    shape[dim_offset] = input_dims[i] as i64;
-                }
-            }
-            unsqueeze57_out1.expand(shape)
-        };
-        let mul43_out1 = relu3_out1.mul(expand17_out1);
-        (mul43_out1, cast20_out1)
+        let mul12_out1 = conv2d4_out1.mul(expand11_out1.clone());
+        let conv2d5_out1 = self.conv2d5.forward(mul12_out1);
+        let mul13_out1 = conv2d5_out1.mul(expand11_out1.clone());
+        let relu3_out1 = burn::tensor::activation::relu(mul13_out1);
+        let mul14_out1 = relu3_out1.mul(expand11_out1);
+        let transpose2_out1 = mul14_out1.permute([0, 2, 1, 3]);
+        let reshape1_out1 = transpose2_out1.reshape([1, -1, 4352]);
+        let linear1_out1 = self.linear1.forward(reshape1_out1);
+        let slice1_out1 = linear1_out1.slice(s![.., 2.., ..]);
+        let sub4_out1 = cast8_out1.sub_scalar(constant480_out1);
+        (
+            sub4_out1,
+            max2_out1,
+            constant303_out1,
+            constant310_out1,
+            constant304_out1,
+            slice1_out1,
+            add6_out1,
+        )
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule4 {
-    linear1: Linear,
-    constant711: burn::module::Param<Tensor<1, Int>>,
-    constant715: burn::module::Param<Tensor<1, Int>>,
-    constant716: burn::module::Param<Tensor<1, Int>>,
-    constant720: burn::module::Param<Tensor<3>>,
-    constant731: burn::module::Param<Tensor<1, Int>>,
+pub struct Submodule2 {
+    constant477: burn::module::Param<Tensor<1, Int>>,
+    constant515: burn::module::Param<Tensor<1, Int>>,
+    constant491: burn::module::Param<Tensor<1, Int>>,
+    constant301: burn::module::Param<Tensor<3>>,
+    constant311: burn::module::Param<Tensor<1, Bool>>,
+    layernormalization1: LayerNorm,
+    linear2: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule4 {
+impl Submodule2 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
-        let linear1 = LinearConfig::new(4352, 512).with_bias(true).init(device);
-        let constant711: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-                Int,
-            >::from_data(
-                burn::tensor::TensorData::from([2i64]),
-                (device, burn::tensor::DType::I64),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
-        let constant715: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
+        let constant477: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 1,
@@ -1286,20 +576,33 @@ impl Submodule4 {
             false,
             [1].into(),
         );
-        let constant716: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
+        let constant515: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 1,
                 Int,
             >::from_data(
-                burn::tensor::TensorData::from([70i64]),
+                burn::tensor::TensorData::from([-1i64]),
                 (device, burn::tensor::DType::I64),
             ),
             device.clone(),
             false,
             [1].into(),
         );
-        let constant720: burn::module::Param<Tensor<3>> = burn::module::Param::uninitialized(
+        let constant491: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
+            burn::module::ParamId::new(),
+            move |device, _require_grad| Tensor::<
+                1,
+                Int,
+            >::from_data(
+                burn::tensor::TensorData::from([5000i64]),
+                (device, burn::tensor::DType::I64),
+            ),
+            device.clone(),
+            false,
+            [1].into(),
+        );
+        let constant301: burn::module::Param<Tensor<3>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 3,
@@ -1308,110 +611,105 @@ impl Submodule4 {
             false,
             [1, 9999, 512].into(),
         );
-        let constant731: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
+        let constant311: burn::module::Param<Tensor<1, Bool>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 1,
-                Int,
+                Bool,
             >::from_data(
-                burn::tensor::TensorData::from([2i64]),
-                (device, burn::tensor::DType::I32),
+                burn::tensor::TensorData::from([true]),
+                (device, burn::tensor::DType::Bool(burn::tensor::BoolStore::Native)),
             ),
             device.clone(),
             false,
             [1].into(),
         );
+        let layernormalization1 = LayerNormConfig::new(512)
+            .with_epsilon(0.000009999999747378752f64)
+            .with_bias(true)
+            .init(device);
+        let linear2 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         Self {
-            linear1,
-            constant711,
-            constant715,
-            constant716,
-            constant720,
-            constant731,
+            constant477,
+            constant515,
+            constant491,
+            constant301,
+            constant311,
+            layernormalization1,
+            linear2,
             device: device.clone(),
         }
     }
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        mul43_out1: Tensor<4>,
-        cast20_out1: Tensor<1, Int>,
+        sub4_out1: Tensor<1, Int>,
+        max2_out1: Tensor<1, Int>,
         cache_last_channel_len: Tensor<1, Int>,
-    ) -> (Tensor<3, Bool>, Tensor<2, Bool>, Tensor<3>, Tensor<3>, i64, Tensor<1, Int>) {
-        let shape54_out1: [i64; 4] = {
-            let axes = &mul43_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather37_out1 = shape54_out1[0] as i64;
-        let gather38_out1 = shape54_out1[2] as i64;
-        let transpose5_out1 = mul43_out1.permute([0, 2, 1, 3]);
-        let unsqueeze70_out1 = [gather37_out1 as i64];
-        let unsqueeze71_out1 = [gather38_out1 as i64];
-        let constant706_out1: [i64; 1] = [-1i64];
-        let concat21_out1: [i64; 3usize] = [
-            &unsqueeze70_out1[..],
-            &unsqueeze71_out1[..],
-            &constant706_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape24_out1 = transpose5_out1.reshape(concat21_out1);
-        let linear1_out1 = self.linear1.forward(reshape24_out1);
-        let slice4_out1 = linear1_out1.slice(s![.., 2.., ..]);
-        let constant711_out1 = self.constant711.val();
-        let sub4_out1 = cast20_out1.sub(constant711_out1);
+        constant303_out1: i64,
+        constant310_out1: [i64; 1],
+        constant304_out1: Tensor<1>,
+        cache_last_channel: Tensor<4>,
+        cache_last_time: Tensor<4>,
+        slice1_out1: Tensor<3>,
+    ) -> (
+        Tensor<3>,
+        Tensor<3>,
+        Tensor<3>,
+        [i64; 1],
+        Tensor<3, Bool>,
+        Tensor<2, Bool>,
+        Tensor<3>,
+        Tensor<1, Int>,
+    ) {
         let clip1_out1 = sub4_out1.clamp_min(0f64);
-        let shape56_out1: [i64; 3] = {
-            let axes = &slice4_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let constant477_out1 = self.constant477.val();
+        let add16_out1 = max2_out1.add(constant477_out1.clone());
+        let add17_out1 = clip1_out1.clone().add(constant477_out1.clone());
+        let constant515_out1 = self.constant515.val();
+        let mul15_out1 = cache_last_channel_len.mul(constant515_out1);
+        let add18_out1 = mul15_out1.add(constant477_out1);
+        let constant491_out1 = self.constant491.val();
+        let sub5_out1 = constant491_out1.clone().sub(add16_out1.clone());
+        let add19_out1 = constant491_out1.add(add16_out1.clone());
+        let sub6_out1 = add19_out1.sub_scalar(constant303_out1);
+        let unsqueeze17_out1 = {
+            let v: i64 = sub5_out1.into_scalar::<i64>();
+            [v as i64]
         };
-        let gather39_out1 = shape56_out1[1] as i64;
-        let constant714_out1 = 70i64;
-        let add10_out1 = gather39_out1 + constant714_out1;
-        let constant715_out1 = self.constant715.val();
-        let add11_out1 = clip1_out1.clone().add(constant715_out1);
-        let neg1_out1 = cache_last_channel_len.neg();
-        let constant716_out1 = self.constant716.val();
-        let add12_out1 = neg1_out1.add(constant716_out1);
-        let constant717_out1 = 5000i64;
-        let sub5_out1 = constant717_out1 - add10_out1;
-        let constant718_out1 = 5000i64;
-        let add13_out1 = constant718_out1 + add10_out1;
-        let constant719_out1 = 1i64;
-        let sub6_out1 = add13_out1 - constant719_out1;
-        let unsqueeze72_out1 = [sub5_out1 as i64];
-        let unsqueeze73_out1 = [sub6_out1 as i64];
-        let constant720_out1 = self.constant720.val();
-        let slice5_out1 = constant720_out1
-            .slice(s![.., unsqueeze72_out1[0]..unsqueeze73_out1[0], ..]);
-        let unsqueeze74_out1 = [add10_out1 as i64];
-        let unsqueeze75_out1 = [add10_out1 as i64];
-        let constant725_out1: [i64; 1] = [1i64];
-        let concat22_out1: [i64; 3usize] = [
-            &constant725_out1[..],
-            &unsqueeze74_out1[..],
-            &unsqueeze75_out1[..],
+        let unsqueeze18_out1 = {
+            let v: i64 = sub6_out1.into_scalar::<i64>();
+            [v as i64]
+        };
+        let constant301_out1 = self.constant301.val();
+        let transpose3_out1 = constant301_out1.permute([1, 0, 2]);
+        let slice2_out1 = transpose3_out1
+            .slice(s![unsqueeze17_out1[0]..unsqueeze18_out1[0], .., ..]);
+        let transpose4_out1 = slice2_out1.permute([1, 0, 2]);
+        let unsqueeze19_out1 = {
+            let v: i64 = add16_out1.clone().into_scalar::<i64>();
+            [v as i64]
+        };
+        let concat12_out1: [i64; 3usize] = [
+            &constant310_out1[..],
+            &unsqueeze19_out1[..],
+            &unsqueeze19_out1[..],
         ]
             .concat()
             .try_into()
             .unwrap();
-        let constantofshape21_out1 = Tensor::<3, Int>::ones(concat22_out1, &self.device)
-            .bool();
-        let cast24_out1 = add10_out1;
+        let constant311_out1 = self.constant311.val();
+        let expand12_out1 = {
+            let shape: [i64; 3] = concat12_out1;
+            constant311_out1.expand(shape)
+        };
+        let cast10_out1 = add16_out1.clone().cast(burn::tensor::DType::I32);
         let range5_out1 = {
             let start = 0i32;
+            let limit = (cast10_out1).into_scalar::<i32>();
             let delta = 1i32;
             assert!(delta != 0);
-            let n = (((cast24_out1 as i128 - start as i128) as f64) / delta as f64)
+            let n = (((limit as i128 - start as i128) as f64) / delta as f64)
                 .ceil()
                 .max(0.0) as i64;
             Tensor::arange(0..n, &self.device)
@@ -1419,28 +717,31 @@ impl Submodule4 {
                 .mul_scalar(delta)
                 .add_scalar(start)
         };
-        let constant731_out1 = self.constant731.val();
-        let div4_out1 = range5_out1.div(constant731_out1);
-        let cast25_out1 = div4_out1.cast(burn::tensor::DType::I64);
-        let cast26_out1 = cast25_out1.cast(burn::tensor::DType::I32);
-        let unsqueeze76_out1: Tensor<2, Int> = cast26_out1
+        let cast11_out1 = range5_out1.float().cast(burn::tensor::DType::F32);
+        let div7_out1 = cast11_out1.div(constant304_out1);
+        let abs1_out1 = div7_out1.clone().abs();
+        let floor4_out1 = abs1_out1.floor();
+        let sign1_out1 = div7_out1.sign();
+        let mul16_out1 = floor4_out1.mul(sign1_out1);
+        let cast12_out1 = mul16_out1.int().cast(burn::tensor::DType::I32);
+        let unsqueeze20_out1: Tensor<2, Int> = cast12_out1
             .clone()
             .unsqueeze_dims::<2>(&[1]);
-        let unsqueeze77_out1: Tensor<2, Int> = cast26_out1.unsqueeze_dims::<2>(&[0]);
-        let sub7_out1 = unsqueeze76_out1.sub(unsqueeze77_out1);
-        let cast27_out1 = sub7_out1.cast(burn::tensor::DType::I64);
-        let constant734_out1 = 35i64;
-        let lessorequal1_out1 = cast27_out1.clone().lower_equal_elem(constant734_out1);
-        let constant735_out1 = 0i64;
-        let greaterorequal1_out1 = cast27_out1.greater_equal_elem(constant735_out1);
+        let unsqueeze21_out1: Tensor<2, Int> = cast12_out1.unsqueeze_dims::<2>(&[0]);
+        let sub7_out1 = unsqueeze20_out1.sub(unsqueeze21_out1);
+        let constant314_out1 = 35i32;
+        let lessorequal1_out1 = sub7_out1.clone().lower_equal_elem(constant314_out1);
+        let constant312_out1 = 0i32;
+        let greaterorequal1_out1 = sub7_out1.greater_equal_elem(constant312_out1);
         let and1_out1 = lessorequal1_out1.bool_and(greaterorequal1_out1);
-        let unsqueeze78_out1: Tensor<3, Bool> = and1_out1.unsqueeze_dims::<3>(&[0]);
-        let and2_out1 = constantofshape21_out1.bool_and(unsqueeze78_out1);
+        let unsqueeze22_out1: Tensor<3, Bool> = and1_out1.unsqueeze_dims::<3>(&[0]);
+        let and2_out1 = expand12_out1.bool_and(unsqueeze22_out1);
         let range6_out1 = {
             let start = 0i64;
+            let limit = (add16_out1).into_scalar::<i64>();
             let delta = 1i64;
             assert!(delta != 0);
-            let n = (((add10_out1 as i128 - start as i128) as f64) / delta as f64)
+            let n = (((limit as i128 - start as i128) as f64) / delta as f64)
                 .ceil()
                 .max(0.0) as i64;
             Tensor::arange(0..n, &self.device)
@@ -1448,38 +749,8 @@ impl Submodule4 {
                 .mul_scalar(delta)
                 .add_scalar(start)
         };
-        let shape57_out1: [i64; 1] = {
-            let axes = &add11_out1.clone().dims()[0..1];
-            let mut output = [0i64; 1];
-            for i in 0..1 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather40_out1 = shape57_out1[0] as i64;
-        let unsqueeze79_out1 = [gather40_out1 as i64];
-        let constant741_out1: [i64; 1] = [-1i64];
-        let concat23_out1: [i64; 2usize] = [&unsqueeze79_out1[..], &constant741_out1[..]]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape25_out1 = concat23_out1;
-        let constant744_out1 = -1i64;
-        let mul45_out1 = {
-            let mut result = reshape25_out1;
-            let scalar = constant744_out1;
-            for result_item in result.iter_mut() {
-                *result_item = result_item.saturating_mul(scalar);
-            }
-            result
-        };
-        let max18_out1 = {
-            let __lhs = reshape25_out1;
-            let __rhs = mul45_out1;
-            core::array::from_fn::<i64, 2usize, _>(|__i| (__lhs[__i]).max(__rhs[__i]))
-        };
-        let expand18_out1 = {
-            let onnx_shape: [i64; 2usize] = max18_out1;
+        let expand13_out1 = {
+            let onnx_shape: [i64; 2usize] = [1, 1];
             let input_dims = range6_out1.dims();
             let mut shape = onnx_shape;
             #[allow(clippy::needless_range_loop)]
@@ -1491,48 +762,82 @@ impl Submodule4 {
             }
             range6_out1.expand(shape)
         };
-        let unsqueeze80_out1: Tensor<2, Int> = add11_out1.unsqueeze_dims::<2>(&[-1]);
-        let less5_out1 = expand18_out1.clone().lower(unsqueeze80_out1);
-        let unsqueeze81_out1: Tensor<2, Int> = add12_out1.unsqueeze_dims::<2>(&[-1]);
-        let greaterorequal2_out1 = expand18_out1.greater_equal(unsqueeze81_out1);
+        let unsqueeze23_out1: Tensor<2, Int> = add17_out1.unsqueeze_dims::<2>(&[-1]);
+        let less5_out1 = expand13_out1.clone().lower(unsqueeze23_out1);
+        let unsqueeze24_out1: Tensor<2, Int> = add18_out1.unsqueeze_dims::<2>(&[-1]);
+        let greaterorequal2_out1 = expand13_out1.greater_equal(unsqueeze24_out1);
         let and3_out1 = greaterorequal2_out1.bool_and(less5_out1);
-        let unsqueeze82_out1: Tensor<3, Bool> = and3_out1
+        let unsqueeze25_out1: Tensor<3, Bool> = and3_out1
             .clone()
             .unsqueeze_dims::<3>(&[1]);
-        let unsqueeze84_out1 = [add10_out1 as i64];
-        let constant753_out1: [i64; 1] = [1i64];
-        let constant751_out1: [i64; 1] = [1i64];
-        let concat25_out1: [i64; 3usize] = [
-            &constant751_out1[..],
-            &unsqueeze84_out1[..],
-            &constant753_out1[..],
+        let expand14_out1 = {
+            let onnx_shape: [i64; 3usize] = [1, 1, 1];
+            let input_dims = unsqueeze25_out1.dims();
+            let mut shape = onnx_shape;
+            #[allow(clippy::needless_range_loop)]
+            for i in 0..3usize {
+                let dim_offset = i;
+                if shape[dim_offset] == 1 && input_dims[i] > 1 {
+                    shape[dim_offset] = input_dims[i] as i64;
+                }
+            }
+            unsqueeze25_out1.expand(shape)
+        };
+        let concat13_out1: [i64; 3usize] = [
+            &constant310_out1[..],
+            &unsqueeze19_out1[..],
+            &constant310_out1[..],
         ]
             .concat()
             .try_into()
             .unwrap();
         let tile1_out1 = {
-            let repeats: alloc::vec::Vec<usize> = concat25_out1
+            let repeats: alloc::vec::Vec<usize> = concat13_out1
                 .iter()
                 .map(|&v| v as usize)
                 .collect();
-            unsqueeze82_out1.repeat(&repeats)
+            expand14_out1.repeat(&repeats)
         };
-        let transpose6_out1 = tile1_out1.clone().permute([0, 2, 1]);
-        let and4_out1 = tile1_out1.bool_and(transpose6_out1);
-        let unsqueeze85_out1 = [add10_out1 as i64];
-        let slice6_out1 = and2_out1.slice(s![.., 0..unsqueeze85_out1[0], ..]);
-        let unsqueeze86_out1 = [add10_out1 as i64];
-        let slice7_out1 = slice6_out1.slice(s![.., .., 0..unsqueeze86_out1[0]]);
-        let and5_out1 = and4_out1.bool_and(slice7_out1);
-        (and5_out1, and3_out1, slice4_out1, slice5_out1, gather39_out1, clip1_out1)
+        let transpose5_out1 = tile1_out1.clone().permute([0, 2, 1]);
+        let and4_out1 = tile1_out1.bool_and(transpose5_out1);
+        let and5_out1 = and4_out1.bool_and(and2_out1);
+        let not1_out1 = and5_out1.bool_not();
+        let not2_out1 = and3_out1.bool_not();
+        let slice3_out1 = not2_out1.slice(s![.., 70..]);
+        let slice4_out1 = not1_out1.slice(s![.., 70.., ..]);
+        let gather1_out1 = {
+            let sliced = cache_last_channel.slice(s![0, .., .., ..]);
+            sliced.squeeze_dim::<3usize>(0)
+        };
+        let gather2_out1 = {
+            let sliced = cache_last_time.slice(s![0, .., .., ..]);
+            sliced.squeeze_dim::<3usize>(0)
+        };
+        let layernormalization1_out1 = {
+            let dtype = slice1_out1.dtype();
+            self.layernormalization1
+                .forward(slice1_out1.cast(burn::tensor::DType::F32))
+                .cast(dtype)
+        };
+        let linear2_out1 = self.linear2.forward(layernormalization1_out1);
+        let sigmoid1_out1 = burn::tensor::activation::sigmoid(linear2_out1.clone());
+        let mul17_out1 = linear2_out1.mul(sigmoid1_out1);
+        (
+            mul17_out1,
+            gather1_out1,
+            transpose4_out1,
+            unsqueeze19_out1,
+            slice4_out1,
+            slice3_out1,
+            gather2_out1,
+            clip1_out1,
+        )
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule5 {
-    layernormalization1: LayerNorm,
-    linear2: Linear,
+pub struct Submodule3 {
     linear3: Linear,
-    constant770: burn::module::Param<Tensor<1>>,
+    constant493: burn::module::Param<Tensor<1>>,
     layernormalization2: LayerNorm,
     linear4: Linear,
     linear5: Linear,
@@ -1540,21 +845,18 @@ pub struct Submodule5 {
     linear7: Linear,
     constant23: burn::module::Param<Tensor<2>>,
     constant24: burn::module::Param<Tensor<2>>,
-    constant895: burn::module::Param<Tensor<1>>,
+    constant496: burn::module::Param<Tensor<1>>,
     linear8: Linear,
+    layernormalization3: LayerNorm,
+    conv1d1: Conv1d,
     #[module(skip)]
     device: Device,
 }
-impl Submodule5 {
+impl Submodule3 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
-        let layernormalization1 = LayerNormConfig::new(512)
-            .with_epsilon(0.000009999999747378752f64)
-            .with_bias(true)
-            .init(device);
-        let linear2 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear3 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant770: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
+        let constant493: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 1,
@@ -1592,12 +894,12 @@ impl Submodule5 {
             false,
             [8, 64].into(),
         );
-        let constant895: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
+        let constant496: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 1,
             >::from_data(
-                burn::tensor::TensorData::from([8f64]),
+                burn::tensor::TensorData::from([0.125f64]),
                 (device, burn::tensor::DType::F32),
             ),
             device.clone(),
@@ -1605,280 +907,6 @@ impl Submodule5 {
             [1].into(),
         );
         let linear8 = LinearConfig::new(512, 512).with_bias(false).init(device);
-        Self {
-            layernormalization1,
-            linear2,
-            linear3,
-            constant770,
-            layernormalization2,
-            linear4,
-            linear5,
-            linear6,
-            linear7,
-            constant23,
-            constant24,
-            constant895,
-            linear8,
-            device: device.clone(),
-        }
-    }
-    #[allow(clippy::let_and_return, clippy::approx_constant)]
-    pub fn forward(
-        &self,
-        and5_out1: Tensor<3, Bool>,
-        and3_out1: Tensor<2, Bool>,
-        cache_last_channel: Tensor<4>,
-        cache_last_time: Tensor<4>,
-        slice4_out1: Tensor<3>,
-        slice5_out1: Tensor<3>,
-    ) -> (Tensor<3>, Tensor<2, Bool>, Tensor<3>, Tensor<4, Bool>, Tensor<3>) {
-        let not1_out1 = and5_out1.bool_not();
-        let not2_out1 = and3_out1.bool_not();
-        let slice8_out1 = not2_out1.slice(s![.., 70..]);
-        let slice9_out1 = not1_out1.slice(s![.., 70.., ..]);
-        let gather41_out1 = {
-            let sliced = cache_last_channel.slice(s![0, .., .., ..]);
-            sliced.squeeze_dim::<3usize>(0)
-        };
-        let gather42_out1 = {
-            let sliced = cache_last_time.slice(s![0, .., .., ..]);
-            sliced.squeeze_dim::<3usize>(0)
-        };
-        let layernormalization1_out1 = {
-            let dtype = slice4_out1.clone().dtype();
-            self.layernormalization1
-                .forward(slice4_out1.clone().cast(burn::tensor::DType::F32))
-                .cast(dtype)
-        };
-        let linear2_out1 = self.linear2.forward(layernormalization1_out1);
-        let sigmoid1_out1 = burn::tensor::activation::sigmoid(linear2_out1.clone());
-        let mul46_out1 = linear2_out1.mul(sigmoid1_out1);
-        let linear3_out1 = self.linear3.forward(mul46_out1);
-        let constant770_out1 = self.constant770.val();
-        let mul47_out1 = linear3_out1
-            .mul((constant770_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add14_out1 = slice4_out1.add(mul47_out1);
-        let layernormalization2_out1 = {
-            let dtype = add14_out1.clone().dtype();
-            self.layernormalization2
-                .forward(add14_out1.clone().cast(burn::tensor::DType::F32))
-                .cast(dtype)
-        };
-        let concat26_out1 = burn::tensor::Tensor::cat(
-            [gather41_out1.clone(), layernormalization2_out1.clone()].into(),
-            1,
-        );
-        let shape60_out1: [i64; 3] = {
-            let axes = &layernormalization2_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather43_out1 = shape60_out1[1] as i64;
-        let unsqueeze87_out1 = [gather43_out1 as i64];
-        let slice10_out1 = gather41_out1
-            .slice(s![.., unsqueeze87_out1[0]..9223372036854775807, ..]);
-        let unsqueeze88_out1 = [gather43_out1 as i64];
-        let slice11_out1 = layernormalization2_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze88_out1[0], ..]);
-        let concat27_out1 = burn::tensor::Tensor::cat(
-            [slice10_out1, slice11_out1].into(),
-            1,
-        );
-        let gather44_out1 = shape60_out1[0] as i64;
-        let linear4_out1 = self.linear4.forward(layernormalization2_out1);
-        let unsqueeze89_out1 = [gather44_out1 as i64];
-        let constant785_out1: [i64; 1] = [64i64];
-        let constant783_out1: [i64; 1] = [-1i64];
-        let constant784_out1: [i64; 1] = [8i64];
-        let concat28_out1: [i64; 4usize] = [
-            &unsqueeze89_out1[..],
-            &constant783_out1[..],
-            &constant784_out1[..],
-            &constant785_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze90_out1 = [gather44_out1 as i64];
-        let constant789_out1: [i64; 1] = [64i64];
-        let constant787_out1: [i64; 1] = [-1i64];
-        let constant788_out1: [i64; 1] = [8i64];
-        let concat29_out1: [i64; 4usize] = [
-            &unsqueeze90_out1[..],
-            &constant787_out1[..],
-            &constant788_out1[..],
-            &constant789_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze91_out1 = [gather44_out1 as i64];
-        let constant793_out1: [i64; 1] = [64i64];
-        let constant791_out1: [i64; 1] = [-1i64];
-        let constant792_out1: [i64; 1] = [8i64];
-        let concat30_out1: [i64; 4usize] = [
-            &unsqueeze91_out1[..],
-            &constant791_out1[..],
-            &constant792_out1[..],
-            &constant793_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape26_out1 = linear4_out1.reshape(concat28_out1);
-        let linear5_out1 = self.linear5.forward(concat26_out1.clone());
-        let reshape27_out1 = linear5_out1.reshape(concat29_out1);
-        let linear6_out1 = self.linear6.forward(concat26_out1);
-        let reshape28_out1 = linear6_out1.reshape(concat30_out1);
-        let transpose7_out1 = reshape28_out1.permute([0, 2, 1, 3]);
-        let linear7_out1 = self.linear7.forward(slice5_out1);
-        let reshape29_out1 = linear7_out1.reshape([1, -1, 8, 64]);
-        let constant23_out1 = self.constant23.val();
-        let add15_out1 = reshape26_out1
-            .clone()
-            .add((constant23_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose8_out1 = add15_out1.permute([0, 2, 1, 3]);
-        let constant24_out1 = self.constant24.val();
-        let add16_out1 = reshape26_out1
-            .add((constant24_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose9_out1 = add16_out1.permute([0, 2, 1, 3]);
-        let transpose10_out1 = reshape29_out1.permute([0, 2, 3, 1]);
-        let matmul8_out1 = transpose9_out1.matmul(transpose10_out1);
-        let shape63_out1: [i64; 4] = {
-            let axes = &matmul8_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather46_out1 = shape63_out1[0] as i64;
-        let gather47_out1 = shape63_out1[1] as i64;
-        let gather48_out1 = shape63_out1[2] as i64;
-        let gather49_out1 = shape63_out1[3] as i64;
-        let pad4_out1 = matmul8_out1
-            .pad(
-                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
-                burn::tensor::ops::PadMode::Constant(0f32),
-            );
-        let unsqueeze109_out1 = [gather46_out1 as i64];
-        let unsqueeze110_out1 = [gather47_out1 as i64];
-        let unsqueeze111_out1 = [gather48_out1 as i64];
-        let constant877_out1: [i64; 1] = [-1i64];
-        let concat49_out1: [i64; 4usize] = [
-            &unsqueeze109_out1[..],
-            &unsqueeze110_out1[..],
-            &constant877_out1[..],
-            &unsqueeze111_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape32_out1 = pad4_out1.reshape(concat49_out1);
-        let slice13_out1 = reshape32_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze112_out1 = [gather46_out1 as i64];
-        let unsqueeze113_out1 = [gather47_out1 as i64];
-        let unsqueeze114_out1 = [gather48_out1 as i64];
-        let unsqueeze115_out1 = [gather49_out1 as i64];
-        let concat50_out1: [i64; 4usize] = [
-            &unsqueeze112_out1[..],
-            &unsqueeze113_out1[..],
-            &unsqueeze114_out1[..],
-            &unsqueeze115_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape33_out1 = slice13_out1.reshape(concat50_out1);
-        let transpose12_out1 = reshape27_out1.permute([0, 2, 3, 1]);
-        let matmul9_out1 = transpose8_out1.matmul(transpose12_out1);
-        let shape67_out1: [i64; 4] = {
-            let axes = &matmul9_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let slice14_out1: [i64; 1] = shape67_out1[3..4].try_into().unwrap();
-        let squeeze1_out1 = slice14_out1[0] as i64;
-        let unsqueeze116_out1 = [squeeze1_out1 as i64];
-        let slice15_out1 = reshape33_out1.slice(s![.., .., .., 0..unsqueeze116_out1[0]]);
-        let add17_out1 = matmul9_out1.add(slice15_out1);
-        let constant895_out1 = self.constant895.val();
-        let div5_out1 = add17_out1
-            .div((constant895_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape68_out1: [i64; 4] = {
-            let axes = &transpose7_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather50_out1 = shape68_out1[0] as i64;
-        let unsqueeze117_out1: Tensor<4, Bool> = slice9_out1.unsqueeze_dims::<4>(&[1]);
-        let constant898_out1 = -10000f32;
-        let where19_out1 = div5_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant898_out1);
-        let softmax1_out1 = burn::tensor::activation::softmax(where19_out1, 3);
-        let constant899_out1 = 0f32;
-        let where20_out1 = softmax1_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant899_out1);
-        let matmul10_out1 = where20_out1.matmul(transpose7_out1);
-        let transpose13_out1 = matmul10_out1.permute([0, 2, 1, 3]);
-        let unsqueeze118_out1 = [gather50_out1 as i64];
-        let constant902_out1: [i64; 1] = [512i64];
-        let constant901_out1: [i64; 1] = [-1i64];
-        let concat51_out1: [i64; 3usize] = [
-            &unsqueeze118_out1[..],
-            &constant901_out1[..],
-            &constant902_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape34_out1 = transpose13_out1.reshape(concat51_out1);
-        let linear8_out1 = self.linear8.forward(reshape34_out1);
-        let add18_out1 = add14_out1.add(linear8_out1);
-        (add18_out1, slice8_out1, gather42_out1, unsqueeze117_out1, concat27_out1)
-    }
-}
-#[derive(Module, Debug)]
-pub struct Submodule6 {
-    layernormalization3: LayerNorm,
-    conv1d1: Conv1d,
-    conv1d2: Conv1d,
-    layernormalization4: LayerNorm,
-    conv1d3: Conv1d,
-    layernormalization5: LayerNorm,
-    linear9: Linear,
-    linear10: Linear,
-    constant917: burn::module::Param<Tensor<1>>,
-    layernormalization6: LayerNorm,
-    layernormalization7: LayerNorm,
-    linear11: Linear,
-    linear12: Linear,
-    constant918: burn::module::Param<Tensor<1>>,
-    layernormalization8: LayerNorm,
-    linear13: Linear,
-    linear14: Linear,
-    linear15: Linear,
-    linear16: Linear,
-    constant40: burn::module::Param<Tensor<2>>,
-    constant41: burn::module::Param<Tensor<2>>,
-    constant973: burn::module::Param<Tensor<1>>,
-    linear17: Linear,
-    #[module(skip)]
-    device: Device,
-}
-impl Submodule6 {
-    #[allow(unused_variables)]
-    pub fn new(device: &Device) -> Self {
         let layernormalization3 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -1890,6 +918,262 @@ impl Submodule6 {
             .with_groups(1)
             .with_bias(false)
             .init(device);
+        Self {
+            linear3,
+            constant493,
+            layernormalization2,
+            linear4,
+            linear5,
+            linear6,
+            linear7,
+            constant23,
+            constant24,
+            constant496,
+            linear8,
+            layernormalization3,
+            conv1d1,
+            device: device.clone(),
+        }
+    }
+    #[allow(clippy::let_and_return, clippy::approx_constant)]
+    pub fn forward(
+        &self,
+        mul17_out1: Tensor<3>,
+        slice1_out1: Tensor<3>,
+        gather1_out1: Tensor<3>,
+        max2_out1: Tensor<1, Int>,
+        transpose4_out1: Tensor<3>,
+        constant310_out1: [i64; 1],
+        add6_out1: Tensor<1, Int>,
+        unsqueeze19_out1: [i64; 1],
+        slice4_out1: Tensor<3, Bool>,
+        slice3_out1: Tensor<2, Bool>,
+        gather2_out1: Tensor<3>,
+    ) -> (
+        Tensor<3>,
+        Tensor<3>,
+        Tensor<1>,
+        [i64; 1],
+        [i64; 4],
+        [i64; 4],
+        Tensor<1>,
+        Tensor<4, Bool>,
+        f32,
+        Tensor<4, Bool>,
+        f32,
+        Tensor<3, Bool>,
+        Tensor<3>,
+    ) {
+        let linear3_out1 = self.linear3.forward(mul17_out1);
+        let constant493_out1 = self.constant493.val();
+        let mul18_out1 = linear3_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add20_out1 = slice1_out1.add(mul18_out1);
+        let layernormalization2_out1 = {
+            let dtype = add20_out1.clone().dtype();
+            self.layernormalization2
+                .forward(add20_out1.clone().cast(burn::tensor::DType::F32))
+                .cast(dtype)
+        };
+        let concat14_out1 = burn::tensor::Tensor::cat(
+            [gather1_out1.clone(), layernormalization2_out1.clone()].into(),
+            1,
+        );
+        let unsqueeze26_out1 = {
+            let v: i64 = max2_out1.into_scalar::<i64>();
+            [v as i64]
+        };
+        let transpose6_out1 = gather1_out1.permute([1, 0, 2]);
+        let slice5_out1 = transpose6_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose7_out1 = slice5_out1.permute([1, 0, 2]);
+        let concat15_out1 = burn::tensor::Tensor::cat(
+            [transpose7_out1, layernormalization2_out1.clone()].into(),
+            1,
+        );
+        let linear4_out1 = self.linear4.forward(layernormalization2_out1);
+        let reshape2_out1 = linear4_out1.reshape([1, -1, 8, 64]);
+        let linear5_out1 = self.linear5.forward(concat14_out1.clone());
+        let reshape3_out1 = linear5_out1.reshape([1, -1, 8, 64]);
+        let linear6_out1 = self.linear6.forward(concat14_out1);
+        let reshape4_out1 = linear6_out1.reshape([1, -1, 8, 64]);
+        let transpose8_out1 = reshape3_out1.permute([0, 2, 1, 3]);
+        let transpose9_out1 = reshape4_out1.permute([0, 2, 1, 3]);
+        let linear7_out1 = self.linear7.forward(transpose4_out1);
+        let reshape5_out1 = linear7_out1.reshape([1, -1, 8, 64]);
+        let constant23_out1 = self.constant23.val();
+        let add21_out1 = reshape2_out1
+            .clone()
+            .add((constant23_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let transpose10_out1 = add21_out1.permute([0, 2, 1, 3]);
+        let constant24_out1 = self.constant24.val();
+        let add22_out1 = reshape2_out1
+            .add((constant24_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let transpose11_out1 = add22_out1.permute([0, 2, 1, 3]);
+        let transpose12_out1 = reshape5_out1.permute([0, 2, 3, 1]);
+        let matmul8_out1 = transpose11_out1.matmul(transpose12_out1);
+        let pad1_out1 = matmul8_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let constant326_out1: [i64; 1] = [-1i64];
+        let constant495_out1: [i64; 1] = [8i64];
+        let concat16_out1: [i64; 4usize] = [
+            &constant310_out1[..],
+            &constant495_out1[..],
+            &constant326_out1[..],
+            &unsqueeze26_out1[..],
+        ]
+            .concat()
+            .try_into()
+            .unwrap();
+        let reshape6_out1 = pad1_out1.reshape(concat16_out1);
+        let slice6_out1 = reshape6_out1.slice(s![.., .., 1.., ..]);
+        let unsqueeze27_out1 = {
+            let v: i64 = add6_out1.into_scalar::<i64>();
+            [v as i64]
+        };
+        let concat17_out1: [i64; 4usize] = [
+            &constant310_out1[..],
+            &constant495_out1[..],
+            &unsqueeze26_out1[..],
+            &unsqueeze27_out1[..],
+        ]
+            .concat()
+            .try_into()
+            .unwrap();
+        let reshape7_out1 = slice6_out1.reshape(concat17_out1);
+        let transpose13_out1 = reshape7_out1.permute([3, 0, 1, 2]);
+        let slice7_out1 = transpose13_out1.slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose14_out1 = slice7_out1.permute([1, 2, 3, 0]);
+        let constant496_out1 = self.constant496.val();
+        let mul19_out1 = transpose14_out1
+            .mul((constant496_out1.clone()).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let unsqueeze28_out1: Tensor<4, Bool> = slice4_out1.unsqueeze_dims::<4>(&[1]);
+        let constant325_out1 = -10000f32;
+        let where1_out1 = mul19_out1
+            .mask_fill(unsqueeze28_out1.clone(), constant325_out1);
+        let (attention1_out1,) = {
+            let q = transpose10_out1;
+            let k = transpose8_out1;
+            let v = transpose9_out1;
+            let score_bias = where1_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention1_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention1_out1 = {
+                let dims = attention1_out1.dims();
+                attention1_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention1_out1,)
+        };
+        let cast13_out1 = unsqueeze28_out1.clone().int().cast(burn::tensor::DType::I64);
+        let reducemin1_out1 = {
+            cast13_out1.min_dim(3usize).squeeze_dims::<3usize>(&[3])
+        };
+        let cast14_out1 = reducemin1_out1.bool();
+        let unsqueeze29_out1: Tensor<4, Bool> = cast14_out1.unsqueeze_dims::<4>(&[-1]);
+        let expand15_out1 = {
+            let onnx_shape: [i64; 4usize] = [1, 8, 1, 64];
+            let input_dims = unsqueeze29_out1.dims();
+            let mut shape = onnx_shape;
+            #[allow(clippy::needless_range_loop)]
+            for i in 0..4usize {
+                let dim_offset = i;
+                if shape[dim_offset] == 1 && input_dims[i] > 1 {
+                    shape[dim_offset] = input_dims[i] as i64;
+                }
+            }
+            unsqueeze29_out1.expand(shape)
+        };
+        let constant328_out1 = 0f32;
+        let where2_out1 = attention1_out1
+            .mask_fill(expand15_out1.clone(), constant328_out1);
+        let transpose15_out1 = where2_out1.permute([0, 2, 1, 3]);
+        let reshape8_out1 = transpose15_out1.reshape([1, -1, 512]);
+        let linear8_out1 = self.linear8.forward(reshape8_out1);
+        let add23_out1 = add20_out1.add(linear8_out1);
+        let layernormalization3_out1 = {
+            let dtype = add23_out1.clone().dtype();
+            self.layernormalization3
+                .forward(add23_out1.clone().cast(burn::tensor::DType::F32))
+                .cast(dtype)
+        };
+        let transpose16_out1 = layernormalization3_out1.permute([0, 2, 1]);
+        let conv1d1_out1 = self.conv1d1.forward(transpose16_out1);
+        let split_tensors = conv1d1_out1.split_with_sizes([512, 512].into(), 1);
+        let [split1_out1, split1_out2] = split_tensors.try_into().unwrap();
+        let sigmoid2_out1 = burn::tensor::activation::sigmoid(split1_out2);
+        let mul20_out1 = split1_out1.mul(sigmoid2_out1);
+        let unsqueeze30_out1: Tensor<3, Bool> = slice3_out1.unsqueeze_dims::<3>(&[1]);
+        let where3_out1 = mul20_out1
+            .mask_fill(unsqueeze30_out1.clone(), constant328_out1);
+        let pad2_out1 = where3_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat18_out1 = burn::tensor::Tensor::cat(
+            [gather2_out1, pad2_out1].into(),
+            2,
+        );
+        (
+            concat18_out1,
+            add23_out1,
+            constant493_out1,
+            unsqueeze26_out1,
+            concat16_out1,
+            concat17_out1,
+            constant496_out1,
+            unsqueeze28_out1,
+            constant325_out1,
+            expand15_out1,
+            constant328_out1,
+            unsqueeze30_out1,
+            concat15_out1,
+        )
+    }
+}
+#[derive(Module, Debug)]
+pub struct Submodule4 {
+    conv1d2: Conv1d,
+    layernormalization4: LayerNorm,
+    conv1d3: Conv1d,
+    layernormalization5: LayerNorm,
+    linear9: Linear,
+    linear10: Linear,
+    layernormalization6: LayerNorm,
+    layernormalization7: LayerNorm,
+    linear11: Linear,
+    linear12: Linear,
+    layernormalization8: LayerNorm,
+    linear13: Linear,
+    linear14: Linear,
+    linear15: Linear,
+    linear16: Linear,
+    constant40: burn::module::Param<Tensor<2>>,
+    constant41: burn::module::Param<Tensor<2>>,
+    linear17: Linear,
+    #[module(skip)]
+    device: Device,
+}
+impl Submodule4 {
+    #[allow(unused_variables)]
+    pub fn new(device: &Device) -> Self {
         let conv1d2 = Conv1dConfig::new(512, 512, 9)
             .with_stride(1)
             .with_padding(PaddingConfig1d::Valid)
@@ -1914,18 +1198,6 @@ impl Submodule6 {
             .init(device);
         let linear9 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear10 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant917: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization6 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -1936,18 +1208,6 @@ impl Submodule6 {
             .init(device);
         let linear11 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear12 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant918: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization8 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -1974,34 +1234,18 @@ impl Submodule6 {
             false,
             [8, 64].into(),
         );
-        let constant973: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear17 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
-            layernormalization3,
-            conv1d1,
             conv1d2,
             layernormalization4,
             conv1d3,
             layernormalization5,
             linear9,
             linear10,
-            constant917,
             layernormalization6,
             layernormalization7,
             linear11,
             linear12,
-            constant918,
             layernormalization8,
             linear13,
             linear14,
@@ -2009,7 +1253,6 @@ impl Submodule6 {
             linear16,
             constant40,
             constant41,
-            constant973,
             linear17,
             device: device.clone(),
         }
@@ -2017,74 +1260,61 @@ impl Submodule6 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add18_out1: Tensor<3>,
-        slice8_out1: Tensor<2, Bool>,
-        gather42_out1: Tensor<3>,
+        concat18_out1: Tensor<3>,
+        add23_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
-    ) -> (Tensor<3>, Tensor<3, Bool>, Tensor<3>, Tensor<3>, Tensor<3>) {
-        let layernormalization3_out1 = {
-            let dtype = add18_out1.clone().dtype();
-            self.layernormalization3
-                .forward(add18_out1.clone().cast(burn::tensor::DType::F32))
-                .cast(dtype)
-        };
-        let transpose14_out1 = layernormalization3_out1.permute([0, 2, 1]);
-        let conv1d1_out1 = self.conv1d1.forward(transpose14_out1);
-        let split_tensors = conv1d1_out1.split_with_sizes([512, 512].into(), 1);
-        let [split1_out1, split1_out2] = split_tensors.try_into().unwrap();
-        let sigmoid2_out1 = burn::tensor::activation::sigmoid(split1_out2);
-        let mul48_out1 = split1_out1.mul(sigmoid2_out1);
-        let unsqueeze119_out1: Tensor<3, Bool> = slice8_out1.unsqueeze_dims::<3>(&[1]);
-        let constant904_out1 = 0f32;
-        let where21_out1 = mul48_out1
-            .mask_fill(unsqueeze119_out1.clone(), constant904_out1);
-        let concat53_out1 = burn::tensor::Tensor::cat(
-            [gather42_out1, where21_out1].into(),
-            2,
-        );
-        let slice17_out1 = concat53_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d2_out1 = self.conv1d2.forward(concat53_out1);
-        let transpose16_out1 = conv1d2_out1.permute([0, 2, 1]);
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
+        constant328_out1: f32,
+    ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
+        let slice8_out1 = concat18_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d2_out1 = self.conv1d2.forward(concat18_out1);
+        let transpose17_out1 = conv1d2_out1.permute([0, 2, 1]);
         let layernormalization4_out1 = {
-            let dtype = transpose16_out1.dtype();
+            let dtype = transpose17_out1.dtype();
             self.layernormalization4
-                .forward(transpose16_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose17_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose17_out1 = layernormalization4_out1.permute([0, 2, 1]);
-        let sigmoid3_out1 = burn::tensor::activation::sigmoid(transpose17_out1.clone());
-        let mul49_out1 = transpose17_out1.mul(sigmoid3_out1);
-        let conv1d3_out1 = self.conv1d3.forward(mul49_out1);
-        let transpose18_out1 = conv1d3_out1.permute([0, 2, 1]);
-        let add19_out1 = add18_out1.add(transpose18_out1);
+        let transpose18_out1 = layernormalization4_out1.permute([0, 2, 1]);
+        let sigmoid3_out1 = burn::tensor::activation::sigmoid(transpose18_out1.clone());
+        let mul21_out1 = transpose18_out1.mul(sigmoid3_out1);
+        let conv1d3_out1 = self.conv1d3.forward(mul21_out1);
+        let transpose19_out1 = conv1d3_out1.permute([0, 2, 1]);
+        let add24_out1 = add23_out1.add(transpose19_out1);
         let layernormalization5_out1 = {
-            let dtype = add19_out1.clone().dtype();
+            let dtype = add24_out1.clone().dtype();
             self.layernormalization5
-                .forward(add19_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add24_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear9_out1 = self.linear9.forward(layernormalization5_out1);
         let sigmoid4_out1 = burn::tensor::activation::sigmoid(linear9_out1.clone());
-        let mul50_out1 = linear9_out1.mul(sigmoid4_out1);
-        let linear10_out1 = self.linear10.forward(mul50_out1);
-        let constant917_out1 = self.constant917.val();
-        let mul51_out1 = linear10_out1
-            .mul((constant917_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add20_out1 = add19_out1.add(mul51_out1);
+        let mul22_out1 = linear9_out1.mul(sigmoid4_out1);
+        let linear10_out1 = self.linear10.forward(mul22_out1);
+        let mul23_out1 = linear10_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add25_out1 = add24_out1.add(mul23_out1);
         let layernormalization6_out1 = {
-            let dtype = add20_out1.dtype();
+            let dtype = add25_out1.dtype();
             self.layernormalization6
-                .forward(add20_out1.cast(burn::tensor::DType::F32))
+                .forward(add25_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather51_out1 = {
+        let gather3_out1 = {
             let sliced = cache_last_channel.slice(s![1, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather52_out1 = {
+        let gather4_out1 = {
             let sliced = cache_last_time.slice(s![1, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -2096,202 +1326,102 @@ impl Submodule6 {
         };
         let linear11_out1 = self.linear11.forward(layernormalization7_out1);
         let sigmoid5_out1 = burn::tensor::activation::sigmoid(linear11_out1.clone());
-        let mul52_out1 = linear11_out1.mul(sigmoid5_out1);
-        let linear12_out1 = self.linear12.forward(mul52_out1);
-        let constant918_out1 = self.constant918.val();
-        let mul53_out1 = linear12_out1
-            .mul((constant918_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add21_out1 = layernormalization6_out1.add(mul53_out1);
+        let mul24_out1 = linear11_out1.mul(sigmoid5_out1);
+        let linear12_out1 = self.linear12.forward(mul24_out1);
+        let mul25_out1 = linear12_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add26_out1 = layernormalization6_out1.add(mul25_out1);
         let layernormalization8_out1 = {
-            let dtype = add21_out1.clone().dtype();
+            let dtype = add26_out1.clone().dtype();
             self.layernormalization8
-                .forward(add21_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add26_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat54_out1 = burn::tensor::Tensor::cat(
-            [gather51_out1.clone(), layernormalization8_out1.clone()].into(),
+        let concat19_out1 = burn::tensor::Tensor::cat(
+            [gather3_out1.clone(), layernormalization8_out1.clone()].into(),
             1,
         );
-        let shape69_out1: [i64; 3] = {
-            let axes = &layernormalization8_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather53_out1 = shape69_out1[1] as i64;
-        let unsqueeze120_out1 = [gather53_out1 as i64];
-        let slice18_out1 = gather51_out1
-            .slice(s![.., unsqueeze120_out1[0]..9223372036854775807, ..]);
-        let unsqueeze121_out1 = [gather53_out1 as i64];
-        let slice19_out1 = layernormalization8_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze121_out1[0], ..]);
-        let concat55_out1 = burn::tensor::Tensor::cat(
-            [slice18_out1, slice19_out1].into(),
+        let transpose20_out1 = gather3_out1.permute([1, 0, 2]);
+        let slice9_out1 = transpose20_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose21_out1 = slice9_out1.permute([1, 0, 2]);
+        let concat20_out1 = burn::tensor::Tensor::cat(
+            [transpose21_out1, layernormalization8_out1.clone()].into(),
             1,
         );
-        let gather54_out1 = shape69_out1[0] as i64;
         let linear13_out1 = self.linear13.forward(layernormalization8_out1);
-        let unsqueeze122_out1 = [gather54_out1 as i64];
-        let constant932_out1: [i64; 1] = [64i64];
-        let constant930_out1: [i64; 1] = [-1i64];
-        let constant931_out1: [i64; 1] = [8i64];
-        let concat56_out1: [i64; 4usize] = [
-            &unsqueeze122_out1[..],
-            &constant930_out1[..],
-            &constant931_out1[..],
-            &constant932_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze123_out1 = [gather54_out1 as i64];
-        let constant936_out1: [i64; 1] = [64i64];
-        let constant934_out1: [i64; 1] = [-1i64];
-        let constant935_out1: [i64; 1] = [8i64];
-        let concat57_out1: [i64; 4usize] = [
-            &unsqueeze123_out1[..],
-            &constant934_out1[..],
-            &constant935_out1[..],
-            &constant936_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze124_out1 = [gather54_out1 as i64];
-        let constant940_out1: [i64; 1] = [64i64];
-        let constant938_out1: [i64; 1] = [-1i64];
-        let constant939_out1: [i64; 1] = [8i64];
-        let concat58_out1: [i64; 4usize] = [
-            &unsqueeze124_out1[..],
-            &constant938_out1[..],
-            &constant939_out1[..],
-            &constant940_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape37_out1 = linear13_out1.reshape(concat56_out1);
-        let linear14_out1 = self.linear14.forward(concat54_out1.clone());
-        let reshape38_out1 = linear14_out1.reshape(concat57_out1);
-        let linear15_out1 = self.linear15.forward(concat54_out1);
-        let reshape39_out1 = linear15_out1.reshape(concat58_out1);
-        let transpose19_out1 = reshape39_out1.permute([0, 2, 1, 3]);
-        let linear16_out1 = self.linear16.forward(slice5_out1);
-        let reshape40_out1 = linear16_out1.reshape([1, -1, 8, 64]);
+        let reshape9_out1 = linear13_out1.reshape([1, -1, 8, 64]);
+        let linear14_out1 = self.linear14.forward(concat19_out1.clone());
+        let reshape10_out1 = linear14_out1.reshape([1, -1, 8, 64]);
+        let linear15_out1 = self.linear15.forward(concat19_out1);
+        let reshape11_out1 = linear15_out1.reshape([1, -1, 8, 64]);
+        let transpose22_out1 = reshape10_out1.permute([0, 2, 1, 3]);
+        let transpose23_out1 = reshape11_out1.permute([0, 2, 1, 3]);
+        let linear16_out1 = self.linear16.forward(transpose4_out1);
+        let reshape12_out1 = linear16_out1.reshape([1, -1, 8, 64]);
         let constant40_out1 = self.constant40.val();
-        let add22_out1 = reshape37_out1
+        let add27_out1 = reshape9_out1
             .clone()
             .add((constant40_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose20_out1 = add22_out1.permute([0, 2, 1, 3]);
+        let transpose24_out1 = add27_out1.permute([0, 2, 1, 3]);
         let constant41_out1 = self.constant41.val();
-        let add23_out1 = reshape37_out1
+        let add28_out1 = reshape9_out1
             .add((constant41_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose21_out1 = add23_out1.permute([0, 2, 1, 3]);
-        let transpose22_out1 = reshape40_out1.permute([0, 2, 3, 1]);
-        let matmul20_out1 = transpose21_out1.matmul(transpose22_out1);
-        let shape71_out1: [i64; 4] = {
-            let axes = &matmul20_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather55_out1 = shape71_out1[0] as i64;
-        let gather56_out1 = shape71_out1[1] as i64;
-        let gather57_out1 = shape71_out1[2] as i64;
-        let gather58_out1 = shape71_out1[3] as i64;
-        let pad6_out1 = matmul20_out1
+        let transpose25_out1 = add28_out1.permute([0, 2, 1, 3]);
+        let transpose26_out1 = reshape12_out1.permute([0, 2, 3, 1]);
+        let matmul18_out1 = transpose25_out1.matmul(transpose26_out1);
+        let pad3_out1 = matmul18_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze125_out1 = [gather55_out1 as i64];
-        let unsqueeze126_out1 = [gather56_out1 as i64];
-        let unsqueeze127_out1 = [gather57_out1 as i64];
-        let constant955_out1: [i64; 1] = [-1i64];
-        let concat60_out1: [i64; 4usize] = [
-            &unsqueeze125_out1[..],
-            &unsqueeze126_out1[..],
-            &constant955_out1[..],
-            &unsqueeze127_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape43_out1 = pad6_out1.reshape(concat60_out1);
-        let slice21_out1 = reshape43_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze128_out1 = [gather55_out1 as i64];
-        let unsqueeze129_out1 = [gather56_out1 as i64];
-        let unsqueeze130_out1 = [gather57_out1 as i64];
-        let unsqueeze131_out1 = [gather58_out1 as i64];
-        let concat61_out1: [i64; 4usize] = [
-            &unsqueeze128_out1[..],
-            &unsqueeze129_out1[..],
-            &unsqueeze130_out1[..],
-            &unsqueeze131_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape44_out1 = slice21_out1.reshape(concat61_out1);
-        let transpose24_out1 = reshape38_out1.permute([0, 2, 3, 1]);
-        let matmul21_out1 = transpose20_out1.matmul(transpose24_out1);
-        let shape75_out1: [i64; 4] = {
-            let axes = &matmul21_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape13_out1 = pad3_out1.reshape(concat16_out1);
+        let slice10_out1 = reshape13_out1.slice(s![.., .., 1.., ..]);
+        let reshape14_out1 = slice10_out1.reshape(concat17_out1);
+        let transpose27_out1 = reshape14_out1.permute([3, 0, 1, 2]);
+        let slice11_out1 = transpose27_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose28_out1 = slice11_out1.permute([1, 2, 3, 0]);
+        let mul26_out1 = transpose28_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where4_out1 = mul26_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention2_out1,) = {
+            let q = transpose24_out1;
+            let k = transpose22_out1;
+            let v = transpose23_out1;
+            let score_bias = where4_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention2_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention2_out1 = {
+                let dims = attention2_out1.dims();
+                attention2_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention2_out1,)
         };
-        let slice22_out1: [i64; 1] = shape75_out1[3..4].try_into().unwrap();
-        let squeeze2_out1 = slice22_out1[0] as i64;
-        let unsqueeze132_out1 = [squeeze2_out1 as i64];
-        let slice23_out1 = reshape44_out1.slice(s![.., .., .., 0..unsqueeze132_out1[0]]);
-        let add24_out1 = matmul21_out1.add(slice23_out1);
-        let constant973_out1 = self.constant973.val();
-        let div6_out1 = add24_out1
-            .div((constant973_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape76_out1: [i64; 4] = {
-            let axes = &transpose19_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather59_out1 = shape76_out1[0] as i64;
-        let constant975_out1 = -10000f32;
-        let where22_out1 = div6_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant975_out1);
-        let softmax2_out1 = burn::tensor::activation::softmax(where22_out1, 3);
-        let constant976_out1 = 0f32;
-        let where23_out1 = softmax2_out1.mask_fill(unsqueeze117_out1, constant976_out1);
-        let matmul22_out1 = where23_out1.matmul(transpose19_out1);
-        let transpose25_out1 = matmul22_out1.permute([0, 2, 1, 3]);
-        let unsqueeze133_out1 = [gather59_out1 as i64];
-        let constant979_out1: [i64; 1] = [512i64];
-        let constant978_out1: [i64; 1] = [-1i64];
-        let concat62_out1: [i64; 3usize] = [
-            &unsqueeze133_out1[..],
-            &constant978_out1[..],
-            &constant979_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape45_out1 = transpose25_out1.reshape(concat62_out1);
-        let linear17_out1 = self.linear17.forward(reshape45_out1);
-        let add25_out1 = add21_out1.add(linear17_out1);
-        (add25_out1, unsqueeze119_out1, gather52_out1, concat55_out1, slice17_out1)
+        let where5_out1 = attention2_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose29_out1 = where5_out1.permute([0, 2, 1, 3]);
+        let reshape15_out1 = transpose29_out1.reshape([1, -1, 512]);
+        let linear17_out1 = self.linear17.forward(reshape15_out1);
+        let add29_out1 = add26_out1.add(linear17_out1);
+        (add29_out1, gather4_out1, concat20_out1, slice8_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule7 {
+pub struct Submodule5 {
     layernormalization9: LayerNorm,
     conv1d4: Conv1d,
     conv1d5: Conv1d,
@@ -2300,12 +1430,10 @@ pub struct Submodule7 {
     layernormalization11: LayerNorm,
     linear18: Linear,
     linear19: Linear,
-    constant993: burn::module::Param<Tensor<1>>,
     layernormalization12: LayerNorm,
     layernormalization13: LayerNorm,
     linear20: Linear,
     linear21: Linear,
-    constant994: burn::module::Param<Tensor<1>>,
     layernormalization14: LayerNorm,
     linear22: Linear,
     linear23: Linear,
@@ -2313,12 +1441,11 @@ pub struct Submodule7 {
     linear25: Linear,
     constant57: burn::module::Param<Tensor<2>>,
     constant58: burn::module::Param<Tensor<2>>,
-    constant1049: burn::module::Param<Tensor<1>>,
     linear26: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule7 {
+impl Submodule5 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization9 = LayerNormConfig::new(512)
@@ -2356,18 +1483,6 @@ impl Submodule7 {
             .init(device);
         let linear18 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear19 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant993: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization12 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -2378,18 +1493,6 @@ impl Submodule7 {
             .init(device);
         let linear20 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear21 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant994: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization14 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -2416,18 +1519,6 @@ impl Submodule7 {
             false,
             [8, 64].into(),
         );
-        let constant1049: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear26 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization9,
@@ -2438,12 +1529,10 @@ impl Submodule7 {
             layernormalization11,
             linear18,
             linear19,
-            constant993,
             layernormalization12,
             layernormalization13,
             linear20,
             linear21,
-            constant994,
             layernormalization14,
             linear22,
             linear23,
@@ -2451,7 +1540,6 @@ impl Submodule7 {
             linear25,
             constant57,
             constant58,
-            constant1049,
             linear26,
             device: device.clone(),
         }
@@ -2459,72 +1547,84 @@ impl Submodule7 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add25_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather52_out1: Tensor<3>,
+        add29_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather4_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization9_out1 = {
-            let dtype = add25_out1.clone().dtype();
+            let dtype = add29_out1.clone().dtype();
             self.layernormalization9
-                .forward(add25_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add29_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose26_out1 = layernormalization9_out1.permute([0, 2, 1]);
-        let conv1d4_out1 = self.conv1d4.forward(transpose26_out1);
+        let transpose30_out1 = layernormalization9_out1.permute([0, 2, 1]);
+        let conv1d4_out1 = self.conv1d4.forward(transpose30_out1);
         let split_tensors = conv1d4_out1.split_with_sizes([512, 512].into(), 1);
         let [split2_out1, split2_out2] = split_tensors.try_into().unwrap();
         let sigmoid6_out1 = burn::tensor::activation::sigmoid(split2_out2);
-        let mul54_out1 = split2_out1.mul(sigmoid6_out1);
-        let constant980_out1 = 0f32;
-        let where24_out1 = mul54_out1.mask_fill(unsqueeze119_out1, constant980_out1);
-        let concat64_out1 = burn::tensor::Tensor::cat(
-            [gather52_out1, where24_out1].into(),
+        let mul27_out1 = split2_out1.mul(sigmoid6_out1);
+        let where6_out1 = mul27_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad4_out1 = where6_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat21_out1 = burn::tensor::Tensor::cat(
+            [gather4_out1, pad4_out1].into(),
             2,
         );
-        let slice25_out1 = concat64_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d5_out1 = self.conv1d5.forward(concat64_out1);
-        let transpose28_out1 = conv1d5_out1.permute([0, 2, 1]);
+        let slice12_out1 = concat21_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d5_out1 = self.conv1d5.forward(concat21_out1);
+        let transpose31_out1 = conv1d5_out1.permute([0, 2, 1]);
         let layernormalization10_out1 = {
-            let dtype = transpose28_out1.dtype();
+            let dtype = transpose31_out1.dtype();
             self.layernormalization10
-                .forward(transpose28_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose31_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose29_out1 = layernormalization10_out1.permute([0, 2, 1]);
-        let sigmoid7_out1 = burn::tensor::activation::sigmoid(transpose29_out1.clone());
-        let mul55_out1 = transpose29_out1.mul(sigmoid7_out1);
-        let conv1d6_out1 = self.conv1d6.forward(mul55_out1);
-        let transpose30_out1 = conv1d6_out1.permute([0, 2, 1]);
-        let add26_out1 = add25_out1.add(transpose30_out1);
+        let transpose32_out1 = layernormalization10_out1.permute([0, 2, 1]);
+        let sigmoid7_out1 = burn::tensor::activation::sigmoid(transpose32_out1.clone());
+        let mul28_out1 = transpose32_out1.mul(sigmoid7_out1);
+        let conv1d6_out1 = self.conv1d6.forward(mul28_out1);
+        let transpose33_out1 = conv1d6_out1.permute([0, 2, 1]);
+        let add30_out1 = add29_out1.add(transpose33_out1);
         let layernormalization11_out1 = {
-            let dtype = add26_out1.clone().dtype();
+            let dtype = add30_out1.clone().dtype();
             self.layernormalization11
-                .forward(add26_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add30_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear18_out1 = self.linear18.forward(layernormalization11_out1);
         let sigmoid8_out1 = burn::tensor::activation::sigmoid(linear18_out1.clone());
-        let mul56_out1 = linear18_out1.mul(sigmoid8_out1);
-        let linear19_out1 = self.linear19.forward(mul56_out1);
-        let constant993_out1 = self.constant993.val();
-        let mul57_out1 = linear19_out1
-            .mul((constant993_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add27_out1 = add26_out1.add(mul57_out1);
+        let mul29_out1 = linear18_out1.mul(sigmoid8_out1);
+        let linear19_out1 = self.linear19.forward(mul29_out1);
+        let mul30_out1 = linear19_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add31_out1 = add30_out1.add(mul30_out1);
         let layernormalization12_out1 = {
-            let dtype = add27_out1.dtype();
+            let dtype = add31_out1.dtype();
             self.layernormalization12
-                .forward(add27_out1.cast(burn::tensor::DType::F32))
+                .forward(add31_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather60_out1 = {
+        let gather5_out1 = {
             let sliced = cache_last_channel.slice(s![2, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather61_out1 = {
+        let gather6_out1 = {
             let sliced = cache_last_time.slice(s![2, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -2538,202 +1638,102 @@ impl Submodule7 {
         };
         let linear20_out1 = self.linear20.forward(layernormalization13_out1);
         let sigmoid9_out1 = burn::tensor::activation::sigmoid(linear20_out1.clone());
-        let mul58_out1 = linear20_out1.mul(sigmoid9_out1);
-        let linear21_out1 = self.linear21.forward(mul58_out1);
-        let constant994_out1 = self.constant994.val();
-        let mul59_out1 = linear21_out1
-            .mul((constant994_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add28_out1 = layernormalization12_out1.add(mul59_out1);
+        let mul31_out1 = linear20_out1.mul(sigmoid9_out1);
+        let linear21_out1 = self.linear21.forward(mul31_out1);
+        let mul32_out1 = linear21_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add32_out1 = layernormalization12_out1.add(mul32_out1);
         let layernormalization14_out1 = {
-            let dtype = add28_out1.clone().dtype();
+            let dtype = add32_out1.clone().dtype();
             self.layernormalization14
-                .forward(add28_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add32_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat65_out1 = burn::tensor::Tensor::cat(
-            [gather60_out1.clone(), layernormalization14_out1.clone()].into(),
+        let concat22_out1 = burn::tensor::Tensor::cat(
+            [gather5_out1.clone(), layernormalization14_out1.clone()].into(),
             1,
         );
-        let shape77_out1: [i64; 3] = {
-            let axes = &layernormalization14_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather62_out1 = shape77_out1[1] as i64;
-        let unsqueeze134_out1 = [gather62_out1 as i64];
-        let slice26_out1 = gather60_out1
-            .slice(s![.., unsqueeze134_out1[0]..9223372036854775807, ..]);
-        let unsqueeze135_out1 = [gather62_out1 as i64];
-        let slice27_out1 = layernormalization14_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze135_out1[0], ..]);
-        let concat66_out1 = burn::tensor::Tensor::cat(
-            [slice26_out1, slice27_out1].into(),
+        let transpose34_out1 = gather5_out1.permute([1, 0, 2]);
+        let slice13_out1 = transpose34_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose35_out1 = slice13_out1.permute([1, 0, 2]);
+        let concat23_out1 = burn::tensor::Tensor::cat(
+            [transpose35_out1, layernormalization14_out1.clone()].into(),
             1,
         );
-        let gather63_out1 = shape77_out1[0] as i64;
         let linear22_out1 = self.linear22.forward(layernormalization14_out1);
-        let unsqueeze136_out1 = [gather63_out1 as i64];
-        let constant1008_out1: [i64; 1] = [64i64];
-        let constant1006_out1: [i64; 1] = [-1i64];
-        let constant1007_out1: [i64; 1] = [8i64];
-        let concat67_out1: [i64; 4usize] = [
-            &unsqueeze136_out1[..],
-            &constant1006_out1[..],
-            &constant1007_out1[..],
-            &constant1008_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze137_out1 = [gather63_out1 as i64];
-        let constant1012_out1: [i64; 1] = [64i64];
-        let constant1010_out1: [i64; 1] = [-1i64];
-        let constant1011_out1: [i64; 1] = [8i64];
-        let concat68_out1: [i64; 4usize] = [
-            &unsqueeze137_out1[..],
-            &constant1010_out1[..],
-            &constant1011_out1[..],
-            &constant1012_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze138_out1 = [gather63_out1 as i64];
-        let constant1016_out1: [i64; 1] = [64i64];
-        let constant1014_out1: [i64; 1] = [-1i64];
-        let constant1015_out1: [i64; 1] = [8i64];
-        let concat69_out1: [i64; 4usize] = [
-            &unsqueeze138_out1[..],
-            &constant1014_out1[..],
-            &constant1015_out1[..],
-            &constant1016_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape48_out1 = linear22_out1.reshape(concat67_out1);
-        let linear23_out1 = self.linear23.forward(concat65_out1.clone());
-        let reshape49_out1 = linear23_out1.reshape(concat68_out1);
-        let linear24_out1 = self.linear24.forward(concat65_out1);
-        let reshape50_out1 = linear24_out1.reshape(concat69_out1);
-        let transpose31_out1 = reshape50_out1.permute([0, 2, 1, 3]);
-        let linear25_out1 = self.linear25.forward(slice5_out1);
-        let reshape51_out1 = linear25_out1.reshape([1, -1, 8, 64]);
+        let reshape16_out1 = linear22_out1.reshape([1, -1, 8, 64]);
+        let linear23_out1 = self.linear23.forward(concat22_out1.clone());
+        let reshape17_out1 = linear23_out1.reshape([1, -1, 8, 64]);
+        let linear24_out1 = self.linear24.forward(concat22_out1);
+        let reshape18_out1 = linear24_out1.reshape([1, -1, 8, 64]);
+        let transpose36_out1 = reshape17_out1.permute([0, 2, 1, 3]);
+        let transpose37_out1 = reshape18_out1.permute([0, 2, 1, 3]);
+        let linear25_out1 = self.linear25.forward(transpose4_out1);
+        let reshape19_out1 = linear25_out1.reshape([1, -1, 8, 64]);
         let constant57_out1 = self.constant57.val();
-        let add29_out1 = reshape48_out1
+        let add33_out1 = reshape16_out1
             .clone()
             .add((constant57_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose32_out1 = add29_out1.permute([0, 2, 1, 3]);
+        let transpose38_out1 = add33_out1.permute([0, 2, 1, 3]);
         let constant58_out1 = self.constant58.val();
-        let add30_out1 = reshape48_out1
+        let add34_out1 = reshape16_out1
             .add((constant58_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose33_out1 = add30_out1.permute([0, 2, 1, 3]);
-        let transpose34_out1 = reshape51_out1.permute([0, 2, 3, 1]);
-        let matmul32_out1 = transpose33_out1.matmul(transpose34_out1);
-        let shape79_out1: [i64; 4] = {
-            let axes = &matmul32_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather64_out1 = shape79_out1[0] as i64;
-        let gather65_out1 = shape79_out1[1] as i64;
-        let gather66_out1 = shape79_out1[2] as i64;
-        let gather67_out1 = shape79_out1[3] as i64;
-        let pad8_out1 = matmul32_out1
+        let transpose39_out1 = add34_out1.permute([0, 2, 1, 3]);
+        let transpose40_out1 = reshape19_out1.permute([0, 2, 3, 1]);
+        let matmul28_out1 = transpose39_out1.matmul(transpose40_out1);
+        let pad5_out1 = matmul28_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze139_out1 = [gather64_out1 as i64];
-        let unsqueeze140_out1 = [gather65_out1 as i64];
-        let unsqueeze141_out1 = [gather66_out1 as i64];
-        let constant1031_out1: [i64; 1] = [-1i64];
-        let concat71_out1: [i64; 4usize] = [
-            &unsqueeze139_out1[..],
-            &unsqueeze140_out1[..],
-            &constant1031_out1[..],
-            &unsqueeze141_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape54_out1 = pad8_out1.reshape(concat71_out1);
-        let slice29_out1 = reshape54_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze142_out1 = [gather64_out1 as i64];
-        let unsqueeze143_out1 = [gather65_out1 as i64];
-        let unsqueeze144_out1 = [gather66_out1 as i64];
-        let unsqueeze145_out1 = [gather67_out1 as i64];
-        let concat72_out1: [i64; 4usize] = [
-            &unsqueeze142_out1[..],
-            &unsqueeze143_out1[..],
-            &unsqueeze144_out1[..],
-            &unsqueeze145_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape55_out1 = slice29_out1.reshape(concat72_out1);
-        let transpose36_out1 = reshape49_out1.permute([0, 2, 3, 1]);
-        let matmul33_out1 = transpose32_out1.matmul(transpose36_out1);
-        let shape83_out1: [i64; 4] = {
-            let axes = &matmul33_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape20_out1 = pad5_out1.reshape(concat16_out1);
+        let slice14_out1 = reshape20_out1.slice(s![.., .., 1.., ..]);
+        let reshape21_out1 = slice14_out1.reshape(concat17_out1);
+        let transpose41_out1 = reshape21_out1.permute([3, 0, 1, 2]);
+        let slice15_out1 = transpose41_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose42_out1 = slice15_out1.permute([1, 2, 3, 0]);
+        let mul33_out1 = transpose42_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where7_out1 = mul33_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention3_out1,) = {
+            let q = transpose38_out1;
+            let k = transpose36_out1;
+            let v = transpose37_out1;
+            let score_bias = where7_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention3_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention3_out1 = {
+                let dims = attention3_out1.dims();
+                attention3_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention3_out1,)
         };
-        let slice30_out1: [i64; 1] = shape83_out1[3..4].try_into().unwrap();
-        let squeeze3_out1 = slice30_out1[0] as i64;
-        let unsqueeze146_out1 = [squeeze3_out1 as i64];
-        let slice31_out1 = reshape55_out1.slice(s![.., .., .., 0..unsqueeze146_out1[0]]);
-        let add31_out1 = matmul33_out1.add(slice31_out1);
-        let constant1049_out1 = self.constant1049.val();
-        let div7_out1 = add31_out1
-            .div((constant1049_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape84_out1: [i64; 4] = {
-            let axes = &transpose31_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather68_out1 = shape84_out1[0] as i64;
-        let constant1051_out1 = -10000f32;
-        let where25_out1 = div7_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1051_out1);
-        let softmax3_out1 = burn::tensor::activation::softmax(where25_out1, 3);
-        let constant1052_out1 = 0f32;
-        let where26_out1 = softmax3_out1.mask_fill(unsqueeze117_out1, constant1052_out1);
-        let matmul34_out1 = where26_out1.matmul(transpose31_out1);
-        let transpose37_out1 = matmul34_out1.permute([0, 2, 1, 3]);
-        let unsqueeze147_out1 = [gather68_out1 as i64];
-        let constant1055_out1: [i64; 1] = [512i64];
-        let constant1054_out1: [i64; 1] = [-1i64];
-        let concat73_out1: [i64; 3usize] = [
-            &unsqueeze147_out1[..],
-            &constant1054_out1[..],
-            &constant1055_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape56_out1 = transpose37_out1.reshape(concat73_out1);
-        let linear26_out1 = self.linear26.forward(reshape56_out1);
-        let add32_out1 = add28_out1.add(linear26_out1);
-        (add32_out1, gather61_out1, concat66_out1, slice25_out1)
+        let where8_out1 = attention3_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose43_out1 = where8_out1.permute([0, 2, 1, 3]);
+        let reshape22_out1 = transpose43_out1.reshape([1, -1, 512]);
+        let linear26_out1 = self.linear26.forward(reshape22_out1);
+        let add35_out1 = add32_out1.add(linear26_out1);
+        (add35_out1, gather6_out1, concat23_out1, slice12_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule8 {
+pub struct Submodule6 {
     layernormalization15: LayerNorm,
     conv1d7: Conv1d,
     conv1d8: Conv1d,
@@ -2742,12 +1742,10 @@ pub struct Submodule8 {
     layernormalization17: LayerNorm,
     linear27: Linear,
     linear28: Linear,
-    constant1069: burn::module::Param<Tensor<1>>,
     layernormalization18: LayerNorm,
     layernormalization19: LayerNorm,
     linear29: Linear,
     linear30: Linear,
-    constant1070: burn::module::Param<Tensor<1>>,
     layernormalization20: LayerNorm,
     linear31: Linear,
     linear32: Linear,
@@ -2755,12 +1753,11 @@ pub struct Submodule8 {
     linear34: Linear,
     constant74: burn::module::Param<Tensor<2>>,
     constant75: burn::module::Param<Tensor<2>>,
-    constant1125: burn::module::Param<Tensor<1>>,
     linear35: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule8 {
+impl Submodule6 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization15 = LayerNormConfig::new(512)
@@ -2798,18 +1795,6 @@ impl Submodule8 {
             .init(device);
         let linear27 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear28 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1069: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization18 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -2820,18 +1805,6 @@ impl Submodule8 {
             .init(device);
         let linear29 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear30 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1070: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization20 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -2858,18 +1831,6 @@ impl Submodule8 {
             false,
             [8, 64].into(),
         );
-        let constant1125: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear35 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization15,
@@ -2880,12 +1841,10 @@ impl Submodule8 {
             layernormalization17,
             linear27,
             linear28,
-            constant1069,
             layernormalization18,
             layernormalization19,
             linear29,
             linear30,
-            constant1070,
             layernormalization20,
             linear31,
             linear32,
@@ -2893,7 +1852,6 @@ impl Submodule8 {
             linear34,
             constant74,
             constant75,
-            constant1125,
             linear35,
             device: device.clone(),
         }
@@ -2901,72 +1859,84 @@ impl Submodule8 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add32_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather61_out1: Tensor<3>,
+        add35_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather6_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization15_out1 = {
-            let dtype = add32_out1.clone().dtype();
+            let dtype = add35_out1.clone().dtype();
             self.layernormalization15
-                .forward(add32_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add35_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose38_out1 = layernormalization15_out1.permute([0, 2, 1]);
-        let conv1d7_out1 = self.conv1d7.forward(transpose38_out1);
+        let transpose44_out1 = layernormalization15_out1.permute([0, 2, 1]);
+        let conv1d7_out1 = self.conv1d7.forward(transpose44_out1);
         let split_tensors = conv1d7_out1.split_with_sizes([512, 512].into(), 1);
         let [split3_out1, split3_out2] = split_tensors.try_into().unwrap();
         let sigmoid10_out1 = burn::tensor::activation::sigmoid(split3_out2);
-        let mul60_out1 = split3_out1.mul(sigmoid10_out1);
-        let constant1056_out1 = 0f32;
-        let where27_out1 = mul60_out1.mask_fill(unsqueeze119_out1, constant1056_out1);
-        let concat75_out1 = burn::tensor::Tensor::cat(
-            [gather61_out1, where27_out1].into(),
+        let mul34_out1 = split3_out1.mul(sigmoid10_out1);
+        let where9_out1 = mul34_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad6_out1 = where9_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat24_out1 = burn::tensor::Tensor::cat(
+            [gather6_out1, pad6_out1].into(),
             2,
         );
-        let slice33_out1 = concat75_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d8_out1 = self.conv1d8.forward(concat75_out1);
-        let transpose40_out1 = conv1d8_out1.permute([0, 2, 1]);
+        let slice16_out1 = concat24_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d8_out1 = self.conv1d8.forward(concat24_out1);
+        let transpose45_out1 = conv1d8_out1.permute([0, 2, 1]);
         let layernormalization16_out1 = {
-            let dtype = transpose40_out1.dtype();
+            let dtype = transpose45_out1.dtype();
             self.layernormalization16
-                .forward(transpose40_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose45_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose41_out1 = layernormalization16_out1.permute([0, 2, 1]);
-        let sigmoid11_out1 = burn::tensor::activation::sigmoid(transpose41_out1.clone());
-        let mul61_out1 = transpose41_out1.mul(sigmoid11_out1);
-        let conv1d9_out1 = self.conv1d9.forward(mul61_out1);
-        let transpose42_out1 = conv1d9_out1.permute([0, 2, 1]);
-        let add33_out1 = add32_out1.add(transpose42_out1);
+        let transpose46_out1 = layernormalization16_out1.permute([0, 2, 1]);
+        let sigmoid11_out1 = burn::tensor::activation::sigmoid(transpose46_out1.clone());
+        let mul35_out1 = transpose46_out1.mul(sigmoid11_out1);
+        let conv1d9_out1 = self.conv1d9.forward(mul35_out1);
+        let transpose47_out1 = conv1d9_out1.permute([0, 2, 1]);
+        let add36_out1 = add35_out1.add(transpose47_out1);
         let layernormalization17_out1 = {
-            let dtype = add33_out1.clone().dtype();
+            let dtype = add36_out1.clone().dtype();
             self.layernormalization17
-                .forward(add33_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add36_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear27_out1 = self.linear27.forward(layernormalization17_out1);
         let sigmoid12_out1 = burn::tensor::activation::sigmoid(linear27_out1.clone());
-        let mul62_out1 = linear27_out1.mul(sigmoid12_out1);
-        let linear28_out1 = self.linear28.forward(mul62_out1);
-        let constant1069_out1 = self.constant1069.val();
-        let mul63_out1 = linear28_out1
-            .mul((constant1069_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add34_out1 = add33_out1.add(mul63_out1);
+        let mul36_out1 = linear27_out1.mul(sigmoid12_out1);
+        let linear28_out1 = self.linear28.forward(mul36_out1);
+        let mul37_out1 = linear28_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add37_out1 = add36_out1.add(mul37_out1);
         let layernormalization18_out1 = {
-            let dtype = add34_out1.dtype();
+            let dtype = add37_out1.dtype();
             self.layernormalization18
-                .forward(add34_out1.cast(burn::tensor::DType::F32))
+                .forward(add37_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather69_out1 = {
+        let gather7_out1 = {
             let sliced = cache_last_channel.slice(s![3, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather70_out1 = {
+        let gather8_out1 = {
             let sliced = cache_last_time.slice(s![3, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -2980,202 +1950,102 @@ impl Submodule8 {
         };
         let linear29_out1 = self.linear29.forward(layernormalization19_out1);
         let sigmoid13_out1 = burn::tensor::activation::sigmoid(linear29_out1.clone());
-        let mul64_out1 = linear29_out1.mul(sigmoid13_out1);
-        let linear30_out1 = self.linear30.forward(mul64_out1);
-        let constant1070_out1 = self.constant1070.val();
-        let mul65_out1 = linear30_out1
-            .mul((constant1070_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add35_out1 = layernormalization18_out1.add(mul65_out1);
+        let mul38_out1 = linear29_out1.mul(sigmoid13_out1);
+        let linear30_out1 = self.linear30.forward(mul38_out1);
+        let mul39_out1 = linear30_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add38_out1 = layernormalization18_out1.add(mul39_out1);
         let layernormalization20_out1 = {
-            let dtype = add35_out1.clone().dtype();
+            let dtype = add38_out1.clone().dtype();
             self.layernormalization20
-                .forward(add35_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add38_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat76_out1 = burn::tensor::Tensor::cat(
-            [gather69_out1.clone(), layernormalization20_out1.clone()].into(),
+        let concat25_out1 = burn::tensor::Tensor::cat(
+            [gather7_out1.clone(), layernormalization20_out1.clone()].into(),
             1,
         );
-        let shape85_out1: [i64; 3] = {
-            let axes = &layernormalization20_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather71_out1 = shape85_out1[1] as i64;
-        let unsqueeze148_out1 = [gather71_out1 as i64];
-        let slice34_out1 = gather69_out1
-            .slice(s![.., unsqueeze148_out1[0]..9223372036854775807, ..]);
-        let unsqueeze149_out1 = [gather71_out1 as i64];
-        let slice35_out1 = layernormalization20_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze149_out1[0], ..]);
-        let concat77_out1 = burn::tensor::Tensor::cat(
-            [slice34_out1, slice35_out1].into(),
+        let transpose48_out1 = gather7_out1.permute([1, 0, 2]);
+        let slice17_out1 = transpose48_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose49_out1 = slice17_out1.permute([1, 0, 2]);
+        let concat26_out1 = burn::tensor::Tensor::cat(
+            [transpose49_out1, layernormalization20_out1.clone()].into(),
             1,
         );
-        let gather72_out1 = shape85_out1[0] as i64;
         let linear31_out1 = self.linear31.forward(layernormalization20_out1);
-        let unsqueeze150_out1 = [gather72_out1 as i64];
-        let constant1084_out1: [i64; 1] = [64i64];
-        let constant1082_out1: [i64; 1] = [-1i64];
-        let constant1083_out1: [i64; 1] = [8i64];
-        let concat78_out1: [i64; 4usize] = [
-            &unsqueeze150_out1[..],
-            &constant1082_out1[..],
-            &constant1083_out1[..],
-            &constant1084_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze151_out1 = [gather72_out1 as i64];
-        let constant1088_out1: [i64; 1] = [64i64];
-        let constant1086_out1: [i64; 1] = [-1i64];
-        let constant1087_out1: [i64; 1] = [8i64];
-        let concat79_out1: [i64; 4usize] = [
-            &unsqueeze151_out1[..],
-            &constant1086_out1[..],
-            &constant1087_out1[..],
-            &constant1088_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze152_out1 = [gather72_out1 as i64];
-        let constant1092_out1: [i64; 1] = [64i64];
-        let constant1090_out1: [i64; 1] = [-1i64];
-        let constant1091_out1: [i64; 1] = [8i64];
-        let concat80_out1: [i64; 4usize] = [
-            &unsqueeze152_out1[..],
-            &constant1090_out1[..],
-            &constant1091_out1[..],
-            &constant1092_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape59_out1 = linear31_out1.reshape(concat78_out1);
-        let linear32_out1 = self.linear32.forward(concat76_out1.clone());
-        let reshape60_out1 = linear32_out1.reshape(concat79_out1);
-        let linear33_out1 = self.linear33.forward(concat76_out1);
-        let reshape61_out1 = linear33_out1.reshape(concat80_out1);
-        let transpose43_out1 = reshape61_out1.permute([0, 2, 1, 3]);
-        let linear34_out1 = self.linear34.forward(slice5_out1);
-        let reshape62_out1 = linear34_out1.reshape([1, -1, 8, 64]);
+        let reshape23_out1 = linear31_out1.reshape([1, -1, 8, 64]);
+        let linear32_out1 = self.linear32.forward(concat25_out1.clone());
+        let reshape24_out1 = linear32_out1.reshape([1, -1, 8, 64]);
+        let linear33_out1 = self.linear33.forward(concat25_out1);
+        let reshape25_out1 = linear33_out1.reshape([1, -1, 8, 64]);
+        let transpose50_out1 = reshape24_out1.permute([0, 2, 1, 3]);
+        let transpose51_out1 = reshape25_out1.permute([0, 2, 1, 3]);
+        let linear34_out1 = self.linear34.forward(transpose4_out1);
+        let reshape26_out1 = linear34_out1.reshape([1, -1, 8, 64]);
         let constant74_out1 = self.constant74.val();
-        let add36_out1 = reshape59_out1
+        let add39_out1 = reshape23_out1
             .clone()
             .add((constant74_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose44_out1 = add36_out1.permute([0, 2, 1, 3]);
+        let transpose52_out1 = add39_out1.permute([0, 2, 1, 3]);
         let constant75_out1 = self.constant75.val();
-        let add37_out1 = reshape59_out1
+        let add40_out1 = reshape23_out1
             .add((constant75_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose45_out1 = add37_out1.permute([0, 2, 1, 3]);
-        let transpose46_out1 = reshape62_out1.permute([0, 2, 3, 1]);
-        let matmul44_out1 = transpose45_out1.matmul(transpose46_out1);
-        let shape87_out1: [i64; 4] = {
-            let axes = &matmul44_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather73_out1 = shape87_out1[0] as i64;
-        let gather74_out1 = shape87_out1[1] as i64;
-        let gather75_out1 = shape87_out1[2] as i64;
-        let gather76_out1 = shape87_out1[3] as i64;
-        let pad10_out1 = matmul44_out1
+        let transpose53_out1 = add40_out1.permute([0, 2, 1, 3]);
+        let transpose54_out1 = reshape26_out1.permute([0, 2, 3, 1]);
+        let matmul38_out1 = transpose53_out1.matmul(transpose54_out1);
+        let pad7_out1 = matmul38_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze153_out1 = [gather73_out1 as i64];
-        let unsqueeze154_out1 = [gather74_out1 as i64];
-        let unsqueeze155_out1 = [gather75_out1 as i64];
-        let constant1107_out1: [i64; 1] = [-1i64];
-        let concat82_out1: [i64; 4usize] = [
-            &unsqueeze153_out1[..],
-            &unsqueeze154_out1[..],
-            &constant1107_out1[..],
-            &unsqueeze155_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape65_out1 = pad10_out1.reshape(concat82_out1);
-        let slice37_out1 = reshape65_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze156_out1 = [gather73_out1 as i64];
-        let unsqueeze157_out1 = [gather74_out1 as i64];
-        let unsqueeze158_out1 = [gather75_out1 as i64];
-        let unsqueeze159_out1 = [gather76_out1 as i64];
-        let concat83_out1: [i64; 4usize] = [
-            &unsqueeze156_out1[..],
-            &unsqueeze157_out1[..],
-            &unsqueeze158_out1[..],
-            &unsqueeze159_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape66_out1 = slice37_out1.reshape(concat83_out1);
-        let transpose48_out1 = reshape60_out1.permute([0, 2, 3, 1]);
-        let matmul45_out1 = transpose44_out1.matmul(transpose48_out1);
-        let shape91_out1: [i64; 4] = {
-            let axes = &matmul45_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape27_out1 = pad7_out1.reshape(concat16_out1);
+        let slice18_out1 = reshape27_out1.slice(s![.., .., 1.., ..]);
+        let reshape28_out1 = slice18_out1.reshape(concat17_out1);
+        let transpose55_out1 = reshape28_out1.permute([3, 0, 1, 2]);
+        let slice19_out1 = transpose55_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose56_out1 = slice19_out1.permute([1, 2, 3, 0]);
+        let mul40_out1 = transpose56_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where10_out1 = mul40_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention4_out1,) = {
+            let q = transpose52_out1;
+            let k = transpose50_out1;
+            let v = transpose51_out1;
+            let score_bias = where10_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention4_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention4_out1 = {
+                let dims = attention4_out1.dims();
+                attention4_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention4_out1,)
         };
-        let slice38_out1: [i64; 1] = shape91_out1[3..4].try_into().unwrap();
-        let squeeze4_out1 = slice38_out1[0] as i64;
-        let unsqueeze160_out1 = [squeeze4_out1 as i64];
-        let slice39_out1 = reshape66_out1.slice(s![.., .., .., 0..unsqueeze160_out1[0]]);
-        let add38_out1 = matmul45_out1.add(slice39_out1);
-        let constant1125_out1 = self.constant1125.val();
-        let div8_out1 = add38_out1
-            .div((constant1125_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape92_out1: [i64; 4] = {
-            let axes = &transpose43_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather77_out1 = shape92_out1[0] as i64;
-        let constant1127_out1 = -10000f32;
-        let where28_out1 = div8_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1127_out1);
-        let softmax4_out1 = burn::tensor::activation::softmax(where28_out1, 3);
-        let constant1128_out1 = 0f32;
-        let where29_out1 = softmax4_out1.mask_fill(unsqueeze117_out1, constant1128_out1);
-        let matmul46_out1 = where29_out1.matmul(transpose43_out1);
-        let transpose49_out1 = matmul46_out1.permute([0, 2, 1, 3]);
-        let unsqueeze161_out1 = [gather77_out1 as i64];
-        let constant1131_out1: [i64; 1] = [512i64];
-        let constant1130_out1: [i64; 1] = [-1i64];
-        let concat84_out1: [i64; 3usize] = [
-            &unsqueeze161_out1[..],
-            &constant1130_out1[..],
-            &constant1131_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape67_out1 = transpose49_out1.reshape(concat84_out1);
-        let linear35_out1 = self.linear35.forward(reshape67_out1);
-        let add39_out1 = add35_out1.add(linear35_out1);
-        (add39_out1, gather70_out1, concat77_out1, slice33_out1)
+        let where11_out1 = attention4_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose57_out1 = where11_out1.permute([0, 2, 1, 3]);
+        let reshape29_out1 = transpose57_out1.reshape([1, -1, 512]);
+        let linear35_out1 = self.linear35.forward(reshape29_out1);
+        let add41_out1 = add38_out1.add(linear35_out1);
+        (add41_out1, gather8_out1, concat26_out1, slice16_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule9 {
+pub struct Submodule7 {
     layernormalization21: LayerNorm,
     conv1d10: Conv1d,
     conv1d11: Conv1d,
@@ -3184,12 +2054,10 @@ pub struct Submodule9 {
     layernormalization23: LayerNorm,
     linear36: Linear,
     linear37: Linear,
-    constant1145: burn::module::Param<Tensor<1>>,
     layernormalization24: LayerNorm,
     layernormalization25: LayerNorm,
     linear38: Linear,
     linear39: Linear,
-    constant1146: burn::module::Param<Tensor<1>>,
     layernormalization26: LayerNorm,
     linear40: Linear,
     linear41: Linear,
@@ -3197,12 +2065,11 @@ pub struct Submodule9 {
     linear43: Linear,
     constant91: burn::module::Param<Tensor<2>>,
     constant92: burn::module::Param<Tensor<2>>,
-    constant1201: burn::module::Param<Tensor<1>>,
     linear44: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule9 {
+impl Submodule7 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization21 = LayerNormConfig::new(512)
@@ -3240,18 +2107,6 @@ impl Submodule9 {
             .init(device);
         let linear36 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear37 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1145: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization24 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -3262,18 +2117,6 @@ impl Submodule9 {
             .init(device);
         let linear38 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear39 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1146: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization26 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -3300,18 +2143,6 @@ impl Submodule9 {
             false,
             [8, 64].into(),
         );
-        let constant1201: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear44 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization21,
@@ -3322,12 +2153,10 @@ impl Submodule9 {
             layernormalization23,
             linear36,
             linear37,
-            constant1145,
             layernormalization24,
             layernormalization25,
             linear38,
             linear39,
-            constant1146,
             layernormalization26,
             linear40,
             linear41,
@@ -3335,7 +2164,6 @@ impl Submodule9 {
             linear43,
             constant91,
             constant92,
-            constant1201,
             linear44,
             device: device.clone(),
         }
@@ -3343,72 +2171,84 @@ impl Submodule9 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add39_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather70_out1: Tensor<3>,
+        add41_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather8_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization21_out1 = {
-            let dtype = add39_out1.clone().dtype();
+            let dtype = add41_out1.clone().dtype();
             self.layernormalization21
-                .forward(add39_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add41_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose50_out1 = layernormalization21_out1.permute([0, 2, 1]);
-        let conv1d10_out1 = self.conv1d10.forward(transpose50_out1);
+        let transpose58_out1 = layernormalization21_out1.permute([0, 2, 1]);
+        let conv1d10_out1 = self.conv1d10.forward(transpose58_out1);
         let split_tensors = conv1d10_out1.split_with_sizes([512, 512].into(), 1);
         let [split4_out1, split4_out2] = split_tensors.try_into().unwrap();
         let sigmoid14_out1 = burn::tensor::activation::sigmoid(split4_out2);
-        let mul66_out1 = split4_out1.mul(sigmoid14_out1);
-        let constant1132_out1 = 0f32;
-        let where30_out1 = mul66_out1.mask_fill(unsqueeze119_out1, constant1132_out1);
-        let concat86_out1 = burn::tensor::Tensor::cat(
-            [gather70_out1, where30_out1].into(),
+        let mul41_out1 = split4_out1.mul(sigmoid14_out1);
+        let where12_out1 = mul41_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad8_out1 = where12_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat27_out1 = burn::tensor::Tensor::cat(
+            [gather8_out1, pad8_out1].into(),
             2,
         );
-        let slice41_out1 = concat86_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d11_out1 = self.conv1d11.forward(concat86_out1);
-        let transpose52_out1 = conv1d11_out1.permute([0, 2, 1]);
+        let slice20_out1 = concat27_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d11_out1 = self.conv1d11.forward(concat27_out1);
+        let transpose59_out1 = conv1d11_out1.permute([0, 2, 1]);
         let layernormalization22_out1 = {
-            let dtype = transpose52_out1.dtype();
+            let dtype = transpose59_out1.dtype();
             self.layernormalization22
-                .forward(transpose52_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose59_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose53_out1 = layernormalization22_out1.permute([0, 2, 1]);
-        let sigmoid15_out1 = burn::tensor::activation::sigmoid(transpose53_out1.clone());
-        let mul67_out1 = transpose53_out1.mul(sigmoid15_out1);
-        let conv1d12_out1 = self.conv1d12.forward(mul67_out1);
-        let transpose54_out1 = conv1d12_out1.permute([0, 2, 1]);
-        let add40_out1 = add39_out1.add(transpose54_out1);
+        let transpose60_out1 = layernormalization22_out1.permute([0, 2, 1]);
+        let sigmoid15_out1 = burn::tensor::activation::sigmoid(transpose60_out1.clone());
+        let mul42_out1 = transpose60_out1.mul(sigmoid15_out1);
+        let conv1d12_out1 = self.conv1d12.forward(mul42_out1);
+        let transpose61_out1 = conv1d12_out1.permute([0, 2, 1]);
+        let add42_out1 = add41_out1.add(transpose61_out1);
         let layernormalization23_out1 = {
-            let dtype = add40_out1.clone().dtype();
+            let dtype = add42_out1.clone().dtype();
             self.layernormalization23
-                .forward(add40_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add42_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear36_out1 = self.linear36.forward(layernormalization23_out1);
         let sigmoid16_out1 = burn::tensor::activation::sigmoid(linear36_out1.clone());
-        let mul68_out1 = linear36_out1.mul(sigmoid16_out1);
-        let linear37_out1 = self.linear37.forward(mul68_out1);
-        let constant1145_out1 = self.constant1145.val();
-        let mul69_out1 = linear37_out1
-            .mul((constant1145_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add41_out1 = add40_out1.add(mul69_out1);
+        let mul43_out1 = linear36_out1.mul(sigmoid16_out1);
+        let linear37_out1 = self.linear37.forward(mul43_out1);
+        let mul44_out1 = linear37_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add43_out1 = add42_out1.add(mul44_out1);
         let layernormalization24_out1 = {
-            let dtype = add41_out1.dtype();
+            let dtype = add43_out1.dtype();
             self.layernormalization24
-                .forward(add41_out1.cast(burn::tensor::DType::F32))
+                .forward(add43_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather78_out1 = {
+        let gather9_out1 = {
             let sliced = cache_last_channel.slice(s![4, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather79_out1 = {
+        let gather10_out1 = {
             let sliced = cache_last_time.slice(s![4, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -3422,202 +2262,102 @@ impl Submodule9 {
         };
         let linear38_out1 = self.linear38.forward(layernormalization25_out1);
         let sigmoid17_out1 = burn::tensor::activation::sigmoid(linear38_out1.clone());
-        let mul70_out1 = linear38_out1.mul(sigmoid17_out1);
-        let linear39_out1 = self.linear39.forward(mul70_out1);
-        let constant1146_out1 = self.constant1146.val();
-        let mul71_out1 = linear39_out1
-            .mul((constant1146_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add42_out1 = layernormalization24_out1.add(mul71_out1);
+        let mul45_out1 = linear38_out1.mul(sigmoid17_out1);
+        let linear39_out1 = self.linear39.forward(mul45_out1);
+        let mul46_out1 = linear39_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add44_out1 = layernormalization24_out1.add(mul46_out1);
         let layernormalization26_out1 = {
-            let dtype = add42_out1.clone().dtype();
+            let dtype = add44_out1.clone().dtype();
             self.layernormalization26
-                .forward(add42_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add44_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat87_out1 = burn::tensor::Tensor::cat(
-            [gather78_out1.clone(), layernormalization26_out1.clone()].into(),
+        let concat28_out1 = burn::tensor::Tensor::cat(
+            [gather9_out1.clone(), layernormalization26_out1.clone()].into(),
             1,
         );
-        let shape93_out1: [i64; 3] = {
-            let axes = &layernormalization26_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather80_out1 = shape93_out1[1] as i64;
-        let unsqueeze162_out1 = [gather80_out1 as i64];
-        let slice42_out1 = gather78_out1
-            .slice(s![.., unsqueeze162_out1[0]..9223372036854775807, ..]);
-        let unsqueeze163_out1 = [gather80_out1 as i64];
-        let slice43_out1 = layernormalization26_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze163_out1[0], ..]);
-        let concat88_out1 = burn::tensor::Tensor::cat(
-            [slice42_out1, slice43_out1].into(),
+        let transpose62_out1 = gather9_out1.permute([1, 0, 2]);
+        let slice21_out1 = transpose62_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose63_out1 = slice21_out1.permute([1, 0, 2]);
+        let concat29_out1 = burn::tensor::Tensor::cat(
+            [transpose63_out1, layernormalization26_out1.clone()].into(),
             1,
         );
-        let gather81_out1 = shape93_out1[0] as i64;
         let linear40_out1 = self.linear40.forward(layernormalization26_out1);
-        let unsqueeze164_out1 = [gather81_out1 as i64];
-        let constant1160_out1: [i64; 1] = [64i64];
-        let constant1158_out1: [i64; 1] = [-1i64];
-        let constant1159_out1: [i64; 1] = [8i64];
-        let concat89_out1: [i64; 4usize] = [
-            &unsqueeze164_out1[..],
-            &constant1158_out1[..],
-            &constant1159_out1[..],
-            &constant1160_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze165_out1 = [gather81_out1 as i64];
-        let constant1164_out1: [i64; 1] = [64i64];
-        let constant1162_out1: [i64; 1] = [-1i64];
-        let constant1163_out1: [i64; 1] = [8i64];
-        let concat90_out1: [i64; 4usize] = [
-            &unsqueeze165_out1[..],
-            &constant1162_out1[..],
-            &constant1163_out1[..],
-            &constant1164_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze166_out1 = [gather81_out1 as i64];
-        let constant1168_out1: [i64; 1] = [64i64];
-        let constant1166_out1: [i64; 1] = [-1i64];
-        let constant1167_out1: [i64; 1] = [8i64];
-        let concat91_out1: [i64; 4usize] = [
-            &unsqueeze166_out1[..],
-            &constant1166_out1[..],
-            &constant1167_out1[..],
-            &constant1168_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape70_out1 = linear40_out1.reshape(concat89_out1);
-        let linear41_out1 = self.linear41.forward(concat87_out1.clone());
-        let reshape71_out1 = linear41_out1.reshape(concat90_out1);
-        let linear42_out1 = self.linear42.forward(concat87_out1);
-        let reshape72_out1 = linear42_out1.reshape(concat91_out1);
-        let transpose55_out1 = reshape72_out1.permute([0, 2, 1, 3]);
-        let linear43_out1 = self.linear43.forward(slice5_out1);
-        let reshape73_out1 = linear43_out1.reshape([1, -1, 8, 64]);
+        let reshape30_out1 = linear40_out1.reshape([1, -1, 8, 64]);
+        let linear41_out1 = self.linear41.forward(concat28_out1.clone());
+        let reshape31_out1 = linear41_out1.reshape([1, -1, 8, 64]);
+        let linear42_out1 = self.linear42.forward(concat28_out1);
+        let reshape32_out1 = linear42_out1.reshape([1, -1, 8, 64]);
+        let transpose64_out1 = reshape31_out1.permute([0, 2, 1, 3]);
+        let transpose65_out1 = reshape32_out1.permute([0, 2, 1, 3]);
+        let linear43_out1 = self.linear43.forward(transpose4_out1);
+        let reshape33_out1 = linear43_out1.reshape([1, -1, 8, 64]);
         let constant91_out1 = self.constant91.val();
-        let add43_out1 = reshape70_out1
+        let add45_out1 = reshape30_out1
             .clone()
             .add((constant91_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose56_out1 = add43_out1.permute([0, 2, 1, 3]);
+        let transpose66_out1 = add45_out1.permute([0, 2, 1, 3]);
         let constant92_out1 = self.constant92.val();
-        let add44_out1 = reshape70_out1
+        let add46_out1 = reshape30_out1
             .add((constant92_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose57_out1 = add44_out1.permute([0, 2, 1, 3]);
-        let transpose58_out1 = reshape73_out1.permute([0, 2, 3, 1]);
-        let matmul56_out1 = transpose57_out1.matmul(transpose58_out1);
-        let shape95_out1: [i64; 4] = {
-            let axes = &matmul56_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather82_out1 = shape95_out1[0] as i64;
-        let gather83_out1 = shape95_out1[1] as i64;
-        let gather84_out1 = shape95_out1[2] as i64;
-        let gather85_out1 = shape95_out1[3] as i64;
-        let pad12_out1 = matmul56_out1
+        let transpose67_out1 = add46_out1.permute([0, 2, 1, 3]);
+        let transpose68_out1 = reshape33_out1.permute([0, 2, 3, 1]);
+        let matmul48_out1 = transpose67_out1.matmul(transpose68_out1);
+        let pad9_out1 = matmul48_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze167_out1 = [gather82_out1 as i64];
-        let unsqueeze168_out1 = [gather83_out1 as i64];
-        let unsqueeze169_out1 = [gather84_out1 as i64];
-        let constant1183_out1: [i64; 1] = [-1i64];
-        let concat93_out1: [i64; 4usize] = [
-            &unsqueeze167_out1[..],
-            &unsqueeze168_out1[..],
-            &constant1183_out1[..],
-            &unsqueeze169_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape76_out1 = pad12_out1.reshape(concat93_out1);
-        let slice45_out1 = reshape76_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze170_out1 = [gather82_out1 as i64];
-        let unsqueeze171_out1 = [gather83_out1 as i64];
-        let unsqueeze172_out1 = [gather84_out1 as i64];
-        let unsqueeze173_out1 = [gather85_out1 as i64];
-        let concat94_out1: [i64; 4usize] = [
-            &unsqueeze170_out1[..],
-            &unsqueeze171_out1[..],
-            &unsqueeze172_out1[..],
-            &unsqueeze173_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape77_out1 = slice45_out1.reshape(concat94_out1);
-        let transpose60_out1 = reshape71_out1.permute([0, 2, 3, 1]);
-        let matmul57_out1 = transpose56_out1.matmul(transpose60_out1);
-        let shape99_out1: [i64; 4] = {
-            let axes = &matmul57_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape34_out1 = pad9_out1.reshape(concat16_out1);
+        let slice22_out1 = reshape34_out1.slice(s![.., .., 1.., ..]);
+        let reshape35_out1 = slice22_out1.reshape(concat17_out1);
+        let transpose69_out1 = reshape35_out1.permute([3, 0, 1, 2]);
+        let slice23_out1 = transpose69_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose70_out1 = slice23_out1.permute([1, 2, 3, 0]);
+        let mul47_out1 = transpose70_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where13_out1 = mul47_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention5_out1,) = {
+            let q = transpose66_out1;
+            let k = transpose64_out1;
+            let v = transpose65_out1;
+            let score_bias = where13_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention5_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention5_out1 = {
+                let dims = attention5_out1.dims();
+                attention5_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention5_out1,)
         };
-        let slice46_out1: [i64; 1] = shape99_out1[3..4].try_into().unwrap();
-        let squeeze5_out1 = slice46_out1[0] as i64;
-        let unsqueeze174_out1 = [squeeze5_out1 as i64];
-        let slice47_out1 = reshape77_out1.slice(s![.., .., .., 0..unsqueeze174_out1[0]]);
-        let add45_out1 = matmul57_out1.add(slice47_out1);
-        let constant1201_out1 = self.constant1201.val();
-        let div9_out1 = add45_out1
-            .div((constant1201_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape100_out1: [i64; 4] = {
-            let axes = &transpose55_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather86_out1 = shape100_out1[0] as i64;
-        let constant1203_out1 = -10000f32;
-        let where31_out1 = div9_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1203_out1);
-        let softmax5_out1 = burn::tensor::activation::softmax(where31_out1, 3);
-        let constant1204_out1 = 0f32;
-        let where32_out1 = softmax5_out1.mask_fill(unsqueeze117_out1, constant1204_out1);
-        let matmul58_out1 = where32_out1.matmul(transpose55_out1);
-        let transpose61_out1 = matmul58_out1.permute([0, 2, 1, 3]);
-        let unsqueeze175_out1 = [gather86_out1 as i64];
-        let constant1207_out1: [i64; 1] = [512i64];
-        let constant1206_out1: [i64; 1] = [-1i64];
-        let concat95_out1: [i64; 3usize] = [
-            &unsqueeze175_out1[..],
-            &constant1206_out1[..],
-            &constant1207_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape78_out1 = transpose61_out1.reshape(concat95_out1);
-        let linear44_out1 = self.linear44.forward(reshape78_out1);
-        let add46_out1 = add42_out1.add(linear44_out1);
-        (add46_out1, gather79_out1, concat88_out1, slice41_out1)
+        let where14_out1 = attention5_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose71_out1 = where14_out1.permute([0, 2, 1, 3]);
+        let reshape36_out1 = transpose71_out1.reshape([1, -1, 512]);
+        let linear44_out1 = self.linear44.forward(reshape36_out1);
+        let add47_out1 = add44_out1.add(linear44_out1);
+        (add47_out1, gather10_out1, concat29_out1, slice20_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule10 {
+pub struct Submodule8 {
     layernormalization27: LayerNorm,
     conv1d13: Conv1d,
     conv1d14: Conv1d,
@@ -3626,12 +2366,10 @@ pub struct Submodule10 {
     layernormalization29: LayerNorm,
     linear45: Linear,
     linear46: Linear,
-    constant1221: burn::module::Param<Tensor<1>>,
     layernormalization30: LayerNorm,
     layernormalization31: LayerNorm,
     linear47: Linear,
     linear48: Linear,
-    constant1223: burn::module::Param<Tensor<1>>,
     layernormalization32: LayerNorm,
     linear49: Linear,
     linear50: Linear,
@@ -3639,12 +2377,11 @@ pub struct Submodule10 {
     linear52: Linear,
     constant108: burn::module::Param<Tensor<2>>,
     constant109: burn::module::Param<Tensor<2>>,
-    constant1278: burn::module::Param<Tensor<1>>,
     linear53: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule10 {
+impl Submodule8 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization27 = LayerNormConfig::new(512)
@@ -3682,18 +2419,6 @@ impl Submodule10 {
             .init(device);
         let linear45 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear46 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1221: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization30 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -3704,18 +2429,6 @@ impl Submodule10 {
             .init(device);
         let linear47 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear48 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1223: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization32 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -3742,18 +2455,6 @@ impl Submodule10 {
             false,
             [8, 64].into(),
         );
-        let constant1278: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear53 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization27,
@@ -3764,12 +2465,10 @@ impl Submodule10 {
             layernormalization29,
             linear45,
             linear46,
-            constant1221,
             layernormalization30,
             layernormalization31,
             linear47,
             linear48,
-            constant1223,
             layernormalization32,
             linear49,
             linear50,
@@ -3777,7 +2476,6 @@ impl Submodule10 {
             linear52,
             constant108,
             constant109,
-            constant1278,
             linear53,
             device: device.clone(),
         }
@@ -3785,72 +2483,84 @@ impl Submodule10 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add46_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather79_out1: Tensor<3>,
+        add47_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather10_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization27_out1 = {
-            let dtype = add46_out1.clone().dtype();
+            let dtype = add47_out1.clone().dtype();
             self.layernormalization27
-                .forward(add46_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add47_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose62_out1 = layernormalization27_out1.permute([0, 2, 1]);
-        let conv1d13_out1 = self.conv1d13.forward(transpose62_out1);
+        let transpose72_out1 = layernormalization27_out1.permute([0, 2, 1]);
+        let conv1d13_out1 = self.conv1d13.forward(transpose72_out1);
         let split_tensors = conv1d13_out1.split_with_sizes([512, 512].into(), 1);
         let [split5_out1, split5_out2] = split_tensors.try_into().unwrap();
         let sigmoid18_out1 = burn::tensor::activation::sigmoid(split5_out2);
-        let mul72_out1 = split5_out1.mul(sigmoid18_out1);
-        let constant1208_out1 = 0f32;
-        let where33_out1 = mul72_out1.mask_fill(unsqueeze119_out1, constant1208_out1);
-        let concat97_out1 = burn::tensor::Tensor::cat(
-            [gather79_out1, where33_out1].into(),
+        let mul48_out1 = split5_out1.mul(sigmoid18_out1);
+        let where15_out1 = mul48_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad10_out1 = where15_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat30_out1 = burn::tensor::Tensor::cat(
+            [gather10_out1, pad10_out1].into(),
             2,
         );
-        let slice49_out1 = concat97_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d14_out1 = self.conv1d14.forward(concat97_out1);
-        let transpose64_out1 = conv1d14_out1.permute([0, 2, 1]);
+        let slice24_out1 = concat30_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d14_out1 = self.conv1d14.forward(concat30_out1);
+        let transpose73_out1 = conv1d14_out1.permute([0, 2, 1]);
         let layernormalization28_out1 = {
-            let dtype = transpose64_out1.dtype();
+            let dtype = transpose73_out1.dtype();
             self.layernormalization28
-                .forward(transpose64_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose73_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose65_out1 = layernormalization28_out1.permute([0, 2, 1]);
-        let sigmoid19_out1 = burn::tensor::activation::sigmoid(transpose65_out1.clone());
-        let mul73_out1 = transpose65_out1.mul(sigmoid19_out1);
-        let conv1d15_out1 = self.conv1d15.forward(mul73_out1);
-        let transpose66_out1 = conv1d15_out1.permute([0, 2, 1]);
-        let add47_out1 = add46_out1.add(transpose66_out1);
+        let transpose74_out1 = layernormalization28_out1.permute([0, 2, 1]);
+        let sigmoid19_out1 = burn::tensor::activation::sigmoid(transpose74_out1.clone());
+        let mul49_out1 = transpose74_out1.mul(sigmoid19_out1);
+        let conv1d15_out1 = self.conv1d15.forward(mul49_out1);
+        let transpose75_out1 = conv1d15_out1.permute([0, 2, 1]);
+        let add48_out1 = add47_out1.add(transpose75_out1);
         let layernormalization29_out1 = {
-            let dtype = add47_out1.clone().dtype();
+            let dtype = add48_out1.clone().dtype();
             self.layernormalization29
-                .forward(add47_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add48_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear45_out1 = self.linear45.forward(layernormalization29_out1);
         let sigmoid20_out1 = burn::tensor::activation::sigmoid(linear45_out1.clone());
-        let mul74_out1 = linear45_out1.mul(sigmoid20_out1);
-        let linear46_out1 = self.linear46.forward(mul74_out1);
-        let constant1221_out1 = self.constant1221.val();
-        let mul75_out1 = linear46_out1
-            .mul((constant1221_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add48_out1 = add47_out1.add(mul75_out1);
+        let mul50_out1 = linear45_out1.mul(sigmoid20_out1);
+        let linear46_out1 = self.linear46.forward(mul50_out1);
+        let mul51_out1 = linear46_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add49_out1 = add48_out1.add(mul51_out1);
         let layernormalization30_out1 = {
-            let dtype = add48_out1.dtype();
+            let dtype = add49_out1.dtype();
             self.layernormalization30
-                .forward(add48_out1.cast(burn::tensor::DType::F32))
+                .forward(add49_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather87_out1 = {
+        let gather11_out1 = {
             let sliced = cache_last_channel.slice(s![5, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather88_out1 = {
+        let gather12_out1 = {
             let sliced = cache_last_time.slice(s![5, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -3864,202 +2574,102 @@ impl Submodule10 {
         };
         let linear47_out1 = self.linear47.forward(layernormalization31_out1);
         let sigmoid21_out1 = burn::tensor::activation::sigmoid(linear47_out1.clone());
-        let mul76_out1 = linear47_out1.mul(sigmoid21_out1);
-        let linear48_out1 = self.linear48.forward(mul76_out1);
-        let constant1223_out1 = self.constant1223.val();
-        let mul77_out1 = linear48_out1
-            .mul((constant1223_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add49_out1 = layernormalization30_out1.add(mul77_out1);
+        let mul52_out1 = linear47_out1.mul(sigmoid21_out1);
+        let linear48_out1 = self.linear48.forward(mul52_out1);
+        let mul53_out1 = linear48_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add50_out1 = layernormalization30_out1.add(mul53_out1);
         let layernormalization32_out1 = {
-            let dtype = add49_out1.clone().dtype();
+            let dtype = add50_out1.clone().dtype();
             self.layernormalization32
-                .forward(add49_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add50_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat98_out1 = burn::tensor::Tensor::cat(
-            [gather87_out1.clone(), layernormalization32_out1.clone()].into(),
+        let concat31_out1 = burn::tensor::Tensor::cat(
+            [gather11_out1.clone(), layernormalization32_out1.clone()].into(),
             1,
         );
-        let shape101_out1: [i64; 3] = {
-            let axes = &layernormalization32_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather89_out1 = shape101_out1[1] as i64;
-        let unsqueeze176_out1 = [gather89_out1 as i64];
-        let slice50_out1 = gather87_out1
-            .slice(s![.., unsqueeze176_out1[0]..9223372036854775807, ..]);
-        let unsqueeze177_out1 = [gather89_out1 as i64];
-        let slice51_out1 = layernormalization32_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze177_out1[0], ..]);
-        let concat99_out1 = burn::tensor::Tensor::cat(
-            [slice50_out1, slice51_out1].into(),
+        let transpose76_out1 = gather11_out1.permute([1, 0, 2]);
+        let slice25_out1 = transpose76_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose77_out1 = slice25_out1.permute([1, 0, 2]);
+        let concat32_out1 = burn::tensor::Tensor::cat(
+            [transpose77_out1, layernormalization32_out1.clone()].into(),
             1,
         );
-        let gather90_out1 = shape101_out1[0] as i64;
         let linear49_out1 = self.linear49.forward(layernormalization32_out1);
-        let unsqueeze178_out1 = [gather90_out1 as i64];
-        let constant1237_out1: [i64; 1] = [64i64];
-        let constant1235_out1: [i64; 1] = [-1i64];
-        let constant1236_out1: [i64; 1] = [8i64];
-        let concat100_out1: [i64; 4usize] = [
-            &unsqueeze178_out1[..],
-            &constant1235_out1[..],
-            &constant1236_out1[..],
-            &constant1237_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze179_out1 = [gather90_out1 as i64];
-        let constant1241_out1: [i64; 1] = [64i64];
-        let constant1239_out1: [i64; 1] = [-1i64];
-        let constant1240_out1: [i64; 1] = [8i64];
-        let concat101_out1: [i64; 4usize] = [
-            &unsqueeze179_out1[..],
-            &constant1239_out1[..],
-            &constant1240_out1[..],
-            &constant1241_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze180_out1 = [gather90_out1 as i64];
-        let constant1245_out1: [i64; 1] = [64i64];
-        let constant1243_out1: [i64; 1] = [-1i64];
-        let constant1244_out1: [i64; 1] = [8i64];
-        let concat102_out1: [i64; 4usize] = [
-            &unsqueeze180_out1[..],
-            &constant1243_out1[..],
-            &constant1244_out1[..],
-            &constant1245_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape81_out1 = linear49_out1.reshape(concat100_out1);
-        let linear50_out1 = self.linear50.forward(concat98_out1.clone());
-        let reshape82_out1 = linear50_out1.reshape(concat101_out1);
-        let linear51_out1 = self.linear51.forward(concat98_out1);
-        let reshape83_out1 = linear51_out1.reshape(concat102_out1);
-        let transpose67_out1 = reshape83_out1.permute([0, 2, 1, 3]);
-        let linear52_out1 = self.linear52.forward(slice5_out1);
-        let reshape84_out1 = linear52_out1.reshape([1, -1, 8, 64]);
+        let reshape37_out1 = linear49_out1.reshape([1, -1, 8, 64]);
+        let linear50_out1 = self.linear50.forward(concat31_out1.clone());
+        let reshape38_out1 = linear50_out1.reshape([1, -1, 8, 64]);
+        let linear51_out1 = self.linear51.forward(concat31_out1);
+        let reshape39_out1 = linear51_out1.reshape([1, -1, 8, 64]);
+        let transpose78_out1 = reshape38_out1.permute([0, 2, 1, 3]);
+        let transpose79_out1 = reshape39_out1.permute([0, 2, 1, 3]);
+        let linear52_out1 = self.linear52.forward(transpose4_out1);
+        let reshape40_out1 = linear52_out1.reshape([1, -1, 8, 64]);
         let constant108_out1 = self.constant108.val();
-        let add50_out1 = reshape81_out1
+        let add51_out1 = reshape37_out1
             .clone()
             .add((constant108_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose68_out1 = add50_out1.permute([0, 2, 1, 3]);
+        let transpose80_out1 = add51_out1.permute([0, 2, 1, 3]);
         let constant109_out1 = self.constant109.val();
-        let add51_out1 = reshape81_out1
+        let add52_out1 = reshape37_out1
             .add((constant109_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose69_out1 = add51_out1.permute([0, 2, 1, 3]);
-        let transpose70_out1 = reshape84_out1.permute([0, 2, 3, 1]);
-        let matmul68_out1 = transpose69_out1.matmul(transpose70_out1);
-        let shape103_out1: [i64; 4] = {
-            let axes = &matmul68_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather91_out1 = shape103_out1[0] as i64;
-        let gather92_out1 = shape103_out1[1] as i64;
-        let gather93_out1 = shape103_out1[2] as i64;
-        let gather94_out1 = shape103_out1[3] as i64;
-        let pad14_out1 = matmul68_out1
+        let transpose81_out1 = add52_out1.permute([0, 2, 1, 3]);
+        let transpose82_out1 = reshape40_out1.permute([0, 2, 3, 1]);
+        let matmul58_out1 = transpose81_out1.matmul(transpose82_out1);
+        let pad11_out1 = matmul58_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze181_out1 = [gather91_out1 as i64];
-        let unsqueeze182_out1 = [gather92_out1 as i64];
-        let unsqueeze183_out1 = [gather93_out1 as i64];
-        let constant1260_out1: [i64; 1] = [-1i64];
-        let concat104_out1: [i64; 4usize] = [
-            &unsqueeze181_out1[..],
-            &unsqueeze182_out1[..],
-            &constant1260_out1[..],
-            &unsqueeze183_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape87_out1 = pad14_out1.reshape(concat104_out1);
-        let slice53_out1 = reshape87_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze184_out1 = [gather91_out1 as i64];
-        let unsqueeze185_out1 = [gather92_out1 as i64];
-        let unsqueeze186_out1 = [gather93_out1 as i64];
-        let unsqueeze187_out1 = [gather94_out1 as i64];
-        let concat105_out1: [i64; 4usize] = [
-            &unsqueeze184_out1[..],
-            &unsqueeze185_out1[..],
-            &unsqueeze186_out1[..],
-            &unsqueeze187_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape88_out1 = slice53_out1.reshape(concat105_out1);
-        let transpose72_out1 = reshape82_out1.permute([0, 2, 3, 1]);
-        let matmul69_out1 = transpose68_out1.matmul(transpose72_out1);
-        let shape107_out1: [i64; 4] = {
-            let axes = &matmul69_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape41_out1 = pad11_out1.reshape(concat16_out1);
+        let slice26_out1 = reshape41_out1.slice(s![.., .., 1.., ..]);
+        let reshape42_out1 = slice26_out1.reshape(concat17_out1);
+        let transpose83_out1 = reshape42_out1.permute([3, 0, 1, 2]);
+        let slice27_out1 = transpose83_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose84_out1 = slice27_out1.permute([1, 2, 3, 0]);
+        let mul54_out1 = transpose84_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where16_out1 = mul54_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention6_out1,) = {
+            let q = transpose80_out1;
+            let k = transpose78_out1;
+            let v = transpose79_out1;
+            let score_bias = where16_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention6_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention6_out1 = {
+                let dims = attention6_out1.dims();
+                attention6_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention6_out1,)
         };
-        let slice54_out1: [i64; 1] = shape107_out1[3..4].try_into().unwrap();
-        let squeeze6_out1 = slice54_out1[0] as i64;
-        let unsqueeze188_out1 = [squeeze6_out1 as i64];
-        let slice55_out1 = reshape88_out1.slice(s![.., .., .., 0..unsqueeze188_out1[0]]);
-        let add52_out1 = matmul69_out1.add(slice55_out1);
-        let constant1278_out1 = self.constant1278.val();
-        let div10_out1 = add52_out1
-            .div((constant1278_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape108_out1: [i64; 4] = {
-            let axes = &transpose67_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather95_out1 = shape108_out1[0] as i64;
-        let constant1280_out1 = -10000f32;
-        let where34_out1 = div10_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1280_out1);
-        let softmax6_out1 = burn::tensor::activation::softmax(where34_out1, 3);
-        let constant1281_out1 = 0f32;
-        let where35_out1 = softmax6_out1.mask_fill(unsqueeze117_out1, constant1281_out1);
-        let matmul70_out1 = where35_out1.matmul(transpose67_out1);
-        let transpose73_out1 = matmul70_out1.permute([0, 2, 1, 3]);
-        let unsqueeze189_out1 = [gather95_out1 as i64];
-        let constant1284_out1: [i64; 1] = [512i64];
-        let constant1283_out1: [i64; 1] = [-1i64];
-        let concat106_out1: [i64; 3usize] = [
-            &unsqueeze189_out1[..],
-            &constant1283_out1[..],
-            &constant1284_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape89_out1 = transpose73_out1.reshape(concat106_out1);
-        let linear53_out1 = self.linear53.forward(reshape89_out1);
-        let add53_out1 = add49_out1.add(linear53_out1);
-        (add53_out1, gather88_out1, concat99_out1, slice49_out1)
+        let where17_out1 = attention6_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose85_out1 = where17_out1.permute([0, 2, 1, 3]);
+        let reshape43_out1 = transpose85_out1.reshape([1, -1, 512]);
+        let linear53_out1 = self.linear53.forward(reshape43_out1);
+        let add53_out1 = add50_out1.add(linear53_out1);
+        (add53_out1, gather12_out1, concat32_out1, slice24_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule11 {
+pub struct Submodule9 {
     layernormalization33: LayerNorm,
     conv1d16: Conv1d,
     conv1d17: Conv1d,
@@ -4068,12 +2678,10 @@ pub struct Submodule11 {
     layernormalization35: LayerNorm,
     linear54: Linear,
     linear55: Linear,
-    constant1298: burn::module::Param<Tensor<1>>,
     layernormalization36: LayerNorm,
     layernormalization37: LayerNorm,
     linear56: Linear,
     linear57: Linear,
-    constant1299: burn::module::Param<Tensor<1>>,
     layernormalization38: LayerNorm,
     linear58: Linear,
     linear59: Linear,
@@ -4081,12 +2689,11 @@ pub struct Submodule11 {
     linear61: Linear,
     constant125: burn::module::Param<Tensor<2>>,
     constant126: burn::module::Param<Tensor<2>>,
-    constant1354: burn::module::Param<Tensor<1>>,
     linear62: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule11 {
+impl Submodule9 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization33 = LayerNormConfig::new(512)
@@ -4124,18 +2731,6 @@ impl Submodule11 {
             .init(device);
         let linear54 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear55 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1298: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization36 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -4146,18 +2741,6 @@ impl Submodule11 {
             .init(device);
         let linear56 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear57 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1299: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization38 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -4184,18 +2767,6 @@ impl Submodule11 {
             false,
             [8, 64].into(),
         );
-        let constant1354: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear62 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization33,
@@ -4206,12 +2777,10 @@ impl Submodule11 {
             layernormalization35,
             linear54,
             linear55,
-            constant1298,
             layernormalization36,
             layernormalization37,
             linear56,
             linear57,
-            constant1299,
             layernormalization38,
             linear58,
             linear59,
@@ -4219,7 +2788,6 @@ impl Submodule11 {
             linear61,
             constant125,
             constant126,
-            constant1354,
             linear62,
             device: device.clone(),
         }
@@ -4228,12 +2796,21 @@ impl Submodule11 {
     pub fn forward(
         &self,
         add53_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather88_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather12_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization33_out1 = {
             let dtype = add53_out1.clone().dtype();
@@ -4241,33 +2818,37 @@ impl Submodule11 {
                 .forward(add53_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose74_out1 = layernormalization33_out1.permute([0, 2, 1]);
-        let conv1d16_out1 = self.conv1d16.forward(transpose74_out1);
+        let transpose86_out1 = layernormalization33_out1.permute([0, 2, 1]);
+        let conv1d16_out1 = self.conv1d16.forward(transpose86_out1);
         let split_tensors = conv1d16_out1.split_with_sizes([512, 512].into(), 1);
         let [split6_out1, split6_out2] = split_tensors.try_into().unwrap();
         let sigmoid22_out1 = burn::tensor::activation::sigmoid(split6_out2);
-        let mul78_out1 = split6_out1.mul(sigmoid22_out1);
-        let constant1285_out1 = 0f32;
-        let where36_out1 = mul78_out1.mask_fill(unsqueeze119_out1, constant1285_out1);
-        let concat108_out1 = burn::tensor::Tensor::cat(
-            [gather88_out1, where36_out1].into(),
+        let mul55_out1 = split6_out1.mul(sigmoid22_out1);
+        let where18_out1 = mul55_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad12_out1 = where18_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat33_out1 = burn::tensor::Tensor::cat(
+            [gather12_out1, pad12_out1].into(),
             2,
         );
-        let slice57_out1 = concat108_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d17_out1 = self.conv1d17.forward(concat108_out1);
-        let transpose76_out1 = conv1d17_out1.permute([0, 2, 1]);
+        let slice28_out1 = concat33_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d17_out1 = self.conv1d17.forward(concat33_out1);
+        let transpose87_out1 = conv1d17_out1.permute([0, 2, 1]);
         let layernormalization34_out1 = {
-            let dtype = transpose76_out1.dtype();
+            let dtype = transpose87_out1.dtype();
             self.layernormalization34
-                .forward(transpose76_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose87_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose77_out1 = layernormalization34_out1.permute([0, 2, 1]);
-        let sigmoid23_out1 = burn::tensor::activation::sigmoid(transpose77_out1.clone());
-        let mul79_out1 = transpose77_out1.mul(sigmoid23_out1);
-        let conv1d18_out1 = self.conv1d18.forward(mul79_out1);
-        let transpose78_out1 = conv1d18_out1.permute([0, 2, 1]);
-        let add54_out1 = add53_out1.add(transpose78_out1);
+        let transpose88_out1 = layernormalization34_out1.permute([0, 2, 1]);
+        let sigmoid23_out1 = burn::tensor::activation::sigmoid(transpose88_out1.clone());
+        let mul56_out1 = transpose88_out1.mul(sigmoid23_out1);
+        let conv1d18_out1 = self.conv1d18.forward(mul56_out1);
+        let transpose89_out1 = conv1d18_out1.permute([0, 2, 1]);
+        let add54_out1 = add53_out1.add(transpose89_out1);
         let layernormalization35_out1 = {
             let dtype = add54_out1.clone().dtype();
             self.layernormalization35
@@ -4276,23 +2857,22 @@ impl Submodule11 {
         };
         let linear54_out1 = self.linear54.forward(layernormalization35_out1);
         let sigmoid24_out1 = burn::tensor::activation::sigmoid(linear54_out1.clone());
-        let mul80_out1 = linear54_out1.mul(sigmoid24_out1);
-        let linear55_out1 = self.linear55.forward(mul80_out1);
-        let constant1298_out1 = self.constant1298.val();
-        let mul81_out1 = linear55_out1
-            .mul((constant1298_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add55_out1 = add54_out1.add(mul81_out1);
+        let mul57_out1 = linear54_out1.mul(sigmoid24_out1);
+        let linear55_out1 = self.linear55.forward(mul57_out1);
+        let mul58_out1 = linear55_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add55_out1 = add54_out1.add(mul58_out1);
         let layernormalization36_out1 = {
             let dtype = add55_out1.dtype();
             self.layernormalization36
                 .forward(add55_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather96_out1 = {
+        let gather13_out1 = {
             let sliced = cache_last_channel.slice(s![6, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather97_out1 = {
+        let gather14_out1 = {
             let sliced = cache_last_time.slice(s![6, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -4306,202 +2886,102 @@ impl Submodule11 {
         };
         let linear56_out1 = self.linear56.forward(layernormalization37_out1);
         let sigmoid25_out1 = burn::tensor::activation::sigmoid(linear56_out1.clone());
-        let mul82_out1 = linear56_out1.mul(sigmoid25_out1);
-        let linear57_out1 = self.linear57.forward(mul82_out1);
-        let constant1299_out1 = self.constant1299.val();
-        let mul83_out1 = linear57_out1
-            .mul((constant1299_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add56_out1 = layernormalization36_out1.add(mul83_out1);
+        let mul59_out1 = linear56_out1.mul(sigmoid25_out1);
+        let linear57_out1 = self.linear57.forward(mul59_out1);
+        let mul60_out1 = linear57_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add56_out1 = layernormalization36_out1.add(mul60_out1);
         let layernormalization38_out1 = {
             let dtype = add56_out1.clone().dtype();
             self.layernormalization38
                 .forward(add56_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat109_out1 = burn::tensor::Tensor::cat(
-            [gather96_out1.clone(), layernormalization38_out1.clone()].into(),
+        let concat34_out1 = burn::tensor::Tensor::cat(
+            [gather13_out1.clone(), layernormalization38_out1.clone()].into(),
             1,
         );
-        let shape109_out1: [i64; 3] = {
-            let axes = &layernormalization38_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather98_out1 = shape109_out1[1] as i64;
-        let unsqueeze190_out1 = [gather98_out1 as i64];
-        let slice58_out1 = gather96_out1
-            .slice(s![.., unsqueeze190_out1[0]..9223372036854775807, ..]);
-        let unsqueeze191_out1 = [gather98_out1 as i64];
-        let slice59_out1 = layernormalization38_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze191_out1[0], ..]);
-        let concat110_out1 = burn::tensor::Tensor::cat(
-            [slice58_out1, slice59_out1].into(),
+        let transpose90_out1 = gather13_out1.permute([1, 0, 2]);
+        let slice29_out1 = transpose90_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose91_out1 = slice29_out1.permute([1, 0, 2]);
+        let concat35_out1 = burn::tensor::Tensor::cat(
+            [transpose91_out1, layernormalization38_out1.clone()].into(),
             1,
         );
-        let gather99_out1 = shape109_out1[0] as i64;
         let linear58_out1 = self.linear58.forward(layernormalization38_out1);
-        let unsqueeze192_out1 = [gather99_out1 as i64];
-        let constant1313_out1: [i64; 1] = [64i64];
-        let constant1311_out1: [i64; 1] = [-1i64];
-        let constant1312_out1: [i64; 1] = [8i64];
-        let concat111_out1: [i64; 4usize] = [
-            &unsqueeze192_out1[..],
-            &constant1311_out1[..],
-            &constant1312_out1[..],
-            &constant1313_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze193_out1 = [gather99_out1 as i64];
-        let constant1317_out1: [i64; 1] = [64i64];
-        let constant1315_out1: [i64; 1] = [-1i64];
-        let constant1316_out1: [i64; 1] = [8i64];
-        let concat112_out1: [i64; 4usize] = [
-            &unsqueeze193_out1[..],
-            &constant1315_out1[..],
-            &constant1316_out1[..],
-            &constant1317_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze194_out1 = [gather99_out1 as i64];
-        let constant1321_out1: [i64; 1] = [64i64];
-        let constant1319_out1: [i64; 1] = [-1i64];
-        let constant1320_out1: [i64; 1] = [8i64];
-        let concat113_out1: [i64; 4usize] = [
-            &unsqueeze194_out1[..],
-            &constant1319_out1[..],
-            &constant1320_out1[..],
-            &constant1321_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape92_out1 = linear58_out1.reshape(concat111_out1);
-        let linear59_out1 = self.linear59.forward(concat109_out1.clone());
-        let reshape93_out1 = linear59_out1.reshape(concat112_out1);
-        let linear60_out1 = self.linear60.forward(concat109_out1);
-        let reshape94_out1 = linear60_out1.reshape(concat113_out1);
-        let transpose79_out1 = reshape94_out1.permute([0, 2, 1, 3]);
-        let linear61_out1 = self.linear61.forward(slice5_out1);
-        let reshape95_out1 = linear61_out1.reshape([1, -1, 8, 64]);
+        let reshape44_out1 = linear58_out1.reshape([1, -1, 8, 64]);
+        let linear59_out1 = self.linear59.forward(concat34_out1.clone());
+        let reshape45_out1 = linear59_out1.reshape([1, -1, 8, 64]);
+        let linear60_out1 = self.linear60.forward(concat34_out1);
+        let reshape46_out1 = linear60_out1.reshape([1, -1, 8, 64]);
+        let transpose92_out1 = reshape45_out1.permute([0, 2, 1, 3]);
+        let transpose93_out1 = reshape46_out1.permute([0, 2, 1, 3]);
+        let linear61_out1 = self.linear61.forward(transpose4_out1);
+        let reshape47_out1 = linear61_out1.reshape([1, -1, 8, 64]);
         let constant125_out1 = self.constant125.val();
-        let add57_out1 = reshape92_out1
+        let add57_out1 = reshape44_out1
             .clone()
             .add((constant125_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose80_out1 = add57_out1.permute([0, 2, 1, 3]);
+        let transpose94_out1 = add57_out1.permute([0, 2, 1, 3]);
         let constant126_out1 = self.constant126.val();
-        let add58_out1 = reshape92_out1
+        let add58_out1 = reshape44_out1
             .add((constant126_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose81_out1 = add58_out1.permute([0, 2, 1, 3]);
-        let transpose82_out1 = reshape95_out1.permute([0, 2, 3, 1]);
-        let matmul80_out1 = transpose81_out1.matmul(transpose82_out1);
-        let shape111_out1: [i64; 4] = {
-            let axes = &matmul80_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather100_out1 = shape111_out1[0] as i64;
-        let gather101_out1 = shape111_out1[1] as i64;
-        let gather102_out1 = shape111_out1[2] as i64;
-        let gather103_out1 = shape111_out1[3] as i64;
-        let pad16_out1 = matmul80_out1
+        let transpose95_out1 = add58_out1.permute([0, 2, 1, 3]);
+        let transpose96_out1 = reshape47_out1.permute([0, 2, 3, 1]);
+        let matmul68_out1 = transpose95_out1.matmul(transpose96_out1);
+        let pad13_out1 = matmul68_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze195_out1 = [gather100_out1 as i64];
-        let unsqueeze196_out1 = [gather101_out1 as i64];
-        let unsqueeze197_out1 = [gather102_out1 as i64];
-        let constant1336_out1: [i64; 1] = [-1i64];
-        let concat115_out1: [i64; 4usize] = [
-            &unsqueeze195_out1[..],
-            &unsqueeze196_out1[..],
-            &constant1336_out1[..],
-            &unsqueeze197_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape98_out1 = pad16_out1.reshape(concat115_out1);
-        let slice61_out1 = reshape98_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze198_out1 = [gather100_out1 as i64];
-        let unsqueeze199_out1 = [gather101_out1 as i64];
-        let unsqueeze200_out1 = [gather102_out1 as i64];
-        let unsqueeze201_out1 = [gather103_out1 as i64];
-        let concat116_out1: [i64; 4usize] = [
-            &unsqueeze198_out1[..],
-            &unsqueeze199_out1[..],
-            &unsqueeze200_out1[..],
-            &unsqueeze201_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape99_out1 = slice61_out1.reshape(concat116_out1);
-        let transpose84_out1 = reshape93_out1.permute([0, 2, 3, 1]);
-        let matmul81_out1 = transpose80_out1.matmul(transpose84_out1);
-        let shape115_out1: [i64; 4] = {
-            let axes = &matmul81_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape48_out1 = pad13_out1.reshape(concat16_out1);
+        let slice30_out1 = reshape48_out1.slice(s![.., .., 1.., ..]);
+        let reshape49_out1 = slice30_out1.reshape(concat17_out1);
+        let transpose97_out1 = reshape49_out1.permute([3, 0, 1, 2]);
+        let slice31_out1 = transpose97_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose98_out1 = slice31_out1.permute([1, 2, 3, 0]);
+        let mul61_out1 = transpose98_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where19_out1 = mul61_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention7_out1,) = {
+            let q = transpose94_out1;
+            let k = transpose92_out1;
+            let v = transpose93_out1;
+            let score_bias = where19_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention7_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention7_out1 = {
+                let dims = attention7_out1.dims();
+                attention7_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention7_out1,)
         };
-        let slice62_out1: [i64; 1] = shape115_out1[3..4].try_into().unwrap();
-        let squeeze7_out1 = slice62_out1[0] as i64;
-        let unsqueeze202_out1 = [squeeze7_out1 as i64];
-        let slice63_out1 = reshape99_out1.slice(s![.., .., .., 0..unsqueeze202_out1[0]]);
-        let add59_out1 = matmul81_out1.add(slice63_out1);
-        let constant1354_out1 = self.constant1354.val();
-        let div11_out1 = add59_out1
-            .div((constant1354_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape116_out1: [i64; 4] = {
-            let axes = &transpose79_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather104_out1 = shape116_out1[0] as i64;
-        let constant1356_out1 = -10000f32;
-        let where37_out1 = div11_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1356_out1);
-        let softmax7_out1 = burn::tensor::activation::softmax(where37_out1, 3);
-        let constant1357_out1 = 0f32;
-        let where38_out1 = softmax7_out1.mask_fill(unsqueeze117_out1, constant1357_out1);
-        let matmul82_out1 = where38_out1.matmul(transpose79_out1);
-        let transpose85_out1 = matmul82_out1.permute([0, 2, 1, 3]);
-        let unsqueeze203_out1 = [gather104_out1 as i64];
-        let constant1360_out1: [i64; 1] = [512i64];
-        let constant1359_out1: [i64; 1] = [-1i64];
-        let concat117_out1: [i64; 3usize] = [
-            &unsqueeze203_out1[..],
-            &constant1359_out1[..],
-            &constant1360_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape100_out1 = transpose85_out1.reshape(concat117_out1);
-        let linear62_out1 = self.linear62.forward(reshape100_out1);
-        let add60_out1 = add56_out1.add(linear62_out1);
-        (add60_out1, gather97_out1, concat110_out1, slice57_out1)
+        let where20_out1 = attention7_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose99_out1 = where20_out1.permute([0, 2, 1, 3]);
+        let reshape50_out1 = transpose99_out1.reshape([1, -1, 512]);
+        let linear62_out1 = self.linear62.forward(reshape50_out1);
+        let add59_out1 = add56_out1.add(linear62_out1);
+        (add59_out1, gather14_out1, concat35_out1, slice28_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule12 {
+pub struct Submodule10 {
     layernormalization39: LayerNorm,
     conv1d19: Conv1d,
     conv1d20: Conv1d,
@@ -4510,12 +2990,10 @@ pub struct Submodule12 {
     layernormalization41: LayerNorm,
     linear63: Linear,
     linear64: Linear,
-    constant1374: burn::module::Param<Tensor<1>>,
     layernormalization42: LayerNorm,
     layernormalization43: LayerNorm,
     linear65: Linear,
     linear66: Linear,
-    constant1376: burn::module::Param<Tensor<1>>,
     layernormalization44: LayerNorm,
     linear67: Linear,
     linear68: Linear,
@@ -4523,12 +3001,11 @@ pub struct Submodule12 {
     linear70: Linear,
     constant142: burn::module::Param<Tensor<2>>,
     constant143: burn::module::Param<Tensor<2>>,
-    constant1431: burn::module::Param<Tensor<1>>,
     linear71: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule12 {
+impl Submodule10 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization39 = LayerNormConfig::new(512)
@@ -4566,18 +3043,6 @@ impl Submodule12 {
             .init(device);
         let linear63 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear64 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1374: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization42 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -4588,18 +3053,6 @@ impl Submodule12 {
             .init(device);
         let linear65 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear66 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1376: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization44 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -4626,18 +3079,6 @@ impl Submodule12 {
             false,
             [8, 64].into(),
         );
-        let constant1431: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear71 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization39,
@@ -4648,12 +3089,10 @@ impl Submodule12 {
             layernormalization41,
             linear63,
             linear64,
-            constant1374,
             layernormalization42,
             layernormalization43,
             linear65,
             linear66,
-            constant1376,
             layernormalization44,
             linear67,
             linear68,
@@ -4661,7 +3100,6 @@ impl Submodule12 {
             linear70,
             constant142,
             constant143,
-            constant1431,
             linear71,
             device: device.clone(),
         }
@@ -4669,72 +3107,86 @@ impl Submodule12 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add60_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather97_out1: Tensor<3>,
+        add59_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather14_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization39_out1 = {
-            let dtype = add60_out1.clone().dtype();
+            let dtype = add59_out1.clone().dtype();
             self.layernormalization39
-                .forward(add60_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add59_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose86_out1 = layernormalization39_out1.permute([0, 2, 1]);
-        let conv1d19_out1 = self.conv1d19.forward(transpose86_out1);
+        let transpose100_out1 = layernormalization39_out1.permute([0, 2, 1]);
+        let conv1d19_out1 = self.conv1d19.forward(transpose100_out1);
         let split_tensors = conv1d19_out1.split_with_sizes([512, 512].into(), 1);
         let [split7_out1, split7_out2] = split_tensors.try_into().unwrap();
         let sigmoid26_out1 = burn::tensor::activation::sigmoid(split7_out2);
-        let mul84_out1 = split7_out1.mul(sigmoid26_out1);
-        let constant1361_out1 = 0f32;
-        let where39_out1 = mul84_out1.mask_fill(unsqueeze119_out1, constant1361_out1);
-        let concat119_out1 = burn::tensor::Tensor::cat(
-            [gather97_out1, where39_out1].into(),
+        let mul62_out1 = split7_out1.mul(sigmoid26_out1);
+        let where21_out1 = mul62_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad14_out1 = where21_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat36_out1 = burn::tensor::Tensor::cat(
+            [gather14_out1, pad14_out1].into(),
             2,
         );
-        let slice65_out1 = concat119_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d20_out1 = self.conv1d20.forward(concat119_out1);
-        let transpose88_out1 = conv1d20_out1.permute([0, 2, 1]);
+        let slice32_out1 = concat36_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d20_out1 = self.conv1d20.forward(concat36_out1);
+        let transpose101_out1 = conv1d20_out1.permute([0, 2, 1]);
         let layernormalization40_out1 = {
-            let dtype = transpose88_out1.dtype();
+            let dtype = transpose101_out1.dtype();
             self.layernormalization40
-                .forward(transpose88_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose101_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose89_out1 = layernormalization40_out1.permute([0, 2, 1]);
-        let sigmoid27_out1 = burn::tensor::activation::sigmoid(transpose89_out1.clone());
-        let mul85_out1 = transpose89_out1.mul(sigmoid27_out1);
-        let conv1d21_out1 = self.conv1d21.forward(mul85_out1);
-        let transpose90_out1 = conv1d21_out1.permute([0, 2, 1]);
-        let add61_out1 = add60_out1.add(transpose90_out1);
+        let transpose102_out1 = layernormalization40_out1.permute([0, 2, 1]);
+        let sigmoid27_out1 = burn::tensor::activation::sigmoid(
+            transpose102_out1.clone(),
+        );
+        let mul63_out1 = transpose102_out1.mul(sigmoid27_out1);
+        let conv1d21_out1 = self.conv1d21.forward(mul63_out1);
+        let transpose103_out1 = conv1d21_out1.permute([0, 2, 1]);
+        let add60_out1 = add59_out1.add(transpose103_out1);
         let layernormalization41_out1 = {
-            let dtype = add61_out1.clone().dtype();
+            let dtype = add60_out1.clone().dtype();
             self.layernormalization41
-                .forward(add61_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add60_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear63_out1 = self.linear63.forward(layernormalization41_out1);
         let sigmoid28_out1 = burn::tensor::activation::sigmoid(linear63_out1.clone());
-        let mul86_out1 = linear63_out1.mul(sigmoid28_out1);
-        let linear64_out1 = self.linear64.forward(mul86_out1);
-        let constant1374_out1 = self.constant1374.val();
-        let mul87_out1 = linear64_out1
-            .mul((constant1374_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add62_out1 = add61_out1.add(mul87_out1);
+        let mul64_out1 = linear63_out1.mul(sigmoid28_out1);
+        let linear64_out1 = self.linear64.forward(mul64_out1);
+        let mul65_out1 = linear64_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add61_out1 = add60_out1.add(mul65_out1);
         let layernormalization42_out1 = {
-            let dtype = add62_out1.dtype();
+            let dtype = add61_out1.dtype();
             self.layernormalization42
-                .forward(add62_out1.cast(burn::tensor::DType::F32))
+                .forward(add61_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather105_out1 = {
+        let gather15_out1 = {
             let sliced = cache_last_channel.slice(s![7, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather106_out1 = {
+        let gather16_out1 = {
             let sliced = cache_last_time.slice(s![7, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -4748,203 +3200,102 @@ impl Submodule12 {
         };
         let linear65_out1 = self.linear65.forward(layernormalization43_out1);
         let sigmoid29_out1 = burn::tensor::activation::sigmoid(linear65_out1.clone());
-        let mul88_out1 = linear65_out1.mul(sigmoid29_out1);
-        let linear66_out1 = self.linear66.forward(mul88_out1);
-        let constant1376_out1 = self.constant1376.val();
-        let mul89_out1 = linear66_out1
-            .mul((constant1376_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add63_out1 = layernormalization42_out1.add(mul89_out1);
+        let mul66_out1 = linear65_out1.mul(sigmoid29_out1);
+        let linear66_out1 = self.linear66.forward(mul66_out1);
+        let mul67_out1 = linear66_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add62_out1 = layernormalization42_out1.add(mul67_out1);
         let layernormalization44_out1 = {
-            let dtype = add63_out1.clone().dtype();
+            let dtype = add62_out1.clone().dtype();
             self.layernormalization44
-                .forward(add63_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add62_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat120_out1 = burn::tensor::Tensor::cat(
-            [gather105_out1.clone(), layernormalization44_out1.clone()].into(),
+        let concat37_out1 = burn::tensor::Tensor::cat(
+            [gather15_out1.clone(), layernormalization44_out1.clone()].into(),
             1,
         );
-        let shape117_out1: [i64; 3] = {
-            let axes = &layernormalization44_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather107_out1 = shape117_out1[1] as i64;
-        let unsqueeze204_out1 = [gather107_out1 as i64];
-        let slice66_out1 = gather105_out1
-            .slice(s![.., unsqueeze204_out1[0]..9223372036854775807, ..]);
-        let unsqueeze205_out1 = [gather107_out1 as i64];
-        let slice67_out1 = layernormalization44_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze205_out1[0], ..]);
-        let concat121_out1 = burn::tensor::Tensor::cat(
-            [slice66_out1, slice67_out1].into(),
+        let transpose104_out1 = gather15_out1.permute([1, 0, 2]);
+        let slice33_out1 = transpose104_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose105_out1 = slice33_out1.permute([1, 0, 2]);
+        let concat38_out1 = burn::tensor::Tensor::cat(
+            [transpose105_out1, layernormalization44_out1.clone()].into(),
             1,
         );
-        let gather108_out1 = shape117_out1[0] as i64;
         let linear67_out1 = self.linear67.forward(layernormalization44_out1);
-        let unsqueeze206_out1 = [gather108_out1 as i64];
-        let constant1390_out1: [i64; 1] = [64i64];
-        let constant1388_out1: [i64; 1] = [-1i64];
-        let constant1389_out1: [i64; 1] = [8i64];
-        let concat122_out1: [i64; 4usize] = [
-            &unsqueeze206_out1[..],
-            &constant1388_out1[..],
-            &constant1389_out1[..],
-            &constant1390_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze207_out1 = [gather108_out1 as i64];
-        let constant1394_out1: [i64; 1] = [64i64];
-        let constant1392_out1: [i64; 1] = [-1i64];
-        let constant1393_out1: [i64; 1] = [8i64];
-        let concat123_out1: [i64; 4usize] = [
-            &unsqueeze207_out1[..],
-            &constant1392_out1[..],
-            &constant1393_out1[..],
-            &constant1394_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze208_out1 = [gather108_out1 as i64];
-        let constant1398_out1: [i64; 1] = [64i64];
-        let constant1396_out1: [i64; 1] = [-1i64];
-        let constant1397_out1: [i64; 1] = [8i64];
-        let concat124_out1: [i64; 4usize] = [
-            &unsqueeze208_out1[..],
-            &constant1396_out1[..],
-            &constant1397_out1[..],
-            &constant1398_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape103_out1 = linear67_out1.reshape(concat122_out1);
-        let linear68_out1 = self.linear68.forward(concat120_out1.clone());
-        let reshape104_out1 = linear68_out1.reshape(concat123_out1);
-        let linear69_out1 = self.linear69.forward(concat120_out1);
-        let reshape105_out1 = linear69_out1.reshape(concat124_out1);
-        let transpose91_out1 = reshape105_out1.permute([0, 2, 1, 3]);
-        let linear70_out1 = self.linear70.forward(slice5_out1);
-        let reshape106_out1 = linear70_out1.reshape([1, -1, 8, 64]);
+        let reshape51_out1 = linear67_out1.reshape([1, -1, 8, 64]);
+        let linear68_out1 = self.linear68.forward(concat37_out1.clone());
+        let reshape52_out1 = linear68_out1.reshape([1, -1, 8, 64]);
+        let linear69_out1 = self.linear69.forward(concat37_out1);
+        let reshape53_out1 = linear69_out1.reshape([1, -1, 8, 64]);
+        let transpose106_out1 = reshape52_out1.permute([0, 2, 1, 3]);
+        let transpose107_out1 = reshape53_out1.permute([0, 2, 1, 3]);
+        let linear70_out1 = self.linear70.forward(transpose4_out1);
+        let reshape54_out1 = linear70_out1.reshape([1, -1, 8, 64]);
         let constant142_out1 = self.constant142.val();
-        let add64_out1 = reshape103_out1
+        let add63_out1 = reshape51_out1
             .clone()
             .add((constant142_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose92_out1 = add64_out1.permute([0, 2, 1, 3]);
+        let transpose108_out1 = add63_out1.permute([0, 2, 1, 3]);
         let constant143_out1 = self.constant143.val();
-        let add65_out1 = reshape103_out1
+        let add64_out1 = reshape51_out1
             .add((constant143_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose93_out1 = add65_out1.permute([0, 2, 1, 3]);
-        let transpose94_out1 = reshape106_out1.permute([0, 2, 3, 1]);
-        let matmul92_out1 = transpose93_out1.matmul(transpose94_out1);
-        let shape119_out1: [i64; 4] = {
-            let axes = &matmul92_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather109_out1 = shape119_out1[0] as i64;
-        let gather110_out1 = shape119_out1[1] as i64;
-        let gather111_out1 = shape119_out1[2] as i64;
-        let gather112_out1 = shape119_out1[3] as i64;
-        let pad18_out1 = matmul92_out1
+        let transpose109_out1 = add64_out1.permute([0, 2, 1, 3]);
+        let transpose110_out1 = reshape54_out1.permute([0, 2, 3, 1]);
+        let matmul78_out1 = transpose109_out1.matmul(transpose110_out1);
+        let pad15_out1 = matmul78_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze209_out1 = [gather109_out1 as i64];
-        let unsqueeze210_out1 = [gather110_out1 as i64];
-        let unsqueeze211_out1 = [gather111_out1 as i64];
-        let constant1413_out1: [i64; 1] = [-1i64];
-        let concat126_out1: [i64; 4usize] = [
-            &unsqueeze209_out1[..],
-            &unsqueeze210_out1[..],
-            &constant1413_out1[..],
-            &unsqueeze211_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape109_out1 = pad18_out1.reshape(concat126_out1);
-        let slice69_out1 = reshape109_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze212_out1 = [gather109_out1 as i64];
-        let unsqueeze213_out1 = [gather110_out1 as i64];
-        let unsqueeze214_out1 = [gather111_out1 as i64];
-        let unsqueeze215_out1 = [gather112_out1 as i64];
-        let concat127_out1: [i64; 4usize] = [
-            &unsqueeze212_out1[..],
-            &unsqueeze213_out1[..],
-            &unsqueeze214_out1[..],
-            &unsqueeze215_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape110_out1 = slice69_out1.reshape(concat127_out1);
-        let transpose96_out1 = reshape104_out1.permute([0, 2, 3, 1]);
-        let matmul93_out1 = transpose92_out1.matmul(transpose96_out1);
-        let shape123_out1: [i64; 4] = {
-            let axes = &matmul93_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape55_out1 = pad15_out1.reshape(concat16_out1);
+        let slice34_out1 = reshape55_out1.slice(s![.., .., 1.., ..]);
+        let reshape56_out1 = slice34_out1.reshape(concat17_out1);
+        let transpose111_out1 = reshape56_out1.permute([3, 0, 1, 2]);
+        let slice35_out1 = transpose111_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose112_out1 = slice35_out1.permute([1, 2, 3, 0]);
+        let mul68_out1 = transpose112_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where22_out1 = mul68_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention8_out1,) = {
+            let q = transpose108_out1;
+            let k = transpose106_out1;
+            let v = transpose107_out1;
+            let score_bias = where22_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention8_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention8_out1 = {
+                let dims = attention8_out1.dims();
+                attention8_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention8_out1,)
         };
-        let slice70_out1: [i64; 1] = shape123_out1[3..4].try_into().unwrap();
-        let squeeze8_out1 = slice70_out1[0] as i64;
-        let unsqueeze216_out1 = [squeeze8_out1 as i64];
-        let slice71_out1 = reshape110_out1
-            .slice(s![.., .., .., 0..unsqueeze216_out1[0]]);
-        let add66_out1 = matmul93_out1.add(slice71_out1);
-        let constant1431_out1 = self.constant1431.val();
-        let div12_out1 = add66_out1
-            .div((constant1431_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape124_out1: [i64; 4] = {
-            let axes = &transpose91_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather113_out1 = shape124_out1[0] as i64;
-        let constant1433_out1 = -10000f32;
-        let where40_out1 = div12_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1433_out1);
-        let softmax8_out1 = burn::tensor::activation::softmax(where40_out1, 3);
-        let constant1434_out1 = 0f32;
-        let where41_out1 = softmax8_out1.mask_fill(unsqueeze117_out1, constant1434_out1);
-        let matmul94_out1 = where41_out1.matmul(transpose91_out1);
-        let transpose97_out1 = matmul94_out1.permute([0, 2, 1, 3]);
-        let unsqueeze217_out1 = [gather113_out1 as i64];
-        let constant1437_out1: [i64; 1] = [512i64];
-        let constant1436_out1: [i64; 1] = [-1i64];
-        let concat128_out1: [i64; 3usize] = [
-            &unsqueeze217_out1[..],
-            &constant1436_out1[..],
-            &constant1437_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape111_out1 = transpose97_out1.reshape(concat128_out1);
-        let linear71_out1 = self.linear71.forward(reshape111_out1);
-        let add67_out1 = add63_out1.add(linear71_out1);
-        (add67_out1, gather106_out1, concat121_out1, slice65_out1)
+        let where23_out1 = attention8_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose113_out1 = where23_out1.permute([0, 2, 1, 3]);
+        let reshape57_out1 = transpose113_out1.reshape([1, -1, 512]);
+        let linear71_out1 = self.linear71.forward(reshape57_out1);
+        let add65_out1 = add62_out1.add(linear71_out1);
+        (add65_out1, gather16_out1, concat38_out1, slice32_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule13 {
+pub struct Submodule11 {
     layernormalization45: LayerNorm,
     conv1d22: Conv1d,
     conv1d23: Conv1d,
@@ -4953,12 +3304,10 @@ pub struct Submodule13 {
     layernormalization47: LayerNorm,
     linear72: Linear,
     linear73: Linear,
-    constant1451: burn::module::Param<Tensor<1>>,
     layernormalization48: LayerNorm,
     layernormalization49: LayerNorm,
     linear74: Linear,
     linear75: Linear,
-    constant1452: burn::module::Param<Tensor<1>>,
     layernormalization50: LayerNorm,
     linear76: Linear,
     linear77: Linear,
@@ -4966,12 +3315,11 @@ pub struct Submodule13 {
     linear79: Linear,
     constant159: burn::module::Param<Tensor<2>>,
     constant160: burn::module::Param<Tensor<2>>,
-    constant1507: burn::module::Param<Tensor<1>>,
     linear80: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule13 {
+impl Submodule11 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization45 = LayerNormConfig::new(512)
@@ -5009,18 +3357,6 @@ impl Submodule13 {
             .init(device);
         let linear72 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear73 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1451: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization48 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -5031,18 +3367,6 @@ impl Submodule13 {
             .init(device);
         let linear74 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear75 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1452: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization50 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -5069,18 +3393,6 @@ impl Submodule13 {
             false,
             [8, 64].into(),
         );
-        let constant1507: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear80 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization45,
@@ -5091,12 +3403,10 @@ impl Submodule13 {
             layernormalization47,
             linear72,
             linear73,
-            constant1451,
             layernormalization48,
             layernormalization49,
             linear74,
             linear75,
-            constant1452,
             layernormalization50,
             linear76,
             linear77,
@@ -5104,7 +3414,6 @@ impl Submodule13 {
             linear79,
             constant159,
             constant160,
-            constant1507,
             linear80,
             device: device.clone(),
         }
@@ -5112,74 +3421,86 @@ impl Submodule13 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add67_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather106_out1: Tensor<3>,
+        add65_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather16_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization45_out1 = {
-            let dtype = add67_out1.clone().dtype();
+            let dtype = add65_out1.clone().dtype();
             self.layernormalization45
-                .forward(add67_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add65_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose98_out1 = layernormalization45_out1.permute([0, 2, 1]);
-        let conv1d22_out1 = self.conv1d22.forward(transpose98_out1);
+        let transpose114_out1 = layernormalization45_out1.permute([0, 2, 1]);
+        let conv1d22_out1 = self.conv1d22.forward(transpose114_out1);
         let split_tensors = conv1d22_out1.split_with_sizes([512, 512].into(), 1);
         let [split8_out1, split8_out2] = split_tensors.try_into().unwrap();
         let sigmoid30_out1 = burn::tensor::activation::sigmoid(split8_out2);
-        let mul90_out1 = split8_out1.mul(sigmoid30_out1);
-        let constant1438_out1 = 0f32;
-        let where42_out1 = mul90_out1.mask_fill(unsqueeze119_out1, constant1438_out1);
-        let concat130_out1 = burn::tensor::Tensor::cat(
-            [gather106_out1, where42_out1].into(),
+        let mul69_out1 = split8_out1.mul(sigmoid30_out1);
+        let where24_out1 = mul69_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad16_out1 = where24_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat39_out1 = burn::tensor::Tensor::cat(
+            [gather16_out1, pad16_out1].into(),
             2,
         );
-        let slice73_out1 = concat130_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d23_out1 = self.conv1d23.forward(concat130_out1);
-        let transpose100_out1 = conv1d23_out1.permute([0, 2, 1]);
+        let slice36_out1 = concat39_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d23_out1 = self.conv1d23.forward(concat39_out1);
+        let transpose115_out1 = conv1d23_out1.permute([0, 2, 1]);
         let layernormalization46_out1 = {
-            let dtype = transpose100_out1.dtype();
+            let dtype = transpose115_out1.dtype();
             self.layernormalization46
-                .forward(transpose100_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose115_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose101_out1 = layernormalization46_out1.permute([0, 2, 1]);
+        let transpose116_out1 = layernormalization46_out1.permute([0, 2, 1]);
         let sigmoid31_out1 = burn::tensor::activation::sigmoid(
-            transpose101_out1.clone(),
+            transpose116_out1.clone(),
         );
-        let mul91_out1 = transpose101_out1.mul(sigmoid31_out1);
-        let conv1d24_out1 = self.conv1d24.forward(mul91_out1);
-        let transpose102_out1 = conv1d24_out1.permute([0, 2, 1]);
-        let add68_out1 = add67_out1.add(transpose102_out1);
+        let mul70_out1 = transpose116_out1.mul(sigmoid31_out1);
+        let conv1d24_out1 = self.conv1d24.forward(mul70_out1);
+        let transpose117_out1 = conv1d24_out1.permute([0, 2, 1]);
+        let add66_out1 = add65_out1.add(transpose117_out1);
         let layernormalization47_out1 = {
-            let dtype = add68_out1.clone().dtype();
+            let dtype = add66_out1.clone().dtype();
             self.layernormalization47
-                .forward(add68_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add66_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear72_out1 = self.linear72.forward(layernormalization47_out1);
         let sigmoid32_out1 = burn::tensor::activation::sigmoid(linear72_out1.clone());
-        let mul92_out1 = linear72_out1.mul(sigmoid32_out1);
-        let linear73_out1 = self.linear73.forward(mul92_out1);
-        let constant1451_out1 = self.constant1451.val();
-        let mul93_out1 = linear73_out1
-            .mul((constant1451_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add69_out1 = add68_out1.add(mul93_out1);
+        let mul71_out1 = linear72_out1.mul(sigmoid32_out1);
+        let linear73_out1 = self.linear73.forward(mul71_out1);
+        let mul72_out1 = linear73_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add67_out1 = add66_out1.add(mul72_out1);
         let layernormalization48_out1 = {
-            let dtype = add69_out1.dtype();
+            let dtype = add67_out1.dtype();
             self.layernormalization48
-                .forward(add69_out1.cast(burn::tensor::DType::F32))
+                .forward(add67_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather114_out1 = {
+        let gather17_out1 = {
             let sliced = cache_last_channel.slice(s![8, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather115_out1 = {
+        let gather18_out1 = {
             let sliced = cache_last_time.slice(s![8, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -5193,203 +3514,102 @@ impl Submodule13 {
         };
         let linear74_out1 = self.linear74.forward(layernormalization49_out1);
         let sigmoid33_out1 = burn::tensor::activation::sigmoid(linear74_out1.clone());
-        let mul94_out1 = linear74_out1.mul(sigmoid33_out1);
-        let linear75_out1 = self.linear75.forward(mul94_out1);
-        let constant1452_out1 = self.constant1452.val();
-        let mul95_out1 = linear75_out1
-            .mul((constant1452_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add70_out1 = layernormalization48_out1.add(mul95_out1);
+        let mul73_out1 = linear74_out1.mul(sigmoid33_out1);
+        let linear75_out1 = self.linear75.forward(mul73_out1);
+        let mul74_out1 = linear75_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add68_out1 = layernormalization48_out1.add(mul74_out1);
         let layernormalization50_out1 = {
-            let dtype = add70_out1.clone().dtype();
+            let dtype = add68_out1.clone().dtype();
             self.layernormalization50
-                .forward(add70_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add68_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat131_out1 = burn::tensor::Tensor::cat(
-            [gather114_out1.clone(), layernormalization50_out1.clone()].into(),
+        let concat40_out1 = burn::tensor::Tensor::cat(
+            [gather17_out1.clone(), layernormalization50_out1.clone()].into(),
             1,
         );
-        let shape125_out1: [i64; 3] = {
-            let axes = &layernormalization50_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather116_out1 = shape125_out1[1] as i64;
-        let unsqueeze218_out1 = [gather116_out1 as i64];
-        let slice74_out1 = gather114_out1
-            .slice(s![.., unsqueeze218_out1[0]..9223372036854775807, ..]);
-        let unsqueeze219_out1 = [gather116_out1 as i64];
-        let slice75_out1 = layernormalization50_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze219_out1[0], ..]);
-        let concat132_out1 = burn::tensor::Tensor::cat(
-            [slice74_out1, slice75_out1].into(),
+        let transpose118_out1 = gather17_out1.permute([1, 0, 2]);
+        let slice37_out1 = transpose118_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose119_out1 = slice37_out1.permute([1, 0, 2]);
+        let concat41_out1 = burn::tensor::Tensor::cat(
+            [transpose119_out1, layernormalization50_out1.clone()].into(),
             1,
         );
-        let gather117_out1 = shape125_out1[0] as i64;
         let linear76_out1 = self.linear76.forward(layernormalization50_out1);
-        let unsqueeze220_out1 = [gather117_out1 as i64];
-        let constant1466_out1: [i64; 1] = [64i64];
-        let constant1464_out1: [i64; 1] = [-1i64];
-        let constant1465_out1: [i64; 1] = [8i64];
-        let concat133_out1: [i64; 4usize] = [
-            &unsqueeze220_out1[..],
-            &constant1464_out1[..],
-            &constant1465_out1[..],
-            &constant1466_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze221_out1 = [gather117_out1 as i64];
-        let constant1470_out1: [i64; 1] = [64i64];
-        let constant1468_out1: [i64; 1] = [-1i64];
-        let constant1469_out1: [i64; 1] = [8i64];
-        let concat134_out1: [i64; 4usize] = [
-            &unsqueeze221_out1[..],
-            &constant1468_out1[..],
-            &constant1469_out1[..],
-            &constant1470_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze222_out1 = [gather117_out1 as i64];
-        let constant1474_out1: [i64; 1] = [64i64];
-        let constant1472_out1: [i64; 1] = [-1i64];
-        let constant1473_out1: [i64; 1] = [8i64];
-        let concat135_out1: [i64; 4usize] = [
-            &unsqueeze222_out1[..],
-            &constant1472_out1[..],
-            &constant1473_out1[..],
-            &constant1474_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape114_out1 = linear76_out1.reshape(concat133_out1);
-        let linear77_out1 = self.linear77.forward(concat131_out1.clone());
-        let reshape115_out1 = linear77_out1.reshape(concat134_out1);
-        let linear78_out1 = self.linear78.forward(concat131_out1);
-        let reshape116_out1 = linear78_out1.reshape(concat135_out1);
-        let transpose103_out1 = reshape116_out1.permute([0, 2, 1, 3]);
-        let linear79_out1 = self.linear79.forward(slice5_out1);
-        let reshape117_out1 = linear79_out1.reshape([1, -1, 8, 64]);
+        let reshape58_out1 = linear76_out1.reshape([1, -1, 8, 64]);
+        let linear77_out1 = self.linear77.forward(concat40_out1.clone());
+        let reshape59_out1 = linear77_out1.reshape([1, -1, 8, 64]);
+        let linear78_out1 = self.linear78.forward(concat40_out1);
+        let reshape60_out1 = linear78_out1.reshape([1, -1, 8, 64]);
+        let transpose120_out1 = reshape59_out1.permute([0, 2, 1, 3]);
+        let transpose121_out1 = reshape60_out1.permute([0, 2, 1, 3]);
+        let linear79_out1 = self.linear79.forward(transpose4_out1);
+        let reshape61_out1 = linear79_out1.reshape([1, -1, 8, 64]);
         let constant159_out1 = self.constant159.val();
-        let add71_out1 = reshape114_out1
+        let add69_out1 = reshape58_out1
             .clone()
             .add((constant159_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose104_out1 = add71_out1.permute([0, 2, 1, 3]);
+        let transpose122_out1 = add69_out1.permute([0, 2, 1, 3]);
         let constant160_out1 = self.constant160.val();
-        let add72_out1 = reshape114_out1
+        let add70_out1 = reshape58_out1
             .add((constant160_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose105_out1 = add72_out1.permute([0, 2, 1, 3]);
-        let transpose106_out1 = reshape117_out1.permute([0, 2, 3, 1]);
-        let matmul104_out1 = transpose105_out1.matmul(transpose106_out1);
-        let shape127_out1: [i64; 4] = {
-            let axes = &matmul104_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather118_out1 = shape127_out1[0] as i64;
-        let gather119_out1 = shape127_out1[1] as i64;
-        let gather120_out1 = shape127_out1[2] as i64;
-        let gather121_out1 = shape127_out1[3] as i64;
-        let pad20_out1 = matmul104_out1
+        let transpose123_out1 = add70_out1.permute([0, 2, 1, 3]);
+        let transpose124_out1 = reshape61_out1.permute([0, 2, 3, 1]);
+        let matmul88_out1 = transpose123_out1.matmul(transpose124_out1);
+        let pad17_out1 = matmul88_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze223_out1 = [gather118_out1 as i64];
-        let unsqueeze224_out1 = [gather119_out1 as i64];
-        let unsqueeze225_out1 = [gather120_out1 as i64];
-        let constant1489_out1: [i64; 1] = [-1i64];
-        let concat137_out1: [i64; 4usize] = [
-            &unsqueeze223_out1[..],
-            &unsqueeze224_out1[..],
-            &constant1489_out1[..],
-            &unsqueeze225_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape120_out1 = pad20_out1.reshape(concat137_out1);
-        let slice77_out1 = reshape120_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze226_out1 = [gather118_out1 as i64];
-        let unsqueeze227_out1 = [gather119_out1 as i64];
-        let unsqueeze228_out1 = [gather120_out1 as i64];
-        let unsqueeze229_out1 = [gather121_out1 as i64];
-        let concat138_out1: [i64; 4usize] = [
-            &unsqueeze226_out1[..],
-            &unsqueeze227_out1[..],
-            &unsqueeze228_out1[..],
-            &unsqueeze229_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape121_out1 = slice77_out1.reshape(concat138_out1);
-        let transpose108_out1 = reshape115_out1.permute([0, 2, 3, 1]);
-        let matmul105_out1 = transpose104_out1.matmul(transpose108_out1);
-        let shape131_out1: [i64; 4] = {
-            let axes = &matmul105_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape62_out1 = pad17_out1.reshape(concat16_out1);
+        let slice38_out1 = reshape62_out1.slice(s![.., .., 1.., ..]);
+        let reshape63_out1 = slice38_out1.reshape(concat17_out1);
+        let transpose125_out1 = reshape63_out1.permute([3, 0, 1, 2]);
+        let slice39_out1 = transpose125_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose126_out1 = slice39_out1.permute([1, 2, 3, 0]);
+        let mul75_out1 = transpose126_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where25_out1 = mul75_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention9_out1,) = {
+            let q = transpose122_out1;
+            let k = transpose120_out1;
+            let v = transpose121_out1;
+            let score_bias = where25_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention9_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention9_out1 = {
+                let dims = attention9_out1.dims();
+                attention9_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention9_out1,)
         };
-        let slice78_out1: [i64; 1] = shape131_out1[3..4].try_into().unwrap();
-        let squeeze9_out1 = slice78_out1[0] as i64;
-        let unsqueeze230_out1 = [squeeze9_out1 as i64];
-        let slice79_out1 = reshape121_out1
-            .slice(s![.., .., .., 0..unsqueeze230_out1[0]]);
-        let add73_out1 = matmul105_out1.add(slice79_out1);
-        let constant1507_out1 = self.constant1507.val();
-        let div13_out1 = add73_out1
-            .div((constant1507_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape132_out1: [i64; 4] = {
-            let axes = &transpose103_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather122_out1 = shape132_out1[0] as i64;
-        let constant1509_out1 = -10000f32;
-        let where43_out1 = div13_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1509_out1);
-        let softmax9_out1 = burn::tensor::activation::softmax(where43_out1, 3);
-        let constant1510_out1 = 0f32;
-        let where44_out1 = softmax9_out1.mask_fill(unsqueeze117_out1, constant1510_out1);
-        let matmul106_out1 = where44_out1.matmul(transpose103_out1);
-        let transpose109_out1 = matmul106_out1.permute([0, 2, 1, 3]);
-        let unsqueeze231_out1 = [gather122_out1 as i64];
-        let constant1513_out1: [i64; 1] = [512i64];
-        let constant1512_out1: [i64; 1] = [-1i64];
-        let concat139_out1: [i64; 3usize] = [
-            &unsqueeze231_out1[..],
-            &constant1512_out1[..],
-            &constant1513_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape122_out1 = transpose109_out1.reshape(concat139_out1);
-        let linear80_out1 = self.linear80.forward(reshape122_out1);
-        let add74_out1 = add70_out1.add(linear80_out1);
-        (add74_out1, gather115_out1, concat132_out1, slice73_out1)
+        let where26_out1 = attention9_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose127_out1 = where26_out1.permute([0, 2, 1, 3]);
+        let reshape64_out1 = transpose127_out1.reshape([1, -1, 512]);
+        let linear80_out1 = self.linear80.forward(reshape64_out1);
+        let add71_out1 = add68_out1.add(linear80_out1);
+        (add71_out1, gather18_out1, concat41_out1, slice36_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule14 {
+pub struct Submodule12 {
     layernormalization51: LayerNorm,
     conv1d25: Conv1d,
     conv1d26: Conv1d,
@@ -5398,12 +3618,10 @@ pub struct Submodule14 {
     layernormalization53: LayerNorm,
     linear81: Linear,
     linear82: Linear,
-    constant1527: burn::module::Param<Tensor<1>>,
     layernormalization54: LayerNorm,
     layernormalization55: LayerNorm,
     linear83: Linear,
     linear84: Linear,
-    constant1529: burn::module::Param<Tensor<1>>,
     layernormalization56: LayerNorm,
     linear85: Linear,
     linear86: Linear,
@@ -5411,12 +3629,11 @@ pub struct Submodule14 {
     linear88: Linear,
     constant176: burn::module::Param<Tensor<2>>,
     constant177: burn::module::Param<Tensor<2>>,
-    constant1584: burn::module::Param<Tensor<1>>,
     linear89: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule14 {
+impl Submodule12 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization51 = LayerNormConfig::new(512)
@@ -5454,18 +3671,6 @@ impl Submodule14 {
             .init(device);
         let linear81 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear82 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1527: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization54 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -5476,18 +3681,6 @@ impl Submodule14 {
             .init(device);
         let linear83 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear84 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1529: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization56 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -5514,18 +3707,6 @@ impl Submodule14 {
             false,
             [8, 64].into(),
         );
-        let constant1584: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear89 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization51,
@@ -5536,12 +3717,10 @@ impl Submodule14 {
             layernormalization53,
             linear81,
             linear82,
-            constant1527,
             layernormalization54,
             layernormalization55,
             linear83,
             linear84,
-            constant1529,
             layernormalization56,
             linear85,
             linear86,
@@ -5549,7 +3728,6 @@ impl Submodule14 {
             linear88,
             constant176,
             constant177,
-            constant1584,
             linear89,
             device: device.clone(),
         }
@@ -5557,74 +3735,86 @@ impl Submodule14 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add74_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather115_out1: Tensor<3>,
+        add71_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather18_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization51_out1 = {
-            let dtype = add74_out1.clone().dtype();
+            let dtype = add71_out1.clone().dtype();
             self.layernormalization51
-                .forward(add74_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add71_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose110_out1 = layernormalization51_out1.permute([0, 2, 1]);
-        let conv1d25_out1 = self.conv1d25.forward(transpose110_out1);
+        let transpose128_out1 = layernormalization51_out1.permute([0, 2, 1]);
+        let conv1d25_out1 = self.conv1d25.forward(transpose128_out1);
         let split_tensors = conv1d25_out1.split_with_sizes([512, 512].into(), 1);
         let [split9_out1, split9_out2] = split_tensors.try_into().unwrap();
         let sigmoid34_out1 = burn::tensor::activation::sigmoid(split9_out2);
-        let mul96_out1 = split9_out1.mul(sigmoid34_out1);
-        let constant1514_out1 = 0f32;
-        let where45_out1 = mul96_out1.mask_fill(unsqueeze119_out1, constant1514_out1);
-        let concat141_out1 = burn::tensor::Tensor::cat(
-            [gather115_out1, where45_out1].into(),
+        let mul76_out1 = split9_out1.mul(sigmoid34_out1);
+        let where27_out1 = mul76_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad18_out1 = where27_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat42_out1 = burn::tensor::Tensor::cat(
+            [gather18_out1, pad18_out1].into(),
             2,
         );
-        let slice81_out1 = concat141_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d26_out1 = self.conv1d26.forward(concat141_out1);
-        let transpose112_out1 = conv1d26_out1.permute([0, 2, 1]);
+        let slice40_out1 = concat42_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d26_out1 = self.conv1d26.forward(concat42_out1);
+        let transpose129_out1 = conv1d26_out1.permute([0, 2, 1]);
         let layernormalization52_out1 = {
-            let dtype = transpose112_out1.dtype();
+            let dtype = transpose129_out1.dtype();
             self.layernormalization52
-                .forward(transpose112_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose129_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose113_out1 = layernormalization52_out1.permute([0, 2, 1]);
+        let transpose130_out1 = layernormalization52_out1.permute([0, 2, 1]);
         let sigmoid35_out1 = burn::tensor::activation::sigmoid(
-            transpose113_out1.clone(),
+            transpose130_out1.clone(),
         );
-        let mul97_out1 = transpose113_out1.mul(sigmoid35_out1);
-        let conv1d27_out1 = self.conv1d27.forward(mul97_out1);
-        let transpose114_out1 = conv1d27_out1.permute([0, 2, 1]);
-        let add75_out1 = add74_out1.add(transpose114_out1);
+        let mul77_out1 = transpose130_out1.mul(sigmoid35_out1);
+        let conv1d27_out1 = self.conv1d27.forward(mul77_out1);
+        let transpose131_out1 = conv1d27_out1.permute([0, 2, 1]);
+        let add72_out1 = add71_out1.add(transpose131_out1);
         let layernormalization53_out1 = {
-            let dtype = add75_out1.clone().dtype();
+            let dtype = add72_out1.clone().dtype();
             self.layernormalization53
-                .forward(add75_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add72_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear81_out1 = self.linear81.forward(layernormalization53_out1);
         let sigmoid36_out1 = burn::tensor::activation::sigmoid(linear81_out1.clone());
-        let mul98_out1 = linear81_out1.mul(sigmoid36_out1);
-        let linear82_out1 = self.linear82.forward(mul98_out1);
-        let constant1527_out1 = self.constant1527.val();
-        let mul99_out1 = linear82_out1
-            .mul((constant1527_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add76_out1 = add75_out1.add(mul99_out1);
+        let mul78_out1 = linear81_out1.mul(sigmoid36_out1);
+        let linear82_out1 = self.linear82.forward(mul78_out1);
+        let mul79_out1 = linear82_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add73_out1 = add72_out1.add(mul79_out1);
         let layernormalization54_out1 = {
-            let dtype = add76_out1.dtype();
+            let dtype = add73_out1.dtype();
             self.layernormalization54
-                .forward(add76_out1.cast(burn::tensor::DType::F32))
+                .forward(add73_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather123_out1 = {
+        let gather19_out1 = {
             let sliced = cache_last_channel.slice(s![9, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather124_out1 = {
+        let gather20_out1 = {
             let sliced = cache_last_time.slice(s![9, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -5638,204 +3828,102 @@ impl Submodule14 {
         };
         let linear83_out1 = self.linear83.forward(layernormalization55_out1);
         let sigmoid37_out1 = burn::tensor::activation::sigmoid(linear83_out1.clone());
-        let mul100_out1 = linear83_out1.mul(sigmoid37_out1);
-        let linear84_out1 = self.linear84.forward(mul100_out1);
-        let constant1529_out1 = self.constant1529.val();
-        let mul101_out1 = linear84_out1
-            .mul((constant1529_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add77_out1 = layernormalization54_out1.add(mul101_out1);
+        let mul80_out1 = linear83_out1.mul(sigmoid37_out1);
+        let linear84_out1 = self.linear84.forward(mul80_out1);
+        let mul81_out1 = linear84_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add74_out1 = layernormalization54_out1.add(mul81_out1);
         let layernormalization56_out1 = {
-            let dtype = add77_out1.clone().dtype();
+            let dtype = add74_out1.clone().dtype();
             self.layernormalization56
-                .forward(add77_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add74_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat142_out1 = burn::tensor::Tensor::cat(
-            [gather123_out1.clone(), layernormalization56_out1.clone()].into(),
+        let concat43_out1 = burn::tensor::Tensor::cat(
+            [gather19_out1.clone(), layernormalization56_out1.clone()].into(),
             1,
         );
-        let shape133_out1: [i64; 3] = {
-            let axes = &layernormalization56_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather125_out1 = shape133_out1[1] as i64;
-        let unsqueeze232_out1 = [gather125_out1 as i64];
-        let slice82_out1 = gather123_out1
-            .slice(s![.., unsqueeze232_out1[0]..9223372036854775807, ..]);
-        let unsqueeze233_out1 = [gather125_out1 as i64];
-        let slice83_out1 = layernormalization56_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze233_out1[0], ..]);
-        let concat143_out1 = burn::tensor::Tensor::cat(
-            [slice82_out1, slice83_out1].into(),
+        let transpose132_out1 = gather19_out1.permute([1, 0, 2]);
+        let slice41_out1 = transpose132_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose133_out1 = slice41_out1.permute([1, 0, 2]);
+        let concat44_out1 = burn::tensor::Tensor::cat(
+            [transpose133_out1, layernormalization56_out1.clone()].into(),
             1,
         );
-        let gather126_out1 = shape133_out1[0] as i64;
         let linear85_out1 = self.linear85.forward(layernormalization56_out1);
-        let unsqueeze234_out1 = [gather126_out1 as i64];
-        let constant1543_out1: [i64; 1] = [64i64];
-        let constant1541_out1: [i64; 1] = [-1i64];
-        let constant1542_out1: [i64; 1] = [8i64];
-        let concat144_out1: [i64; 4usize] = [
-            &unsqueeze234_out1[..],
-            &constant1541_out1[..],
-            &constant1542_out1[..],
-            &constant1543_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze235_out1 = [gather126_out1 as i64];
-        let constant1547_out1: [i64; 1] = [64i64];
-        let constant1545_out1: [i64; 1] = [-1i64];
-        let constant1546_out1: [i64; 1] = [8i64];
-        let concat145_out1: [i64; 4usize] = [
-            &unsqueeze235_out1[..],
-            &constant1545_out1[..],
-            &constant1546_out1[..],
-            &constant1547_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze236_out1 = [gather126_out1 as i64];
-        let constant1551_out1: [i64; 1] = [64i64];
-        let constant1549_out1: [i64; 1] = [-1i64];
-        let constant1550_out1: [i64; 1] = [8i64];
-        let concat146_out1: [i64; 4usize] = [
-            &unsqueeze236_out1[..],
-            &constant1549_out1[..],
-            &constant1550_out1[..],
-            &constant1551_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape125_out1 = linear85_out1.reshape(concat144_out1);
-        let linear86_out1 = self.linear86.forward(concat142_out1.clone());
-        let reshape126_out1 = linear86_out1.reshape(concat145_out1);
-        let linear87_out1 = self.linear87.forward(concat142_out1);
-        let reshape127_out1 = linear87_out1.reshape(concat146_out1);
-        let transpose115_out1 = reshape127_out1.permute([0, 2, 1, 3]);
-        let linear88_out1 = self.linear88.forward(slice5_out1);
-        let reshape128_out1 = linear88_out1.reshape([1, -1, 8, 64]);
+        let reshape65_out1 = linear85_out1.reshape([1, -1, 8, 64]);
+        let linear86_out1 = self.linear86.forward(concat43_out1.clone());
+        let reshape66_out1 = linear86_out1.reshape([1, -1, 8, 64]);
+        let linear87_out1 = self.linear87.forward(concat43_out1);
+        let reshape67_out1 = linear87_out1.reshape([1, -1, 8, 64]);
+        let transpose134_out1 = reshape66_out1.permute([0, 2, 1, 3]);
+        let transpose135_out1 = reshape67_out1.permute([0, 2, 1, 3]);
+        let linear88_out1 = self.linear88.forward(transpose4_out1);
+        let reshape68_out1 = linear88_out1.reshape([1, -1, 8, 64]);
         let constant176_out1 = self.constant176.val();
-        let add78_out1 = reshape125_out1
+        let add75_out1 = reshape65_out1
             .clone()
             .add((constant176_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose116_out1 = add78_out1.permute([0, 2, 1, 3]);
+        let transpose136_out1 = add75_out1.permute([0, 2, 1, 3]);
         let constant177_out1 = self.constant177.val();
-        let add79_out1 = reshape125_out1
+        let add76_out1 = reshape65_out1
             .add((constant177_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose117_out1 = add79_out1.permute([0, 2, 1, 3]);
-        let transpose118_out1 = reshape128_out1.permute([0, 2, 3, 1]);
-        let matmul116_out1 = transpose117_out1.matmul(transpose118_out1);
-        let shape135_out1: [i64; 4] = {
-            let axes = &matmul116_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather127_out1 = shape135_out1[0] as i64;
-        let gather128_out1 = shape135_out1[1] as i64;
-        let gather129_out1 = shape135_out1[2] as i64;
-        let gather130_out1 = shape135_out1[3] as i64;
-        let pad22_out1 = matmul116_out1
+        let transpose137_out1 = add76_out1.permute([0, 2, 1, 3]);
+        let transpose138_out1 = reshape68_out1.permute([0, 2, 3, 1]);
+        let matmul98_out1 = transpose137_out1.matmul(transpose138_out1);
+        let pad19_out1 = matmul98_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze237_out1 = [gather127_out1 as i64];
-        let unsqueeze238_out1 = [gather128_out1 as i64];
-        let unsqueeze239_out1 = [gather129_out1 as i64];
-        let constant1566_out1: [i64; 1] = [-1i64];
-        let concat148_out1: [i64; 4usize] = [
-            &unsqueeze237_out1[..],
-            &unsqueeze238_out1[..],
-            &constant1566_out1[..],
-            &unsqueeze239_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape131_out1 = pad22_out1.reshape(concat148_out1);
-        let slice85_out1 = reshape131_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze240_out1 = [gather127_out1 as i64];
-        let unsqueeze241_out1 = [gather128_out1 as i64];
-        let unsqueeze242_out1 = [gather129_out1 as i64];
-        let unsqueeze243_out1 = [gather130_out1 as i64];
-        let concat149_out1: [i64; 4usize] = [
-            &unsqueeze240_out1[..],
-            &unsqueeze241_out1[..],
-            &unsqueeze242_out1[..],
-            &unsqueeze243_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape132_out1 = slice85_out1.reshape(concat149_out1);
-        let transpose120_out1 = reshape126_out1.permute([0, 2, 3, 1]);
-        let matmul117_out1 = transpose116_out1.matmul(transpose120_out1);
-        let shape139_out1: [i64; 4] = {
-            let axes = &matmul117_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape69_out1 = pad19_out1.reshape(concat16_out1);
+        let slice42_out1 = reshape69_out1.slice(s![.., .., 1.., ..]);
+        let reshape70_out1 = slice42_out1.reshape(concat17_out1);
+        let transpose139_out1 = reshape70_out1.permute([3, 0, 1, 2]);
+        let slice43_out1 = transpose139_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose140_out1 = slice43_out1.permute([1, 2, 3, 0]);
+        let mul82_out1 = transpose140_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where28_out1 = mul82_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention10_out1,) = {
+            let q = transpose136_out1;
+            let k = transpose134_out1;
+            let v = transpose135_out1;
+            let score_bias = where28_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention10_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention10_out1 = {
+                let dims = attention10_out1.dims();
+                attention10_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention10_out1,)
         };
-        let slice86_out1: [i64; 1] = shape139_out1[3..4].try_into().unwrap();
-        let squeeze10_out1 = slice86_out1[0] as i64;
-        let unsqueeze244_out1 = [squeeze10_out1 as i64];
-        let slice87_out1 = reshape132_out1
-            .slice(s![.., .., .., 0..unsqueeze244_out1[0]]);
-        let add80_out1 = matmul117_out1.add(slice87_out1);
-        let constant1584_out1 = self.constant1584.val();
-        let div14_out1 = add80_out1
-            .div((constant1584_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape140_out1: [i64; 4] = {
-            let axes = &transpose115_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather131_out1 = shape140_out1[0] as i64;
-        let constant1586_out1 = -10000f32;
-        let where46_out1 = div14_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1586_out1);
-        let softmax10_out1 = burn::tensor::activation::softmax(where46_out1, 3);
-        let constant1587_out1 = 0f32;
-        let where47_out1 = softmax10_out1
-            .mask_fill(unsqueeze117_out1, constant1587_out1);
-        let matmul118_out1 = where47_out1.matmul(transpose115_out1);
-        let transpose121_out1 = matmul118_out1.permute([0, 2, 1, 3]);
-        let unsqueeze245_out1 = [gather131_out1 as i64];
-        let constant1590_out1: [i64; 1] = [512i64];
-        let constant1589_out1: [i64; 1] = [-1i64];
-        let concat150_out1: [i64; 3usize] = [
-            &unsqueeze245_out1[..],
-            &constant1589_out1[..],
-            &constant1590_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape133_out1 = transpose121_out1.reshape(concat150_out1);
-        let linear89_out1 = self.linear89.forward(reshape133_out1);
-        let add81_out1 = add77_out1.add(linear89_out1);
-        (add81_out1, gather124_out1, concat143_out1, slice81_out1)
+        let where29_out1 = attention10_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose141_out1 = where29_out1.permute([0, 2, 1, 3]);
+        let reshape71_out1 = transpose141_out1.reshape([1, -1, 512]);
+        let linear89_out1 = self.linear89.forward(reshape71_out1);
+        let add77_out1 = add74_out1.add(linear89_out1);
+        (add77_out1, gather20_out1, concat44_out1, slice40_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule15 {
+pub struct Submodule13 {
     layernormalization57: LayerNorm,
     conv1d28: Conv1d,
     conv1d29: Conv1d,
@@ -5844,12 +3932,10 @@ pub struct Submodule15 {
     layernormalization59: LayerNorm,
     linear90: Linear,
     linear91: Linear,
-    constant1604: burn::module::Param<Tensor<1>>,
     layernormalization60: LayerNorm,
     layernormalization61: LayerNorm,
     linear92: Linear,
     linear93: Linear,
-    constant1606: burn::module::Param<Tensor<1>>,
     layernormalization62: LayerNorm,
     linear94: Linear,
     linear95: Linear,
@@ -5857,12 +3943,11 @@ pub struct Submodule15 {
     linear97: Linear,
     constant193: burn::module::Param<Tensor<2>>,
     constant194: burn::module::Param<Tensor<2>>,
-    constant1661: burn::module::Param<Tensor<1>>,
     linear98: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule15 {
+impl Submodule13 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization57 = LayerNormConfig::new(512)
@@ -5900,18 +3985,6 @@ impl Submodule15 {
             .init(device);
         let linear90 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear91 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1604: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization60 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -5922,18 +3995,6 @@ impl Submodule15 {
             .init(device);
         let linear92 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear93 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1606: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization62 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -5960,18 +4021,6 @@ impl Submodule15 {
             false,
             [8, 64].into(),
         );
-        let constant1661: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear98 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization57,
@@ -5982,12 +4031,10 @@ impl Submodule15 {
             layernormalization59,
             linear90,
             linear91,
-            constant1604,
             layernormalization60,
             layernormalization61,
             linear92,
             linear93,
-            constant1606,
             layernormalization62,
             linear94,
             linear95,
@@ -5995,7 +4042,6 @@ impl Submodule15 {
             linear97,
             constant193,
             constant194,
-            constant1661,
             linear98,
             device: device.clone(),
         }
@@ -6003,74 +4049,86 @@ impl Submodule15 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add81_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather124_out1: Tensor<3>,
+        add77_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather20_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization57_out1 = {
-            let dtype = add81_out1.clone().dtype();
+            let dtype = add77_out1.clone().dtype();
             self.layernormalization57
-                .forward(add81_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add77_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose122_out1 = layernormalization57_out1.permute([0, 2, 1]);
-        let conv1d28_out1 = self.conv1d28.forward(transpose122_out1);
+        let transpose142_out1 = layernormalization57_out1.permute([0, 2, 1]);
+        let conv1d28_out1 = self.conv1d28.forward(transpose142_out1);
         let split_tensors = conv1d28_out1.split_with_sizes([512, 512].into(), 1);
         let [split10_out1, split10_out2] = split_tensors.try_into().unwrap();
         let sigmoid38_out1 = burn::tensor::activation::sigmoid(split10_out2);
-        let mul102_out1 = split10_out1.mul(sigmoid38_out1);
-        let constant1591_out1 = 0f32;
-        let where48_out1 = mul102_out1.mask_fill(unsqueeze119_out1, constant1591_out1);
-        let concat152_out1 = burn::tensor::Tensor::cat(
-            [gather124_out1, where48_out1].into(),
+        let mul83_out1 = split10_out1.mul(sigmoid38_out1);
+        let where30_out1 = mul83_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad20_out1 = where30_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat45_out1 = burn::tensor::Tensor::cat(
+            [gather20_out1, pad20_out1].into(),
             2,
         );
-        let slice89_out1 = concat152_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d29_out1 = self.conv1d29.forward(concat152_out1);
-        let transpose124_out1 = conv1d29_out1.permute([0, 2, 1]);
+        let slice44_out1 = concat45_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d29_out1 = self.conv1d29.forward(concat45_out1);
+        let transpose143_out1 = conv1d29_out1.permute([0, 2, 1]);
         let layernormalization58_out1 = {
-            let dtype = transpose124_out1.dtype();
+            let dtype = transpose143_out1.dtype();
             self.layernormalization58
-                .forward(transpose124_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose143_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose125_out1 = layernormalization58_out1.permute([0, 2, 1]);
+        let transpose144_out1 = layernormalization58_out1.permute([0, 2, 1]);
         let sigmoid39_out1 = burn::tensor::activation::sigmoid(
-            transpose125_out1.clone(),
+            transpose144_out1.clone(),
         );
-        let mul103_out1 = transpose125_out1.mul(sigmoid39_out1);
-        let conv1d30_out1 = self.conv1d30.forward(mul103_out1);
-        let transpose126_out1 = conv1d30_out1.permute([0, 2, 1]);
-        let add82_out1 = add81_out1.add(transpose126_out1);
+        let mul84_out1 = transpose144_out1.mul(sigmoid39_out1);
+        let conv1d30_out1 = self.conv1d30.forward(mul84_out1);
+        let transpose145_out1 = conv1d30_out1.permute([0, 2, 1]);
+        let add78_out1 = add77_out1.add(transpose145_out1);
         let layernormalization59_out1 = {
-            let dtype = add82_out1.clone().dtype();
+            let dtype = add78_out1.clone().dtype();
             self.layernormalization59
-                .forward(add82_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add78_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear90_out1 = self.linear90.forward(layernormalization59_out1);
         let sigmoid40_out1 = burn::tensor::activation::sigmoid(linear90_out1.clone());
-        let mul104_out1 = linear90_out1.mul(sigmoid40_out1);
-        let linear91_out1 = self.linear91.forward(mul104_out1);
-        let constant1604_out1 = self.constant1604.val();
-        let mul105_out1 = linear91_out1
-            .mul((constant1604_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add83_out1 = add82_out1.add(mul105_out1);
+        let mul85_out1 = linear90_out1.mul(sigmoid40_out1);
+        let linear91_out1 = self.linear91.forward(mul85_out1);
+        let mul86_out1 = linear91_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add79_out1 = add78_out1.add(mul86_out1);
         let layernormalization60_out1 = {
-            let dtype = add83_out1.dtype();
+            let dtype = add79_out1.dtype();
             self.layernormalization60
-                .forward(add83_out1.cast(burn::tensor::DType::F32))
+                .forward(add79_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather132_out1 = {
+        let gather21_out1 = {
             let sliced = cache_last_channel.slice(s![10, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather133_out1 = {
+        let gather22_out1 = {
             let sliced = cache_last_time.slice(s![10, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -6084,204 +4142,102 @@ impl Submodule15 {
         };
         let linear92_out1 = self.linear92.forward(layernormalization61_out1);
         let sigmoid41_out1 = burn::tensor::activation::sigmoid(linear92_out1.clone());
-        let mul106_out1 = linear92_out1.mul(sigmoid41_out1);
-        let linear93_out1 = self.linear93.forward(mul106_out1);
-        let constant1606_out1 = self.constant1606.val();
-        let mul107_out1 = linear93_out1
-            .mul((constant1606_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add84_out1 = layernormalization60_out1.add(mul107_out1);
+        let mul87_out1 = linear92_out1.mul(sigmoid41_out1);
+        let linear93_out1 = self.linear93.forward(mul87_out1);
+        let mul88_out1 = linear93_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add80_out1 = layernormalization60_out1.add(mul88_out1);
         let layernormalization62_out1 = {
-            let dtype = add84_out1.clone().dtype();
+            let dtype = add80_out1.clone().dtype();
             self.layernormalization62
-                .forward(add84_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add80_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat153_out1 = burn::tensor::Tensor::cat(
-            [gather132_out1.clone(), layernormalization62_out1.clone()].into(),
+        let concat46_out1 = burn::tensor::Tensor::cat(
+            [gather21_out1.clone(), layernormalization62_out1.clone()].into(),
             1,
         );
-        let shape141_out1: [i64; 3] = {
-            let axes = &layernormalization62_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather134_out1 = shape141_out1[1] as i64;
-        let unsqueeze246_out1 = [gather134_out1 as i64];
-        let slice90_out1 = gather132_out1
-            .slice(s![.., unsqueeze246_out1[0]..9223372036854775807, ..]);
-        let unsqueeze247_out1 = [gather134_out1 as i64];
-        let slice91_out1 = layernormalization62_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze247_out1[0], ..]);
-        let concat154_out1 = burn::tensor::Tensor::cat(
-            [slice90_out1, slice91_out1].into(),
+        let transpose146_out1 = gather21_out1.permute([1, 0, 2]);
+        let slice45_out1 = transpose146_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose147_out1 = slice45_out1.permute([1, 0, 2]);
+        let concat47_out1 = burn::tensor::Tensor::cat(
+            [transpose147_out1, layernormalization62_out1.clone()].into(),
             1,
         );
-        let gather135_out1 = shape141_out1[0] as i64;
         let linear94_out1 = self.linear94.forward(layernormalization62_out1);
-        let unsqueeze248_out1 = [gather135_out1 as i64];
-        let constant1620_out1: [i64; 1] = [64i64];
-        let constant1618_out1: [i64; 1] = [-1i64];
-        let constant1619_out1: [i64; 1] = [8i64];
-        let concat155_out1: [i64; 4usize] = [
-            &unsqueeze248_out1[..],
-            &constant1618_out1[..],
-            &constant1619_out1[..],
-            &constant1620_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze249_out1 = [gather135_out1 as i64];
-        let constant1624_out1: [i64; 1] = [64i64];
-        let constant1622_out1: [i64; 1] = [-1i64];
-        let constant1623_out1: [i64; 1] = [8i64];
-        let concat156_out1: [i64; 4usize] = [
-            &unsqueeze249_out1[..],
-            &constant1622_out1[..],
-            &constant1623_out1[..],
-            &constant1624_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze250_out1 = [gather135_out1 as i64];
-        let constant1628_out1: [i64; 1] = [64i64];
-        let constant1626_out1: [i64; 1] = [-1i64];
-        let constant1627_out1: [i64; 1] = [8i64];
-        let concat157_out1: [i64; 4usize] = [
-            &unsqueeze250_out1[..],
-            &constant1626_out1[..],
-            &constant1627_out1[..],
-            &constant1628_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape136_out1 = linear94_out1.reshape(concat155_out1);
-        let linear95_out1 = self.linear95.forward(concat153_out1.clone());
-        let reshape137_out1 = linear95_out1.reshape(concat156_out1);
-        let linear96_out1 = self.linear96.forward(concat153_out1);
-        let reshape138_out1 = linear96_out1.reshape(concat157_out1);
-        let transpose127_out1 = reshape138_out1.permute([0, 2, 1, 3]);
-        let linear97_out1 = self.linear97.forward(slice5_out1);
-        let reshape139_out1 = linear97_out1.reshape([1, -1, 8, 64]);
+        let reshape72_out1 = linear94_out1.reshape([1, -1, 8, 64]);
+        let linear95_out1 = self.linear95.forward(concat46_out1.clone());
+        let reshape73_out1 = linear95_out1.reshape([1, -1, 8, 64]);
+        let linear96_out1 = self.linear96.forward(concat46_out1);
+        let reshape74_out1 = linear96_out1.reshape([1, -1, 8, 64]);
+        let transpose148_out1 = reshape73_out1.permute([0, 2, 1, 3]);
+        let transpose149_out1 = reshape74_out1.permute([0, 2, 1, 3]);
+        let linear97_out1 = self.linear97.forward(transpose4_out1);
+        let reshape75_out1 = linear97_out1.reshape([1, -1, 8, 64]);
         let constant193_out1 = self.constant193.val();
-        let add85_out1 = reshape136_out1
+        let add81_out1 = reshape72_out1
             .clone()
             .add((constant193_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose128_out1 = add85_out1.permute([0, 2, 1, 3]);
+        let transpose150_out1 = add81_out1.permute([0, 2, 1, 3]);
         let constant194_out1 = self.constant194.val();
-        let add86_out1 = reshape136_out1
+        let add82_out1 = reshape72_out1
             .add((constant194_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose129_out1 = add86_out1.permute([0, 2, 1, 3]);
-        let transpose130_out1 = reshape139_out1.permute([0, 2, 3, 1]);
-        let matmul128_out1 = transpose129_out1.matmul(transpose130_out1);
-        let shape143_out1: [i64; 4] = {
-            let axes = &matmul128_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather136_out1 = shape143_out1[0] as i64;
-        let gather137_out1 = shape143_out1[1] as i64;
-        let gather138_out1 = shape143_out1[2] as i64;
-        let gather139_out1 = shape143_out1[3] as i64;
-        let pad24_out1 = matmul128_out1
+        let transpose151_out1 = add82_out1.permute([0, 2, 1, 3]);
+        let transpose152_out1 = reshape75_out1.permute([0, 2, 3, 1]);
+        let matmul108_out1 = transpose151_out1.matmul(transpose152_out1);
+        let pad21_out1 = matmul108_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze251_out1 = [gather136_out1 as i64];
-        let unsqueeze252_out1 = [gather137_out1 as i64];
-        let unsqueeze253_out1 = [gather138_out1 as i64];
-        let constant1643_out1: [i64; 1] = [-1i64];
-        let concat159_out1: [i64; 4usize] = [
-            &unsqueeze251_out1[..],
-            &unsqueeze252_out1[..],
-            &constant1643_out1[..],
-            &unsqueeze253_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape142_out1 = pad24_out1.reshape(concat159_out1);
-        let slice93_out1 = reshape142_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze254_out1 = [gather136_out1 as i64];
-        let unsqueeze255_out1 = [gather137_out1 as i64];
-        let unsqueeze256_out1 = [gather138_out1 as i64];
-        let unsqueeze257_out1 = [gather139_out1 as i64];
-        let concat160_out1: [i64; 4usize] = [
-            &unsqueeze254_out1[..],
-            &unsqueeze255_out1[..],
-            &unsqueeze256_out1[..],
-            &unsqueeze257_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape143_out1 = slice93_out1.reshape(concat160_out1);
-        let transpose132_out1 = reshape137_out1.permute([0, 2, 3, 1]);
-        let matmul129_out1 = transpose128_out1.matmul(transpose132_out1);
-        let shape147_out1: [i64; 4] = {
-            let axes = &matmul129_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape76_out1 = pad21_out1.reshape(concat16_out1);
+        let slice46_out1 = reshape76_out1.slice(s![.., .., 1.., ..]);
+        let reshape77_out1 = slice46_out1.reshape(concat17_out1);
+        let transpose153_out1 = reshape77_out1.permute([3, 0, 1, 2]);
+        let slice47_out1 = transpose153_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose154_out1 = slice47_out1.permute([1, 2, 3, 0]);
+        let mul89_out1 = transpose154_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where31_out1 = mul89_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention11_out1,) = {
+            let q = transpose150_out1;
+            let k = transpose148_out1;
+            let v = transpose149_out1;
+            let score_bias = where31_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention11_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention11_out1 = {
+                let dims = attention11_out1.dims();
+                attention11_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention11_out1,)
         };
-        let slice94_out1: [i64; 1] = shape147_out1[3..4].try_into().unwrap();
-        let squeeze11_out1 = slice94_out1[0] as i64;
-        let unsqueeze258_out1 = [squeeze11_out1 as i64];
-        let slice95_out1 = reshape143_out1
-            .slice(s![.., .., .., 0..unsqueeze258_out1[0]]);
-        let add87_out1 = matmul129_out1.add(slice95_out1);
-        let constant1661_out1 = self.constant1661.val();
-        let div15_out1 = add87_out1
-            .div((constant1661_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape148_out1: [i64; 4] = {
-            let axes = &transpose127_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather140_out1 = shape148_out1[0] as i64;
-        let constant1663_out1 = -10000f32;
-        let where49_out1 = div15_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1663_out1);
-        let softmax11_out1 = burn::tensor::activation::softmax(where49_out1, 3);
-        let constant1664_out1 = 0f32;
-        let where50_out1 = softmax11_out1
-            .mask_fill(unsqueeze117_out1, constant1664_out1);
-        let matmul130_out1 = where50_out1.matmul(transpose127_out1);
-        let transpose133_out1 = matmul130_out1.permute([0, 2, 1, 3]);
-        let unsqueeze259_out1 = [gather140_out1 as i64];
-        let constant1667_out1: [i64; 1] = [512i64];
-        let constant1666_out1: [i64; 1] = [-1i64];
-        let concat161_out1: [i64; 3usize] = [
-            &unsqueeze259_out1[..],
-            &constant1666_out1[..],
-            &constant1667_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape144_out1 = transpose133_out1.reshape(concat161_out1);
-        let linear98_out1 = self.linear98.forward(reshape144_out1);
-        let add88_out1 = add84_out1.add(linear98_out1);
-        (add88_out1, gather133_out1, concat154_out1, slice89_out1)
+        let where32_out1 = attention11_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose155_out1 = where32_out1.permute([0, 2, 1, 3]);
+        let reshape78_out1 = transpose155_out1.reshape([1, -1, 512]);
+        let linear98_out1 = self.linear98.forward(reshape78_out1);
+        let add83_out1 = add80_out1.add(linear98_out1);
+        (add83_out1, gather22_out1, concat47_out1, slice44_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule16 {
+pub struct Submodule14 {
     layernormalization63: LayerNorm,
     conv1d31: Conv1d,
     conv1d32: Conv1d,
@@ -6290,12 +4246,10 @@ pub struct Submodule16 {
     layernormalization65: LayerNorm,
     linear99: Linear,
     linear100: Linear,
-    constant1681: burn::module::Param<Tensor<1>>,
     layernormalization66: LayerNorm,
     layernormalization67: LayerNorm,
     linear101: Linear,
     linear102: Linear,
-    constant1682: burn::module::Param<Tensor<1>>,
     layernormalization68: LayerNorm,
     linear103: Linear,
     linear104: Linear,
@@ -6303,12 +4257,11 @@ pub struct Submodule16 {
     linear106: Linear,
     constant210: burn::module::Param<Tensor<2>>,
     constant211: burn::module::Param<Tensor<2>>,
-    constant1737: burn::module::Param<Tensor<1>>,
     linear107: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule16 {
+impl Submodule14 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization63 = LayerNormConfig::new(512)
@@ -6346,18 +4299,6 @@ impl Submodule16 {
             .init(device);
         let linear99 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear100 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1681: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization66 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -6368,18 +4309,6 @@ impl Submodule16 {
             .init(device);
         let linear101 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear102 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1682: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization68 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -6406,18 +4335,6 @@ impl Submodule16 {
             false,
             [8, 64].into(),
         );
-        let constant1737: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear107 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization63,
@@ -6428,12 +4345,10 @@ impl Submodule16 {
             layernormalization65,
             linear99,
             linear100,
-            constant1681,
             layernormalization66,
             layernormalization67,
             linear101,
             linear102,
-            constant1682,
             layernormalization68,
             linear103,
             linear104,
@@ -6441,7 +4356,6 @@ impl Submodule16 {
             linear106,
             constant210,
             constant211,
-            constant1737,
             linear107,
             device: device.clone(),
         }
@@ -6449,74 +4363,86 @@ impl Submodule16 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add88_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather133_out1: Tensor<3>,
+        add83_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather22_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization63_out1 = {
-            let dtype = add88_out1.clone().dtype();
+            let dtype = add83_out1.clone().dtype();
             self.layernormalization63
-                .forward(add88_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add83_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose134_out1 = layernormalization63_out1.permute([0, 2, 1]);
-        let conv1d31_out1 = self.conv1d31.forward(transpose134_out1);
+        let transpose156_out1 = layernormalization63_out1.permute([0, 2, 1]);
+        let conv1d31_out1 = self.conv1d31.forward(transpose156_out1);
         let split_tensors = conv1d31_out1.split_with_sizes([512, 512].into(), 1);
         let [split11_out1, split11_out2] = split_tensors.try_into().unwrap();
         let sigmoid42_out1 = burn::tensor::activation::sigmoid(split11_out2);
-        let mul108_out1 = split11_out1.mul(sigmoid42_out1);
-        let constant1668_out1 = 0f32;
-        let where51_out1 = mul108_out1.mask_fill(unsqueeze119_out1, constant1668_out1);
-        let concat163_out1 = burn::tensor::Tensor::cat(
-            [gather133_out1, where51_out1].into(),
+        let mul90_out1 = split11_out1.mul(sigmoid42_out1);
+        let where33_out1 = mul90_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad22_out1 = where33_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat48_out1 = burn::tensor::Tensor::cat(
+            [gather22_out1, pad22_out1].into(),
             2,
         );
-        let slice97_out1 = concat163_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d32_out1 = self.conv1d32.forward(concat163_out1);
-        let transpose136_out1 = conv1d32_out1.permute([0, 2, 1]);
+        let slice48_out1 = concat48_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d32_out1 = self.conv1d32.forward(concat48_out1);
+        let transpose157_out1 = conv1d32_out1.permute([0, 2, 1]);
         let layernormalization64_out1 = {
-            let dtype = transpose136_out1.dtype();
+            let dtype = transpose157_out1.dtype();
             self.layernormalization64
-                .forward(transpose136_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose157_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose137_out1 = layernormalization64_out1.permute([0, 2, 1]);
+        let transpose158_out1 = layernormalization64_out1.permute([0, 2, 1]);
         let sigmoid43_out1 = burn::tensor::activation::sigmoid(
-            transpose137_out1.clone(),
+            transpose158_out1.clone(),
         );
-        let mul109_out1 = transpose137_out1.mul(sigmoid43_out1);
-        let conv1d33_out1 = self.conv1d33.forward(mul109_out1);
-        let transpose138_out1 = conv1d33_out1.permute([0, 2, 1]);
-        let add89_out1 = add88_out1.add(transpose138_out1);
+        let mul91_out1 = transpose158_out1.mul(sigmoid43_out1);
+        let conv1d33_out1 = self.conv1d33.forward(mul91_out1);
+        let transpose159_out1 = conv1d33_out1.permute([0, 2, 1]);
+        let add84_out1 = add83_out1.add(transpose159_out1);
         let layernormalization65_out1 = {
-            let dtype = add89_out1.clone().dtype();
+            let dtype = add84_out1.clone().dtype();
             self.layernormalization65
-                .forward(add89_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add84_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear99_out1 = self.linear99.forward(layernormalization65_out1);
         let sigmoid44_out1 = burn::tensor::activation::sigmoid(linear99_out1.clone());
-        let mul110_out1 = linear99_out1.mul(sigmoid44_out1);
-        let linear100_out1 = self.linear100.forward(mul110_out1);
-        let constant1681_out1 = self.constant1681.val();
-        let mul111_out1 = linear100_out1
-            .mul((constant1681_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add90_out1 = add89_out1.add(mul111_out1);
+        let mul92_out1 = linear99_out1.mul(sigmoid44_out1);
+        let linear100_out1 = self.linear100.forward(mul92_out1);
+        let mul93_out1 = linear100_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add85_out1 = add84_out1.add(mul93_out1);
         let layernormalization66_out1 = {
-            let dtype = add90_out1.dtype();
+            let dtype = add85_out1.dtype();
             self.layernormalization66
-                .forward(add90_out1.cast(burn::tensor::DType::F32))
+                .forward(add85_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather141_out1 = {
+        let gather23_out1 = {
             let sliced = cache_last_channel.slice(s![11, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather142_out1 = {
+        let gather24_out1 = {
             let sliced = cache_last_time.slice(s![11, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -6530,204 +4456,102 @@ impl Submodule16 {
         };
         let linear101_out1 = self.linear101.forward(layernormalization67_out1);
         let sigmoid45_out1 = burn::tensor::activation::sigmoid(linear101_out1.clone());
-        let mul112_out1 = linear101_out1.mul(sigmoid45_out1);
-        let linear102_out1 = self.linear102.forward(mul112_out1);
-        let constant1682_out1 = self.constant1682.val();
-        let mul113_out1 = linear102_out1
-            .mul((constant1682_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add91_out1 = layernormalization66_out1.add(mul113_out1);
+        let mul94_out1 = linear101_out1.mul(sigmoid45_out1);
+        let linear102_out1 = self.linear102.forward(mul94_out1);
+        let mul95_out1 = linear102_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add86_out1 = layernormalization66_out1.add(mul95_out1);
         let layernormalization68_out1 = {
-            let dtype = add91_out1.clone().dtype();
+            let dtype = add86_out1.clone().dtype();
             self.layernormalization68
-                .forward(add91_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add86_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat164_out1 = burn::tensor::Tensor::cat(
-            [gather141_out1.clone(), layernormalization68_out1.clone()].into(),
+        let concat49_out1 = burn::tensor::Tensor::cat(
+            [gather23_out1.clone(), layernormalization68_out1.clone()].into(),
             1,
         );
-        let shape149_out1: [i64; 3] = {
-            let axes = &layernormalization68_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather143_out1 = shape149_out1[1] as i64;
-        let unsqueeze260_out1 = [gather143_out1 as i64];
-        let slice98_out1 = gather141_out1
-            .slice(s![.., unsqueeze260_out1[0]..9223372036854775807, ..]);
-        let unsqueeze261_out1 = [gather143_out1 as i64];
-        let slice99_out1 = layernormalization68_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze261_out1[0], ..]);
-        let concat165_out1 = burn::tensor::Tensor::cat(
-            [slice98_out1, slice99_out1].into(),
+        let transpose160_out1 = gather23_out1.permute([1, 0, 2]);
+        let slice49_out1 = transpose160_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose161_out1 = slice49_out1.permute([1, 0, 2]);
+        let concat50_out1 = burn::tensor::Tensor::cat(
+            [transpose161_out1, layernormalization68_out1.clone()].into(),
             1,
         );
-        let gather144_out1 = shape149_out1[0] as i64;
         let linear103_out1 = self.linear103.forward(layernormalization68_out1);
-        let unsqueeze262_out1 = [gather144_out1 as i64];
-        let constant1696_out1: [i64; 1] = [64i64];
-        let constant1694_out1: [i64; 1] = [-1i64];
-        let constant1695_out1: [i64; 1] = [8i64];
-        let concat166_out1: [i64; 4usize] = [
-            &unsqueeze262_out1[..],
-            &constant1694_out1[..],
-            &constant1695_out1[..],
-            &constant1696_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze263_out1 = [gather144_out1 as i64];
-        let constant1700_out1: [i64; 1] = [64i64];
-        let constant1698_out1: [i64; 1] = [-1i64];
-        let constant1699_out1: [i64; 1] = [8i64];
-        let concat167_out1: [i64; 4usize] = [
-            &unsqueeze263_out1[..],
-            &constant1698_out1[..],
-            &constant1699_out1[..],
-            &constant1700_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze264_out1 = [gather144_out1 as i64];
-        let constant1704_out1: [i64; 1] = [64i64];
-        let constant1702_out1: [i64; 1] = [-1i64];
-        let constant1703_out1: [i64; 1] = [8i64];
-        let concat168_out1: [i64; 4usize] = [
-            &unsqueeze264_out1[..],
-            &constant1702_out1[..],
-            &constant1703_out1[..],
-            &constant1704_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape147_out1 = linear103_out1.reshape(concat166_out1);
-        let linear104_out1 = self.linear104.forward(concat164_out1.clone());
-        let reshape148_out1 = linear104_out1.reshape(concat167_out1);
-        let linear105_out1 = self.linear105.forward(concat164_out1);
-        let reshape149_out1 = linear105_out1.reshape(concat168_out1);
-        let transpose139_out1 = reshape149_out1.permute([0, 2, 1, 3]);
-        let linear106_out1 = self.linear106.forward(slice5_out1);
-        let reshape150_out1 = linear106_out1.reshape([1, -1, 8, 64]);
+        let reshape79_out1 = linear103_out1.reshape([1, -1, 8, 64]);
+        let linear104_out1 = self.linear104.forward(concat49_out1.clone());
+        let reshape80_out1 = linear104_out1.reshape([1, -1, 8, 64]);
+        let linear105_out1 = self.linear105.forward(concat49_out1);
+        let reshape81_out1 = linear105_out1.reshape([1, -1, 8, 64]);
+        let transpose162_out1 = reshape80_out1.permute([0, 2, 1, 3]);
+        let transpose163_out1 = reshape81_out1.permute([0, 2, 1, 3]);
+        let linear106_out1 = self.linear106.forward(transpose4_out1);
+        let reshape82_out1 = linear106_out1.reshape([1, -1, 8, 64]);
         let constant210_out1 = self.constant210.val();
-        let add92_out1 = reshape147_out1
+        let add87_out1 = reshape79_out1
             .clone()
             .add((constant210_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose140_out1 = add92_out1.permute([0, 2, 1, 3]);
+        let transpose164_out1 = add87_out1.permute([0, 2, 1, 3]);
         let constant211_out1 = self.constant211.val();
-        let add93_out1 = reshape147_out1
+        let add88_out1 = reshape79_out1
             .add((constant211_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose141_out1 = add93_out1.permute([0, 2, 1, 3]);
-        let transpose142_out1 = reshape150_out1.permute([0, 2, 3, 1]);
-        let matmul140_out1 = transpose141_out1.matmul(transpose142_out1);
-        let shape151_out1: [i64; 4] = {
-            let axes = &matmul140_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather145_out1 = shape151_out1[0] as i64;
-        let gather146_out1 = shape151_out1[1] as i64;
-        let gather147_out1 = shape151_out1[2] as i64;
-        let gather148_out1 = shape151_out1[3] as i64;
-        let pad26_out1 = matmul140_out1
+        let transpose165_out1 = add88_out1.permute([0, 2, 1, 3]);
+        let transpose166_out1 = reshape82_out1.permute([0, 2, 3, 1]);
+        let matmul118_out1 = transpose165_out1.matmul(transpose166_out1);
+        let pad23_out1 = matmul118_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze265_out1 = [gather145_out1 as i64];
-        let unsqueeze266_out1 = [gather146_out1 as i64];
-        let unsqueeze267_out1 = [gather147_out1 as i64];
-        let constant1719_out1: [i64; 1] = [-1i64];
-        let concat170_out1: [i64; 4usize] = [
-            &unsqueeze265_out1[..],
-            &unsqueeze266_out1[..],
-            &constant1719_out1[..],
-            &unsqueeze267_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape153_out1 = pad26_out1.reshape(concat170_out1);
-        let slice101_out1 = reshape153_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze268_out1 = [gather145_out1 as i64];
-        let unsqueeze269_out1 = [gather146_out1 as i64];
-        let unsqueeze270_out1 = [gather147_out1 as i64];
-        let unsqueeze271_out1 = [gather148_out1 as i64];
-        let concat171_out1: [i64; 4usize] = [
-            &unsqueeze268_out1[..],
-            &unsqueeze269_out1[..],
-            &unsqueeze270_out1[..],
-            &unsqueeze271_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape154_out1 = slice101_out1.reshape(concat171_out1);
-        let transpose144_out1 = reshape148_out1.permute([0, 2, 3, 1]);
-        let matmul141_out1 = transpose140_out1.matmul(transpose144_out1);
-        let shape155_out1: [i64; 4] = {
-            let axes = &matmul141_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape83_out1 = pad23_out1.reshape(concat16_out1);
+        let slice50_out1 = reshape83_out1.slice(s![.., .., 1.., ..]);
+        let reshape84_out1 = slice50_out1.reshape(concat17_out1);
+        let transpose167_out1 = reshape84_out1.permute([3, 0, 1, 2]);
+        let slice51_out1 = transpose167_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose168_out1 = slice51_out1.permute([1, 2, 3, 0]);
+        let mul96_out1 = transpose168_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where34_out1 = mul96_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention12_out1,) = {
+            let q = transpose164_out1;
+            let k = transpose162_out1;
+            let v = transpose163_out1;
+            let score_bias = where34_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention12_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention12_out1 = {
+                let dims = attention12_out1.dims();
+                attention12_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention12_out1,)
         };
-        let slice102_out1: [i64; 1] = shape155_out1[3..4].try_into().unwrap();
-        let squeeze12_out1 = slice102_out1[0] as i64;
-        let unsqueeze272_out1 = [squeeze12_out1 as i64];
-        let slice103_out1 = reshape154_out1
-            .slice(s![.., .., .., 0..unsqueeze272_out1[0]]);
-        let add94_out1 = matmul141_out1.add(slice103_out1);
-        let constant1737_out1 = self.constant1737.val();
-        let div16_out1 = add94_out1
-            .div((constant1737_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape156_out1: [i64; 4] = {
-            let axes = &transpose139_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather149_out1 = shape156_out1[0] as i64;
-        let constant1739_out1 = -10000f32;
-        let where52_out1 = div16_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1739_out1);
-        let softmax12_out1 = burn::tensor::activation::softmax(where52_out1, 3);
-        let constant1740_out1 = 0f32;
-        let where53_out1 = softmax12_out1
-            .mask_fill(unsqueeze117_out1, constant1740_out1);
-        let matmul142_out1 = where53_out1.matmul(transpose139_out1);
-        let transpose145_out1 = matmul142_out1.permute([0, 2, 1, 3]);
-        let unsqueeze273_out1 = [gather149_out1 as i64];
-        let constant1743_out1: [i64; 1] = [512i64];
-        let constant1742_out1: [i64; 1] = [-1i64];
-        let concat172_out1: [i64; 3usize] = [
-            &unsqueeze273_out1[..],
-            &constant1742_out1[..],
-            &constant1743_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape155_out1 = transpose145_out1.reshape(concat172_out1);
-        let linear107_out1 = self.linear107.forward(reshape155_out1);
-        let add95_out1 = add91_out1.add(linear107_out1);
-        (add95_out1, gather142_out1, concat165_out1, slice97_out1)
+        let where35_out1 = attention12_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose169_out1 = where35_out1.permute([0, 2, 1, 3]);
+        let reshape85_out1 = transpose169_out1.reshape([1, -1, 512]);
+        let linear107_out1 = self.linear107.forward(reshape85_out1);
+        let add89_out1 = add86_out1.add(linear107_out1);
+        (add89_out1, gather24_out1, concat50_out1, slice48_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule17 {
+pub struct Submodule15 {
     layernormalization69: LayerNorm,
     conv1d34: Conv1d,
     conv1d35: Conv1d,
@@ -6736,12 +4560,10 @@ pub struct Submodule17 {
     layernormalization71: LayerNorm,
     linear108: Linear,
     linear109: Linear,
-    constant1757: burn::module::Param<Tensor<1>>,
     layernormalization72: LayerNorm,
     layernormalization73: LayerNorm,
     linear110: Linear,
     linear111: Linear,
-    constant1759: burn::module::Param<Tensor<1>>,
     layernormalization74: LayerNorm,
     linear112: Linear,
     linear113: Linear,
@@ -6749,12 +4571,11 @@ pub struct Submodule17 {
     linear115: Linear,
     constant227: burn::module::Param<Tensor<2>>,
     constant228: burn::module::Param<Tensor<2>>,
-    constant1814: burn::module::Param<Tensor<1>>,
     linear116: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule17 {
+impl Submodule15 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization69 = LayerNormConfig::new(512)
@@ -6792,18 +4613,6 @@ impl Submodule17 {
             .init(device);
         let linear108 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear109 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1757: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization72 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -6814,18 +4623,6 @@ impl Submodule17 {
             .init(device);
         let linear110 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear111 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1759: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization74 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -6852,18 +4649,6 @@ impl Submodule17 {
             false,
             [8, 64].into(),
         );
-        let constant1814: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear116 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization69,
@@ -6874,12 +4659,10 @@ impl Submodule17 {
             layernormalization71,
             linear108,
             linear109,
-            constant1757,
             layernormalization72,
             layernormalization73,
             linear110,
             linear111,
-            constant1759,
             layernormalization74,
             linear112,
             linear113,
@@ -6887,7 +4670,6 @@ impl Submodule17 {
             linear115,
             constant227,
             constant228,
-            constant1814,
             linear116,
             device: device.clone(),
         }
@@ -6895,74 +4677,86 @@ impl Submodule17 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add95_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather142_out1: Tensor<3>,
+        add89_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather24_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization69_out1 = {
-            let dtype = add95_out1.clone().dtype();
+            let dtype = add89_out1.clone().dtype();
             self.layernormalization69
-                .forward(add95_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add89_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose146_out1 = layernormalization69_out1.permute([0, 2, 1]);
-        let conv1d34_out1 = self.conv1d34.forward(transpose146_out1);
+        let transpose170_out1 = layernormalization69_out1.permute([0, 2, 1]);
+        let conv1d34_out1 = self.conv1d34.forward(transpose170_out1);
         let split_tensors = conv1d34_out1.split_with_sizes([512, 512].into(), 1);
         let [split12_out1, split12_out2] = split_tensors.try_into().unwrap();
         let sigmoid46_out1 = burn::tensor::activation::sigmoid(split12_out2);
-        let mul114_out1 = split12_out1.mul(sigmoid46_out1);
-        let constant1744_out1 = 0f32;
-        let where54_out1 = mul114_out1.mask_fill(unsqueeze119_out1, constant1744_out1);
-        let concat174_out1 = burn::tensor::Tensor::cat(
-            [gather142_out1, where54_out1].into(),
+        let mul97_out1 = split12_out1.mul(sigmoid46_out1);
+        let where36_out1 = mul97_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad24_out1 = where36_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat51_out1 = burn::tensor::Tensor::cat(
+            [gather24_out1, pad24_out1].into(),
             2,
         );
-        let slice105_out1 = concat174_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d35_out1 = self.conv1d35.forward(concat174_out1);
-        let transpose148_out1 = conv1d35_out1.permute([0, 2, 1]);
+        let slice52_out1 = concat51_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d35_out1 = self.conv1d35.forward(concat51_out1);
+        let transpose171_out1 = conv1d35_out1.permute([0, 2, 1]);
         let layernormalization70_out1 = {
-            let dtype = transpose148_out1.dtype();
+            let dtype = transpose171_out1.dtype();
             self.layernormalization70
-                .forward(transpose148_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose171_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose149_out1 = layernormalization70_out1.permute([0, 2, 1]);
+        let transpose172_out1 = layernormalization70_out1.permute([0, 2, 1]);
         let sigmoid47_out1 = burn::tensor::activation::sigmoid(
-            transpose149_out1.clone(),
+            transpose172_out1.clone(),
         );
-        let mul115_out1 = transpose149_out1.mul(sigmoid47_out1);
-        let conv1d36_out1 = self.conv1d36.forward(mul115_out1);
-        let transpose150_out1 = conv1d36_out1.permute([0, 2, 1]);
-        let add96_out1 = add95_out1.add(transpose150_out1);
+        let mul98_out1 = transpose172_out1.mul(sigmoid47_out1);
+        let conv1d36_out1 = self.conv1d36.forward(mul98_out1);
+        let transpose173_out1 = conv1d36_out1.permute([0, 2, 1]);
+        let add90_out1 = add89_out1.add(transpose173_out1);
         let layernormalization71_out1 = {
-            let dtype = add96_out1.clone().dtype();
+            let dtype = add90_out1.clone().dtype();
             self.layernormalization71
-                .forward(add96_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add90_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear108_out1 = self.linear108.forward(layernormalization71_out1);
         let sigmoid48_out1 = burn::tensor::activation::sigmoid(linear108_out1.clone());
-        let mul116_out1 = linear108_out1.mul(sigmoid48_out1);
-        let linear109_out1 = self.linear109.forward(mul116_out1);
-        let constant1757_out1 = self.constant1757.val();
-        let mul117_out1 = linear109_out1
-            .mul((constant1757_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add97_out1 = add96_out1.add(mul117_out1);
+        let mul99_out1 = linear108_out1.mul(sigmoid48_out1);
+        let linear109_out1 = self.linear109.forward(mul99_out1);
+        let mul100_out1 = linear109_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add91_out1 = add90_out1.add(mul100_out1);
         let layernormalization72_out1 = {
-            let dtype = add97_out1.dtype();
+            let dtype = add91_out1.dtype();
             self.layernormalization72
-                .forward(add97_out1.cast(burn::tensor::DType::F32))
+                .forward(add91_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather150_out1 = {
+        let gather25_out1 = {
             let sliced = cache_last_channel.slice(s![12, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather151_out1 = {
+        let gather26_out1 = {
             let sliced = cache_last_time.slice(s![12, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -6976,204 +4770,102 @@ impl Submodule17 {
         };
         let linear110_out1 = self.linear110.forward(layernormalization73_out1);
         let sigmoid49_out1 = burn::tensor::activation::sigmoid(linear110_out1.clone());
-        let mul118_out1 = linear110_out1.mul(sigmoid49_out1);
-        let linear111_out1 = self.linear111.forward(mul118_out1);
-        let constant1759_out1 = self.constant1759.val();
-        let mul119_out1 = linear111_out1
-            .mul((constant1759_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add98_out1 = layernormalization72_out1.add(mul119_out1);
+        let mul101_out1 = linear110_out1.mul(sigmoid49_out1);
+        let linear111_out1 = self.linear111.forward(mul101_out1);
+        let mul102_out1 = linear111_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add92_out1 = layernormalization72_out1.add(mul102_out1);
         let layernormalization74_out1 = {
-            let dtype = add98_out1.clone().dtype();
+            let dtype = add92_out1.clone().dtype();
             self.layernormalization74
-                .forward(add98_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add92_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat175_out1 = burn::tensor::Tensor::cat(
-            [gather150_out1.clone(), layernormalization74_out1.clone()].into(),
+        let concat52_out1 = burn::tensor::Tensor::cat(
+            [gather25_out1.clone(), layernormalization74_out1.clone()].into(),
             1,
         );
-        let shape157_out1: [i64; 3] = {
-            let axes = &layernormalization74_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather152_out1 = shape157_out1[1] as i64;
-        let unsqueeze274_out1 = [gather152_out1 as i64];
-        let slice106_out1 = gather150_out1
-            .slice(s![.., unsqueeze274_out1[0]..9223372036854775807, ..]);
-        let unsqueeze275_out1 = [gather152_out1 as i64];
-        let slice107_out1 = layernormalization74_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze275_out1[0], ..]);
-        let concat176_out1 = burn::tensor::Tensor::cat(
-            [slice106_out1, slice107_out1].into(),
+        let transpose174_out1 = gather25_out1.permute([1, 0, 2]);
+        let slice53_out1 = transpose174_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose175_out1 = slice53_out1.permute([1, 0, 2]);
+        let concat53_out1 = burn::tensor::Tensor::cat(
+            [transpose175_out1, layernormalization74_out1.clone()].into(),
             1,
         );
-        let gather153_out1 = shape157_out1[0] as i64;
         let linear112_out1 = self.linear112.forward(layernormalization74_out1);
-        let unsqueeze276_out1 = [gather153_out1 as i64];
-        let constant1773_out1: [i64; 1] = [64i64];
-        let constant1771_out1: [i64; 1] = [-1i64];
-        let constant1772_out1: [i64; 1] = [8i64];
-        let concat177_out1: [i64; 4usize] = [
-            &unsqueeze276_out1[..],
-            &constant1771_out1[..],
-            &constant1772_out1[..],
-            &constant1773_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze277_out1 = [gather153_out1 as i64];
-        let constant1777_out1: [i64; 1] = [64i64];
-        let constant1775_out1: [i64; 1] = [-1i64];
-        let constant1776_out1: [i64; 1] = [8i64];
-        let concat178_out1: [i64; 4usize] = [
-            &unsqueeze277_out1[..],
-            &constant1775_out1[..],
-            &constant1776_out1[..],
-            &constant1777_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze278_out1 = [gather153_out1 as i64];
-        let constant1781_out1: [i64; 1] = [64i64];
-        let constant1779_out1: [i64; 1] = [-1i64];
-        let constant1780_out1: [i64; 1] = [8i64];
-        let concat179_out1: [i64; 4usize] = [
-            &unsqueeze278_out1[..],
-            &constant1779_out1[..],
-            &constant1780_out1[..],
-            &constant1781_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape158_out1 = linear112_out1.reshape(concat177_out1);
-        let linear113_out1 = self.linear113.forward(concat175_out1.clone());
-        let reshape159_out1 = linear113_out1.reshape(concat178_out1);
-        let linear114_out1 = self.linear114.forward(concat175_out1);
-        let reshape160_out1 = linear114_out1.reshape(concat179_out1);
-        let transpose151_out1 = reshape160_out1.permute([0, 2, 1, 3]);
-        let linear115_out1 = self.linear115.forward(slice5_out1);
-        let reshape161_out1 = linear115_out1.reshape([1, -1, 8, 64]);
+        let reshape86_out1 = linear112_out1.reshape([1, -1, 8, 64]);
+        let linear113_out1 = self.linear113.forward(concat52_out1.clone());
+        let reshape87_out1 = linear113_out1.reshape([1, -1, 8, 64]);
+        let linear114_out1 = self.linear114.forward(concat52_out1);
+        let reshape88_out1 = linear114_out1.reshape([1, -1, 8, 64]);
+        let transpose176_out1 = reshape87_out1.permute([0, 2, 1, 3]);
+        let transpose177_out1 = reshape88_out1.permute([0, 2, 1, 3]);
+        let linear115_out1 = self.linear115.forward(transpose4_out1);
+        let reshape89_out1 = linear115_out1.reshape([1, -1, 8, 64]);
         let constant227_out1 = self.constant227.val();
-        let add99_out1 = reshape158_out1
+        let add93_out1 = reshape86_out1
             .clone()
             .add((constant227_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose152_out1 = add99_out1.permute([0, 2, 1, 3]);
+        let transpose178_out1 = add93_out1.permute([0, 2, 1, 3]);
         let constant228_out1 = self.constant228.val();
-        let add100_out1 = reshape158_out1
+        let add94_out1 = reshape86_out1
             .add((constant228_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose153_out1 = add100_out1.permute([0, 2, 1, 3]);
-        let transpose154_out1 = reshape161_out1.permute([0, 2, 3, 1]);
-        let matmul152_out1 = transpose153_out1.matmul(transpose154_out1);
-        let shape159_out1: [i64; 4] = {
-            let axes = &matmul152_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather154_out1 = shape159_out1[0] as i64;
-        let gather155_out1 = shape159_out1[1] as i64;
-        let gather156_out1 = shape159_out1[2] as i64;
-        let gather157_out1 = shape159_out1[3] as i64;
-        let pad28_out1 = matmul152_out1
+        let transpose179_out1 = add94_out1.permute([0, 2, 1, 3]);
+        let transpose180_out1 = reshape89_out1.permute([0, 2, 3, 1]);
+        let matmul128_out1 = transpose179_out1.matmul(transpose180_out1);
+        let pad25_out1 = matmul128_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze279_out1 = [gather154_out1 as i64];
-        let unsqueeze280_out1 = [gather155_out1 as i64];
-        let unsqueeze281_out1 = [gather156_out1 as i64];
-        let constant1796_out1: [i64; 1] = [-1i64];
-        let concat181_out1: [i64; 4usize] = [
-            &unsqueeze279_out1[..],
-            &unsqueeze280_out1[..],
-            &constant1796_out1[..],
-            &unsqueeze281_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape164_out1 = pad28_out1.reshape(concat181_out1);
-        let slice109_out1 = reshape164_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze282_out1 = [gather154_out1 as i64];
-        let unsqueeze283_out1 = [gather155_out1 as i64];
-        let unsqueeze284_out1 = [gather156_out1 as i64];
-        let unsqueeze285_out1 = [gather157_out1 as i64];
-        let concat182_out1: [i64; 4usize] = [
-            &unsqueeze282_out1[..],
-            &unsqueeze283_out1[..],
-            &unsqueeze284_out1[..],
-            &unsqueeze285_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape165_out1 = slice109_out1.reshape(concat182_out1);
-        let transpose156_out1 = reshape159_out1.permute([0, 2, 3, 1]);
-        let matmul153_out1 = transpose152_out1.matmul(transpose156_out1);
-        let shape163_out1: [i64; 4] = {
-            let axes = &matmul153_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape90_out1 = pad25_out1.reshape(concat16_out1);
+        let slice54_out1 = reshape90_out1.slice(s![.., .., 1.., ..]);
+        let reshape91_out1 = slice54_out1.reshape(concat17_out1);
+        let transpose181_out1 = reshape91_out1.permute([3, 0, 1, 2]);
+        let slice55_out1 = transpose181_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose182_out1 = slice55_out1.permute([1, 2, 3, 0]);
+        let mul103_out1 = transpose182_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where37_out1 = mul103_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention13_out1,) = {
+            let q = transpose178_out1;
+            let k = transpose176_out1;
+            let v = transpose177_out1;
+            let score_bias = where37_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention13_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention13_out1 = {
+                let dims = attention13_out1.dims();
+                attention13_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention13_out1,)
         };
-        let slice110_out1: [i64; 1] = shape163_out1[3..4].try_into().unwrap();
-        let squeeze13_out1 = slice110_out1[0] as i64;
-        let unsqueeze286_out1 = [squeeze13_out1 as i64];
-        let slice111_out1 = reshape165_out1
-            .slice(s![.., .., .., 0..unsqueeze286_out1[0]]);
-        let add101_out1 = matmul153_out1.add(slice111_out1);
-        let constant1814_out1 = self.constant1814.val();
-        let div17_out1 = add101_out1
-            .div((constant1814_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape164_out1: [i64; 4] = {
-            let axes = &transpose151_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather158_out1 = shape164_out1[0] as i64;
-        let constant1816_out1 = -10000f32;
-        let where55_out1 = div17_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1816_out1);
-        let softmax13_out1 = burn::tensor::activation::softmax(where55_out1, 3);
-        let constant1817_out1 = 0f32;
-        let where56_out1 = softmax13_out1
-            .mask_fill(unsqueeze117_out1, constant1817_out1);
-        let matmul154_out1 = where56_out1.matmul(transpose151_out1);
-        let transpose157_out1 = matmul154_out1.permute([0, 2, 1, 3]);
-        let unsqueeze287_out1 = [gather158_out1 as i64];
-        let constant1820_out1: [i64; 1] = [512i64];
-        let constant1819_out1: [i64; 1] = [-1i64];
-        let concat183_out1: [i64; 3usize] = [
-            &unsqueeze287_out1[..],
-            &constant1819_out1[..],
-            &constant1820_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape166_out1 = transpose157_out1.reshape(concat183_out1);
-        let linear116_out1 = self.linear116.forward(reshape166_out1);
-        let add102_out1 = add98_out1.add(linear116_out1);
-        (add102_out1, gather151_out1, concat176_out1, slice105_out1)
+        let where38_out1 = attention13_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose183_out1 = where38_out1.permute([0, 2, 1, 3]);
+        let reshape92_out1 = transpose183_out1.reshape([1, -1, 512]);
+        let linear116_out1 = self.linear116.forward(reshape92_out1);
+        let add95_out1 = add92_out1.add(linear116_out1);
+        (add95_out1, gather26_out1, concat53_out1, slice52_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule18 {
+pub struct Submodule16 {
     layernormalization75: LayerNorm,
     conv1d37: Conv1d,
     conv1d38: Conv1d,
@@ -7182,12 +4874,10 @@ pub struct Submodule18 {
     layernormalization77: LayerNorm,
     linear117: Linear,
     linear118: Linear,
-    constant1834: burn::module::Param<Tensor<1>>,
     layernormalization78: LayerNorm,
     layernormalization79: LayerNorm,
     linear119: Linear,
     linear120: Linear,
-    constant1836: burn::module::Param<Tensor<1>>,
     layernormalization80: LayerNorm,
     linear121: Linear,
     linear122: Linear,
@@ -7195,12 +4885,11 @@ pub struct Submodule18 {
     linear124: Linear,
     constant244: burn::module::Param<Tensor<2>>,
     constant245: burn::module::Param<Tensor<2>>,
-    constant1891: burn::module::Param<Tensor<1>>,
     linear125: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule18 {
+impl Submodule16 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization75 = LayerNormConfig::new(512)
@@ -7238,18 +4927,6 @@ impl Submodule18 {
             .init(device);
         let linear117 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear118 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1834: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization78 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -7260,18 +4937,6 @@ impl Submodule18 {
             .init(device);
         let linear119 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear120 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1836: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization80 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -7298,18 +4963,6 @@ impl Submodule18 {
             false,
             [8, 64].into(),
         );
-        let constant1891: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear125 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
             layernormalization75,
@@ -7320,12 +4973,10 @@ impl Submodule18 {
             layernormalization77,
             linear117,
             linear118,
-            constant1834,
             layernormalization78,
             layernormalization79,
             linear119,
             linear120,
-            constant1836,
             layernormalization80,
             linear121,
             linear122,
@@ -7333,7 +4984,6 @@ impl Submodule18 {
             linear124,
             constant244,
             constant245,
-            constant1891,
             linear125,
             device: device.clone(),
         }
@@ -7341,74 +4991,86 @@ impl Submodule18 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add102_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather151_out1: Tensor<3>,
+        add95_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather26_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
     ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
         let layernormalization75_out1 = {
-            let dtype = add102_out1.clone().dtype();
+            let dtype = add95_out1.clone().dtype();
             self.layernormalization75
-                .forward(add102_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add95_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose158_out1 = layernormalization75_out1.permute([0, 2, 1]);
-        let conv1d37_out1 = self.conv1d37.forward(transpose158_out1);
+        let transpose184_out1 = layernormalization75_out1.permute([0, 2, 1]);
+        let conv1d37_out1 = self.conv1d37.forward(transpose184_out1);
         let split_tensors = conv1d37_out1.split_with_sizes([512, 512].into(), 1);
         let [split13_out1, split13_out2] = split_tensors.try_into().unwrap();
         let sigmoid50_out1 = burn::tensor::activation::sigmoid(split13_out2);
-        let mul120_out1 = split13_out1.mul(sigmoid50_out1);
-        let constant1821_out1 = 0f32;
-        let where57_out1 = mul120_out1.mask_fill(unsqueeze119_out1, constant1821_out1);
-        let concat185_out1 = burn::tensor::Tensor::cat(
-            [gather151_out1, where57_out1].into(),
+        let mul104_out1 = split13_out1.mul(sigmoid50_out1);
+        let where39_out1 = mul104_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad26_out1 = where39_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat54_out1 = burn::tensor::Tensor::cat(
+            [gather26_out1, pad26_out1].into(),
             2,
         );
-        let slice113_out1 = concat185_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d38_out1 = self.conv1d38.forward(concat185_out1);
-        let transpose160_out1 = conv1d38_out1.permute([0, 2, 1]);
+        let slice56_out1 = concat54_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d38_out1 = self.conv1d38.forward(concat54_out1);
+        let transpose185_out1 = conv1d38_out1.permute([0, 2, 1]);
         let layernormalization76_out1 = {
-            let dtype = transpose160_out1.dtype();
+            let dtype = transpose185_out1.dtype();
             self.layernormalization76
-                .forward(transpose160_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose185_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose161_out1 = layernormalization76_out1.permute([0, 2, 1]);
+        let transpose186_out1 = layernormalization76_out1.permute([0, 2, 1]);
         let sigmoid51_out1 = burn::tensor::activation::sigmoid(
-            transpose161_out1.clone(),
+            transpose186_out1.clone(),
         );
-        let mul121_out1 = transpose161_out1.mul(sigmoid51_out1);
-        let conv1d39_out1 = self.conv1d39.forward(mul121_out1);
-        let transpose162_out1 = conv1d39_out1.permute([0, 2, 1]);
-        let add103_out1 = add102_out1.add(transpose162_out1);
+        let mul105_out1 = transpose186_out1.mul(sigmoid51_out1);
+        let conv1d39_out1 = self.conv1d39.forward(mul105_out1);
+        let transpose187_out1 = conv1d39_out1.permute([0, 2, 1]);
+        let add96_out1 = add95_out1.add(transpose187_out1);
         let layernormalization77_out1 = {
-            let dtype = add103_out1.clone().dtype();
+            let dtype = add96_out1.clone().dtype();
             self.layernormalization77
-                .forward(add103_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add96_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear117_out1 = self.linear117.forward(layernormalization77_out1);
         let sigmoid52_out1 = burn::tensor::activation::sigmoid(linear117_out1.clone());
-        let mul122_out1 = linear117_out1.mul(sigmoid52_out1);
-        let linear118_out1 = self.linear118.forward(mul122_out1);
-        let constant1834_out1 = self.constant1834.val();
-        let mul123_out1 = linear118_out1
-            .mul((constant1834_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add104_out1 = add103_out1.add(mul123_out1);
+        let mul106_out1 = linear117_out1.mul(sigmoid52_out1);
+        let linear118_out1 = self.linear118.forward(mul106_out1);
+        let mul107_out1 = linear118_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add97_out1 = add96_out1.add(mul107_out1);
         let layernormalization78_out1 = {
-            let dtype = add104_out1.dtype();
+            let dtype = add97_out1.dtype();
             self.layernormalization78
-                .forward(add104_out1.cast(burn::tensor::DType::F32))
+                .forward(add97_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather159_out1 = {
+        let gather27_out1 = {
             let sliced = cache_last_channel.slice(s![13, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather160_out1 = {
+        let gather28_out1 = {
             let sliced = cache_last_time.slice(s![13, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -7422,204 +5084,102 @@ impl Submodule18 {
         };
         let linear119_out1 = self.linear119.forward(layernormalization79_out1);
         let sigmoid53_out1 = burn::tensor::activation::sigmoid(linear119_out1.clone());
-        let mul124_out1 = linear119_out1.mul(sigmoid53_out1);
-        let linear120_out1 = self.linear120.forward(mul124_out1);
-        let constant1836_out1 = self.constant1836.val();
-        let mul125_out1 = linear120_out1
-            .mul((constant1836_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add105_out1 = layernormalization78_out1.add(mul125_out1);
+        let mul108_out1 = linear119_out1.mul(sigmoid53_out1);
+        let linear120_out1 = self.linear120.forward(mul108_out1);
+        let mul109_out1 = linear120_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add98_out1 = layernormalization78_out1.add(mul109_out1);
         let layernormalization80_out1 = {
-            let dtype = add105_out1.clone().dtype();
+            let dtype = add98_out1.clone().dtype();
             self.layernormalization80
-                .forward(add105_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add98_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat186_out1 = burn::tensor::Tensor::cat(
-            [gather159_out1.clone(), layernormalization80_out1.clone()].into(),
+        let concat55_out1 = burn::tensor::Tensor::cat(
+            [gather27_out1.clone(), layernormalization80_out1.clone()].into(),
             1,
         );
-        let shape165_out1: [i64; 3] = {
-            let axes = &layernormalization80_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather161_out1 = shape165_out1[1] as i64;
-        let unsqueeze288_out1 = [gather161_out1 as i64];
-        let slice114_out1 = gather159_out1
-            .slice(s![.., unsqueeze288_out1[0]..9223372036854775807, ..]);
-        let unsqueeze289_out1 = [gather161_out1 as i64];
-        let slice115_out1 = layernormalization80_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze289_out1[0], ..]);
-        let concat187_out1 = burn::tensor::Tensor::cat(
-            [slice114_out1, slice115_out1].into(),
+        let transpose188_out1 = gather27_out1.permute([1, 0, 2]);
+        let slice57_out1 = transpose188_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose189_out1 = slice57_out1.permute([1, 0, 2]);
+        let concat56_out1 = burn::tensor::Tensor::cat(
+            [transpose189_out1, layernormalization80_out1.clone()].into(),
             1,
         );
-        let gather162_out1 = shape165_out1[0] as i64;
         let linear121_out1 = self.linear121.forward(layernormalization80_out1);
-        let unsqueeze290_out1 = [gather162_out1 as i64];
-        let constant1850_out1: [i64; 1] = [64i64];
-        let constant1848_out1: [i64; 1] = [-1i64];
-        let constant1849_out1: [i64; 1] = [8i64];
-        let concat188_out1: [i64; 4usize] = [
-            &unsqueeze290_out1[..],
-            &constant1848_out1[..],
-            &constant1849_out1[..],
-            &constant1850_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze291_out1 = [gather162_out1 as i64];
-        let constant1854_out1: [i64; 1] = [64i64];
-        let constant1852_out1: [i64; 1] = [-1i64];
-        let constant1853_out1: [i64; 1] = [8i64];
-        let concat189_out1: [i64; 4usize] = [
-            &unsqueeze291_out1[..],
-            &constant1852_out1[..],
-            &constant1853_out1[..],
-            &constant1854_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze292_out1 = [gather162_out1 as i64];
-        let constant1858_out1: [i64; 1] = [64i64];
-        let constant1856_out1: [i64; 1] = [-1i64];
-        let constant1857_out1: [i64; 1] = [8i64];
-        let concat190_out1: [i64; 4usize] = [
-            &unsqueeze292_out1[..],
-            &constant1856_out1[..],
-            &constant1857_out1[..],
-            &constant1858_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape169_out1 = linear121_out1.reshape(concat188_out1);
-        let linear122_out1 = self.linear122.forward(concat186_out1.clone());
-        let reshape170_out1 = linear122_out1.reshape(concat189_out1);
-        let linear123_out1 = self.linear123.forward(concat186_out1);
-        let reshape171_out1 = linear123_out1.reshape(concat190_out1);
-        let transpose163_out1 = reshape171_out1.permute([0, 2, 1, 3]);
-        let linear124_out1 = self.linear124.forward(slice5_out1);
-        let reshape172_out1 = linear124_out1.reshape([1, -1, 8, 64]);
+        let reshape93_out1 = linear121_out1.reshape([1, -1, 8, 64]);
+        let linear122_out1 = self.linear122.forward(concat55_out1.clone());
+        let reshape94_out1 = linear122_out1.reshape([1, -1, 8, 64]);
+        let linear123_out1 = self.linear123.forward(concat55_out1);
+        let reshape95_out1 = linear123_out1.reshape([1, -1, 8, 64]);
+        let transpose190_out1 = reshape94_out1.permute([0, 2, 1, 3]);
+        let transpose191_out1 = reshape95_out1.permute([0, 2, 1, 3]);
+        let linear124_out1 = self.linear124.forward(transpose4_out1);
+        let reshape96_out1 = linear124_out1.reshape([1, -1, 8, 64]);
         let constant244_out1 = self.constant244.val();
-        let add106_out1 = reshape169_out1
+        let add99_out1 = reshape93_out1
             .clone()
             .add((constant244_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose164_out1 = add106_out1.permute([0, 2, 1, 3]);
+        let transpose192_out1 = add99_out1.permute([0, 2, 1, 3]);
         let constant245_out1 = self.constant245.val();
-        let add107_out1 = reshape169_out1
+        let add100_out1 = reshape93_out1
             .add((constant245_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose165_out1 = add107_out1.permute([0, 2, 1, 3]);
-        let transpose166_out1 = reshape172_out1.permute([0, 2, 3, 1]);
-        let matmul164_out1 = transpose165_out1.matmul(transpose166_out1);
-        let shape167_out1: [i64; 4] = {
-            let axes = &matmul164_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather163_out1 = shape167_out1[0] as i64;
-        let gather164_out1 = shape167_out1[1] as i64;
-        let gather165_out1 = shape167_out1[2] as i64;
-        let gather166_out1 = shape167_out1[3] as i64;
-        let pad30_out1 = matmul164_out1
+        let transpose193_out1 = add100_out1.permute([0, 2, 1, 3]);
+        let transpose194_out1 = reshape96_out1.permute([0, 2, 3, 1]);
+        let matmul138_out1 = transpose193_out1.matmul(transpose194_out1);
+        let pad27_out1 = matmul138_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze293_out1 = [gather163_out1 as i64];
-        let unsqueeze294_out1 = [gather164_out1 as i64];
-        let unsqueeze295_out1 = [gather165_out1 as i64];
-        let constant1873_out1: [i64; 1] = [-1i64];
-        let concat192_out1: [i64; 4usize] = [
-            &unsqueeze293_out1[..],
-            &unsqueeze294_out1[..],
-            &constant1873_out1[..],
-            &unsqueeze295_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape175_out1 = pad30_out1.reshape(concat192_out1);
-        let slice117_out1 = reshape175_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze296_out1 = [gather163_out1 as i64];
-        let unsqueeze297_out1 = [gather164_out1 as i64];
-        let unsqueeze298_out1 = [gather165_out1 as i64];
-        let unsqueeze299_out1 = [gather166_out1 as i64];
-        let concat193_out1: [i64; 4usize] = [
-            &unsqueeze296_out1[..],
-            &unsqueeze297_out1[..],
-            &unsqueeze298_out1[..],
-            &unsqueeze299_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape176_out1 = slice117_out1.reshape(concat193_out1);
-        let transpose168_out1 = reshape170_out1.permute([0, 2, 3, 1]);
-        let matmul165_out1 = transpose164_out1.matmul(transpose168_out1);
-        let shape171_out1: [i64; 4] = {
-            let axes = &matmul165_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape97_out1 = pad27_out1.reshape(concat16_out1);
+        let slice58_out1 = reshape97_out1.slice(s![.., .., 1.., ..]);
+        let reshape98_out1 = slice58_out1.reshape(concat17_out1);
+        let transpose195_out1 = reshape98_out1.permute([3, 0, 1, 2]);
+        let slice59_out1 = transpose195_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose196_out1 = slice59_out1.permute([1, 2, 3, 0]);
+        let mul110_out1 = transpose196_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where40_out1 = mul110_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention14_out1,) = {
+            let q = transpose192_out1;
+            let k = transpose190_out1;
+            let v = transpose191_out1;
+            let score_bias = where40_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention14_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention14_out1 = {
+                let dims = attention14_out1.dims();
+                attention14_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention14_out1,)
         };
-        let slice118_out1: [i64; 1] = shape171_out1[3..4].try_into().unwrap();
-        let squeeze14_out1 = slice118_out1[0] as i64;
-        let unsqueeze300_out1 = [squeeze14_out1 as i64];
-        let slice119_out1 = reshape176_out1
-            .slice(s![.., .., .., 0..unsqueeze300_out1[0]]);
-        let add108_out1 = matmul165_out1.add(slice119_out1);
-        let constant1891_out1 = self.constant1891.val();
-        let div18_out1 = add108_out1
-            .div((constant1891_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape172_out1: [i64; 4] = {
-            let axes = &transpose163_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather167_out1 = shape172_out1[0] as i64;
-        let constant1893_out1 = -10000f32;
-        let where58_out1 = div18_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1893_out1);
-        let softmax14_out1 = burn::tensor::activation::softmax(where58_out1, 3);
-        let constant1894_out1 = 0f32;
-        let where59_out1 = softmax14_out1
-            .mask_fill(unsqueeze117_out1, constant1894_out1);
-        let matmul166_out1 = where59_out1.matmul(transpose163_out1);
-        let transpose169_out1 = matmul166_out1.permute([0, 2, 1, 3]);
-        let unsqueeze301_out1 = [gather167_out1 as i64];
-        let constant1897_out1: [i64; 1] = [512i64];
-        let constant1896_out1: [i64; 1] = [-1i64];
-        let concat194_out1: [i64; 3usize] = [
-            &unsqueeze301_out1[..],
-            &constant1896_out1[..],
-            &constant1897_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape177_out1 = transpose169_out1.reshape(concat194_out1);
-        let linear125_out1 = self.linear125.forward(reshape177_out1);
-        let add109_out1 = add105_out1.add(linear125_out1);
-        (add109_out1, gather160_out1, concat187_out1, slice113_out1)
+        let where41_out1 = attention14_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose197_out1 = where41_out1.permute([0, 2, 1, 3]);
+        let reshape99_out1 = transpose197_out1.reshape([1, -1, 512]);
+        let linear125_out1 = self.linear125.forward(reshape99_out1);
+        let add101_out1 = add98_out1.add(linear125_out1);
+        (add101_out1, gather28_out1, concat56_out1, slice56_out1)
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule19 {
+pub struct Submodule17 {
     layernormalization81: LayerNorm,
     conv1d40: Conv1d,
     conv1d41: Conv1d,
@@ -7628,12 +5188,10 @@ pub struct Submodule19 {
     layernormalization83: LayerNorm,
     linear126: Linear,
     linear127: Linear,
-    constant1911: burn::module::Param<Tensor<1>>,
     layernormalization84: LayerNorm,
     layernormalization85: LayerNorm,
     linear128: Linear,
     linear129: Linear,
-    constant1913: burn::module::Param<Tensor<1>>,
     layernormalization86: LayerNorm,
     linear130: Linear,
     linear131: Linear,
@@ -7641,12 +5199,51 @@ pub struct Submodule19 {
     linear133: Linear,
     constant261: burn::module::Param<Tensor<2>>,
     constant262: burn::module::Param<Tensor<2>>,
-    constant1968: burn::module::Param<Tensor<1>>,
     linear134: Linear,
+    layernormalization87: LayerNorm,
+    conv1d43: Conv1d,
+    conv1d44: Conv1d,
+    layernormalization88: LayerNorm,
+    conv1d45: Conv1d,
+    layernormalization89: LayerNorm,
+    linear135: Linear,
+    linear136: Linear,
+    layernormalization90: LayerNorm,
+    layernormalization91: LayerNorm,
+    linear137: Linear,
+    linear138: Linear,
+    layernormalization92: LayerNorm,
+    linear139: Linear,
+    linear140: Linear,
+    linear141: Linear,
+    linear142: Linear,
+    constant278: burn::module::Param<Tensor<2>>,
+    constant279: burn::module::Param<Tensor<2>>,
+    linear143: Linear,
+    layernormalization93: LayerNorm,
+    conv1d46: Conv1d,
+    conv1d47: Conv1d,
+    layernormalization94: LayerNorm,
+    conv1d48: Conv1d,
+    layernormalization95: LayerNorm,
+    linear144: Linear,
+    linear145: Linear,
+    layernormalization96: LayerNorm,
+    layernormalization97: LayerNorm,
+    linear146: Linear,
+    linear147: Linear,
+    layernormalization98: LayerNorm,
+    linear148: Linear,
+    linear149: Linear,
+    linear150: Linear,
+    linear151: Linear,
+    constant295: burn::module::Param<Tensor<2>>,
+    constant296: burn::module::Param<Tensor<2>>,
+    linear152: Linear,
     #[module(skip)]
     device: Device,
 }
-impl Submodule19 {
+impl Submodule17 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization81 = LayerNormConfig::new(512)
@@ -7684,18 +5281,6 @@ impl Submodule19 {
             .init(device);
         let linear126 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear127 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1911: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization84 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -7706,18 +5291,6 @@ impl Submodule19 {
             .init(device);
         let linear128 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear129 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1913: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization86 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -7744,380 +5317,7 @@ impl Submodule19 {
             false,
             [8, 64].into(),
         );
-        let constant1968: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear134 = LinearConfig::new(512, 512).with_bias(false).init(device);
-        Self {
-            layernormalization81,
-            conv1d40,
-            conv1d41,
-            layernormalization82,
-            conv1d42,
-            layernormalization83,
-            linear126,
-            linear127,
-            constant1911,
-            layernormalization84,
-            layernormalization85,
-            linear128,
-            linear129,
-            constant1913,
-            layernormalization86,
-            linear130,
-            linear131,
-            linear132,
-            linear133,
-            constant261,
-            constant262,
-            constant1968,
-            linear134,
-            device: device.clone(),
-        }
-    }
-    #[allow(clippy::let_and_return, clippy::approx_constant)]
-    pub fn forward(
-        &self,
-        add109_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather160_out1: Tensor<3>,
-        cache_last_channel: Tensor<4>,
-        cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
-    ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
-        let layernormalization81_out1 = {
-            let dtype = add109_out1.clone().dtype();
-            self.layernormalization81
-                .forward(add109_out1.clone().cast(burn::tensor::DType::F32))
-                .cast(dtype)
-        };
-        let transpose170_out1 = layernormalization81_out1.permute([0, 2, 1]);
-        let conv1d40_out1 = self.conv1d40.forward(transpose170_out1);
-        let split_tensors = conv1d40_out1.split_with_sizes([512, 512].into(), 1);
-        let [split14_out1, split14_out2] = split_tensors.try_into().unwrap();
-        let sigmoid54_out1 = burn::tensor::activation::sigmoid(split14_out2);
-        let mul126_out1 = split14_out1.mul(sigmoid54_out1);
-        let constant1898_out1 = 0f32;
-        let where60_out1 = mul126_out1.mask_fill(unsqueeze119_out1, constant1898_out1);
-        let concat196_out1 = burn::tensor::Tensor::cat(
-            [gather160_out1, where60_out1].into(),
-            2,
-        );
-        let slice121_out1 = concat196_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d41_out1 = self.conv1d41.forward(concat196_out1);
-        let transpose172_out1 = conv1d41_out1.permute([0, 2, 1]);
-        let layernormalization82_out1 = {
-            let dtype = transpose172_out1.dtype();
-            self.layernormalization82
-                .forward(transpose172_out1.cast(burn::tensor::DType::F32))
-                .cast(dtype)
-        };
-        let transpose173_out1 = layernormalization82_out1.permute([0, 2, 1]);
-        let sigmoid55_out1 = burn::tensor::activation::sigmoid(
-            transpose173_out1.clone(),
-        );
-        let mul127_out1 = transpose173_out1.mul(sigmoid55_out1);
-        let conv1d42_out1 = self.conv1d42.forward(mul127_out1);
-        let transpose174_out1 = conv1d42_out1.permute([0, 2, 1]);
-        let add110_out1 = add109_out1.add(transpose174_out1);
-        let layernormalization83_out1 = {
-            let dtype = add110_out1.clone().dtype();
-            self.layernormalization83
-                .forward(add110_out1.clone().cast(burn::tensor::DType::F32))
-                .cast(dtype)
-        };
-        let linear126_out1 = self.linear126.forward(layernormalization83_out1);
-        let sigmoid56_out1 = burn::tensor::activation::sigmoid(linear126_out1.clone());
-        let mul128_out1 = linear126_out1.mul(sigmoid56_out1);
-        let linear127_out1 = self.linear127.forward(mul128_out1);
-        let constant1911_out1 = self.constant1911.val();
-        let mul129_out1 = linear127_out1
-            .mul((constant1911_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add111_out1 = add110_out1.add(mul129_out1);
-        let layernormalization84_out1 = {
-            let dtype = add111_out1.dtype();
-            self.layernormalization84
-                .forward(add111_out1.cast(burn::tensor::DType::F32))
-                .cast(dtype)
-        };
-        let gather168_out1 = {
-            let sliced = cache_last_channel.slice(s![14, .., .., ..]);
-            sliced.squeeze_dim::<3usize>(0)
-        };
-        let gather169_out1 = {
-            let sliced = cache_last_time.slice(s![14, .., .., ..]);
-            sliced.squeeze_dim::<3usize>(0)
-        };
-        let layernormalization85_out1 = {
-            let dtype = layernormalization84_out1.clone().dtype();
-            self.layernormalization85
-                .forward(
-                    layernormalization84_out1.clone().cast(burn::tensor::DType::F32),
-                )
-                .cast(dtype)
-        };
-        let linear128_out1 = self.linear128.forward(layernormalization85_out1);
-        let sigmoid57_out1 = burn::tensor::activation::sigmoid(linear128_out1.clone());
-        let mul130_out1 = linear128_out1.mul(sigmoid57_out1);
-        let linear129_out1 = self.linear129.forward(mul130_out1);
-        let constant1913_out1 = self.constant1913.val();
-        let mul131_out1 = linear129_out1
-            .mul((constant1913_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add112_out1 = layernormalization84_out1.add(mul131_out1);
-        let layernormalization86_out1 = {
-            let dtype = add112_out1.clone().dtype();
-            self.layernormalization86
-                .forward(add112_out1.clone().cast(burn::tensor::DType::F32))
-                .cast(dtype)
-        };
-        let concat197_out1 = burn::tensor::Tensor::cat(
-            [gather168_out1.clone(), layernormalization86_out1.clone()].into(),
-            1,
-        );
-        let shape173_out1: [i64; 3] = {
-            let axes = &layernormalization86_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather170_out1 = shape173_out1[1] as i64;
-        let unsqueeze302_out1 = [gather170_out1 as i64];
-        let slice122_out1 = gather168_out1
-            .slice(s![.., unsqueeze302_out1[0]..9223372036854775807, ..]);
-        let unsqueeze303_out1 = [gather170_out1 as i64];
-        let slice123_out1 = layernormalization86_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze303_out1[0], ..]);
-        let concat198_out1 = burn::tensor::Tensor::cat(
-            [slice122_out1, slice123_out1].into(),
-            1,
-        );
-        let gather171_out1 = shape173_out1[0] as i64;
-        let linear130_out1 = self.linear130.forward(layernormalization86_out1);
-        let unsqueeze304_out1 = [gather171_out1 as i64];
-        let constant1927_out1: [i64; 1] = [64i64];
-        let constant1925_out1: [i64; 1] = [-1i64];
-        let constant1926_out1: [i64; 1] = [8i64];
-        let concat199_out1: [i64; 4usize] = [
-            &unsqueeze304_out1[..],
-            &constant1925_out1[..],
-            &constant1926_out1[..],
-            &constant1927_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze305_out1 = [gather171_out1 as i64];
-        let constant1931_out1: [i64; 1] = [64i64];
-        let constant1929_out1: [i64; 1] = [-1i64];
-        let constant1930_out1: [i64; 1] = [8i64];
-        let concat200_out1: [i64; 4usize] = [
-            &unsqueeze305_out1[..],
-            &constant1929_out1[..],
-            &constant1930_out1[..],
-            &constant1931_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze306_out1 = [gather171_out1 as i64];
-        let constant1935_out1: [i64; 1] = [64i64];
-        let constant1933_out1: [i64; 1] = [-1i64];
-        let constant1934_out1: [i64; 1] = [8i64];
-        let concat201_out1: [i64; 4usize] = [
-            &unsqueeze306_out1[..],
-            &constant1933_out1[..],
-            &constant1934_out1[..],
-            &constant1935_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape180_out1 = linear130_out1.reshape(concat199_out1);
-        let linear131_out1 = self.linear131.forward(concat197_out1.clone());
-        let reshape181_out1 = linear131_out1.reshape(concat200_out1);
-        let linear132_out1 = self.linear132.forward(concat197_out1);
-        let reshape182_out1 = linear132_out1.reshape(concat201_out1);
-        let transpose175_out1 = reshape182_out1.permute([0, 2, 1, 3]);
-        let linear133_out1 = self.linear133.forward(slice5_out1);
-        let reshape183_out1 = linear133_out1.reshape([1, -1, 8, 64]);
-        let constant261_out1 = self.constant261.val();
-        let add113_out1 = reshape180_out1
-            .clone()
-            .add((constant261_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose176_out1 = add113_out1.permute([0, 2, 1, 3]);
-        let constant262_out1 = self.constant262.val();
-        let add114_out1 = reshape180_out1
-            .add((constant262_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose177_out1 = add114_out1.permute([0, 2, 1, 3]);
-        let transpose178_out1 = reshape183_out1.permute([0, 2, 3, 1]);
-        let matmul176_out1 = transpose177_out1.matmul(transpose178_out1);
-        let shape175_out1: [i64; 4] = {
-            let axes = &matmul176_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather172_out1 = shape175_out1[0] as i64;
-        let gather173_out1 = shape175_out1[1] as i64;
-        let gather174_out1 = shape175_out1[2] as i64;
-        let gather175_out1 = shape175_out1[3] as i64;
-        let pad32_out1 = matmul176_out1
-            .pad(
-                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
-                burn::tensor::ops::PadMode::Constant(0f32),
-            );
-        let unsqueeze307_out1 = [gather172_out1 as i64];
-        let unsqueeze308_out1 = [gather173_out1 as i64];
-        let unsqueeze309_out1 = [gather174_out1 as i64];
-        let constant1950_out1: [i64; 1] = [-1i64];
-        let concat203_out1: [i64; 4usize] = [
-            &unsqueeze307_out1[..],
-            &unsqueeze308_out1[..],
-            &constant1950_out1[..],
-            &unsqueeze309_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape186_out1 = pad32_out1.reshape(concat203_out1);
-        let slice125_out1 = reshape186_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze310_out1 = [gather172_out1 as i64];
-        let unsqueeze311_out1 = [gather173_out1 as i64];
-        let unsqueeze312_out1 = [gather174_out1 as i64];
-        let unsqueeze313_out1 = [gather175_out1 as i64];
-        let concat204_out1: [i64; 4usize] = [
-            &unsqueeze310_out1[..],
-            &unsqueeze311_out1[..],
-            &unsqueeze312_out1[..],
-            &unsqueeze313_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape187_out1 = slice125_out1.reshape(concat204_out1);
-        let transpose180_out1 = reshape181_out1.permute([0, 2, 3, 1]);
-        let matmul177_out1 = transpose176_out1.matmul(transpose180_out1);
-        let shape179_out1: [i64; 4] = {
-            let axes = &matmul177_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let slice126_out1: [i64; 1] = shape179_out1[3..4].try_into().unwrap();
-        let squeeze15_out1 = slice126_out1[0] as i64;
-        let unsqueeze314_out1 = [squeeze15_out1 as i64];
-        let slice127_out1 = reshape187_out1
-            .slice(s![.., .., .., 0..unsqueeze314_out1[0]]);
-        let add115_out1 = matmul177_out1.add(slice127_out1);
-        let constant1968_out1 = self.constant1968.val();
-        let div19_out1 = add115_out1
-            .div((constant1968_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape180_out1: [i64; 4] = {
-            let axes = &transpose175_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather176_out1 = shape180_out1[0] as i64;
-        let constant1970_out1 = -10000f32;
-        let where61_out1 = div19_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant1970_out1);
-        let softmax15_out1 = burn::tensor::activation::softmax(where61_out1, 3);
-        let constant1971_out1 = 0f32;
-        let where62_out1 = softmax15_out1
-            .mask_fill(unsqueeze117_out1, constant1971_out1);
-        let matmul178_out1 = where62_out1.matmul(transpose175_out1);
-        let transpose181_out1 = matmul178_out1.permute([0, 2, 1, 3]);
-        let unsqueeze315_out1 = [gather176_out1 as i64];
-        let constant1974_out1: [i64; 1] = [512i64];
-        let constant1973_out1: [i64; 1] = [-1i64];
-        let concat205_out1: [i64; 3usize] = [
-            &unsqueeze315_out1[..],
-            &constant1973_out1[..],
-            &constant1974_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape188_out1 = transpose181_out1.reshape(concat205_out1);
-        let linear134_out1 = self.linear134.forward(reshape188_out1);
-        let add116_out1 = add112_out1.add(linear134_out1);
-        (add116_out1, gather169_out1, concat198_out1, slice121_out1)
-    }
-}
-#[derive(Module, Debug)]
-pub struct Submodule20 {
-    layernormalization87: LayerNorm,
-    conv1d43: Conv1d,
-    conv1d44: Conv1d,
-    layernormalization88: LayerNorm,
-    conv1d45: Conv1d,
-    layernormalization89: LayerNorm,
-    linear135: Linear,
-    linear136: Linear,
-    constant1988: burn::module::Param<Tensor<1>>,
-    layernormalization90: LayerNorm,
-    layernormalization91: LayerNorm,
-    linear137: Linear,
-    linear138: Linear,
-    constant1990: burn::module::Param<Tensor<1>>,
-    layernormalization92: LayerNorm,
-    linear139: Linear,
-    linear140: Linear,
-    linear141: Linear,
-    linear142: Linear,
-    constant278: burn::module::Param<Tensor<2>>,
-    constant279: burn::module::Param<Tensor<2>>,
-    constant2045: burn::module::Param<Tensor<1>>,
-    linear143: Linear,
-    layernormalization93: LayerNorm,
-    conv1d46: Conv1d,
-    conv1d47: Conv1d,
-    layernormalization94: LayerNorm,
-    conv1d48: Conv1d,
-    layernormalization95: LayerNorm,
-    linear144: Linear,
-    linear145: Linear,
-    constant2065: burn::module::Param<Tensor<1>>,
-    layernormalization96: LayerNorm,
-    layernormalization97: LayerNorm,
-    linear146: Linear,
-    linear147: Linear,
-    constant2067: burn::module::Param<Tensor<1>>,
-    layernormalization98: LayerNorm,
-    linear148: Linear,
-    linear149: Linear,
-    linear150: Linear,
-    linear151: Linear,
-    constant295: burn::module::Param<Tensor<2>>,
-    constant296: burn::module::Param<Tensor<2>>,
-    constant2122: burn::module::Param<Tensor<1>>,
-    linear152: Linear,
-    #[module(skip)]
-    device: Device,
-}
-impl Submodule20 {
-    #[allow(unused_variables)]
-    pub fn new(device: &Device) -> Self {
         let layernormalization87 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -8153,18 +5353,6 @@ impl Submodule20 {
             .init(device);
         let linear135 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear136 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1988: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization90 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -8175,18 +5363,6 @@ impl Submodule20 {
             .init(device);
         let linear137 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear138 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant1990: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization92 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -8212,18 +5388,6 @@ impl Submodule20 {
             device.clone(),
             false,
             [8, 64].into(),
-        );
-        let constant2045: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
         );
         let linear143 = LinearConfig::new(512, 512).with_bias(false).init(device);
         let layernormalization93 = LayerNormConfig::new(512)
@@ -8261,18 +5425,6 @@ impl Submodule20 {
             .init(device);
         let linear144 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear145 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant2065: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization96 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -8283,18 +5435,6 @@ impl Submodule20 {
             .init(device);
         let linear146 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear147 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant2067: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization98 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -8321,20 +5461,28 @@ impl Submodule20 {
             false,
             [8, 64].into(),
         );
-        let constant2122: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([8f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let linear152 = LinearConfig::new(512, 512).with_bias(false).init(device);
         Self {
+            layernormalization81,
+            conv1d40,
+            conv1d41,
+            layernormalization82,
+            conv1d42,
+            layernormalization83,
+            linear126,
+            linear127,
+            layernormalization84,
+            layernormalization85,
+            linear128,
+            linear129,
+            layernormalization86,
+            linear130,
+            linear131,
+            linear132,
+            linear133,
+            constant261,
+            constant262,
+            linear134,
             layernormalization87,
             conv1d43,
             conv1d44,
@@ -8343,12 +5491,10 @@ impl Submodule20 {
             layernormalization89,
             linear135,
             linear136,
-            constant1988,
             layernormalization90,
             layernormalization91,
             linear137,
             linear138,
-            constant1990,
             layernormalization92,
             linear139,
             linear140,
@@ -8356,7 +5502,6 @@ impl Submodule20 {
             linear142,
             constant278,
             constant279,
-            constant2045,
             linear143,
             layernormalization93,
             conv1d46,
@@ -8366,12 +5511,10 @@ impl Submodule20 {
             layernormalization95,
             linear144,
             linear145,
-            constant2065,
             layernormalization96,
             layernormalization97,
             linear146,
             linear147,
-            constant2067,
             layernormalization98,
             linear148,
             linear149,
@@ -8379,7 +5522,6 @@ impl Submodule20 {
             linear151,
             constant295,
             constant296,
-            constant2122,
             linear152,
             device: device.clone(),
         }
@@ -8387,75 +5529,266 @@ impl Submodule20 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add116_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather169_out1: Tensor<3>,
+        add101_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather28_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
         cache_last_channel: Tensor<4>,
         cache_last_time: Tensor<4>,
-        slice5_out1: Tensor<3>,
-        unsqueeze117_out1: Tensor<4, Bool>,
-    ) -> (Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>, Tensor<3>) {
-        let layernormalization87_out1 = {
-            let dtype = add116_out1.clone().dtype();
-            self.layernormalization87
-                .forward(add116_out1.clone().cast(burn::tensor::DType::F32))
+        unsqueeze26_out1: [i64; 1],
+        transpose4_out1: Tensor<3>,
+        concat16_out1: [i64; 4],
+        concat17_out1: [i64; 4],
+        unsqueeze19_out1: [i64; 1],
+        constant496_out1: Tensor<1>,
+        unsqueeze28_out1: Tensor<4, Bool>,
+        constant325_out1: f32,
+        expand15_out1: Tensor<4, Bool>,
+    ) -> (
+        Tensor<3>,
+        Tensor<3>,
+        Tensor<3>,
+        Tensor<3>,
+        Tensor<3>,
+        Tensor<3>,
+        Tensor<3>,
+        Tensor<3>,
+    ) {
+        let layernormalization81_out1 = {
+            let dtype = add101_out1.clone().dtype();
+            self.layernormalization81
+                .forward(add101_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose182_out1 = layernormalization87_out1.permute([0, 2, 1]);
-        let conv1d43_out1 = self.conv1d43.forward(transpose182_out1);
+        let transpose198_out1 = layernormalization81_out1.permute([0, 2, 1]);
+        let conv1d40_out1 = self.conv1d40.forward(transpose198_out1);
+        let split_tensors = conv1d40_out1.split_with_sizes([512, 512].into(), 1);
+        let [split14_out1, split14_out2] = split_tensors.try_into().unwrap();
+        let sigmoid54_out1 = burn::tensor::activation::sigmoid(split14_out2);
+        let mul111_out1 = split14_out1.mul(sigmoid54_out1);
+        let where42_out1 = mul111_out1
+            .mask_fill(unsqueeze30_out1.clone(), constant328_out1);
+        let pad28_out1 = where42_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat57_out1 = burn::tensor::Tensor::cat(
+            [gather28_out1, pad28_out1].into(),
+            2,
+        );
+        let slice60_out1 = concat57_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d41_out1 = self.conv1d41.forward(concat57_out1);
+        let transpose199_out1 = conv1d41_out1.permute([0, 2, 1]);
+        let layernormalization82_out1 = {
+            let dtype = transpose199_out1.dtype();
+            self.layernormalization82
+                .forward(transpose199_out1.cast(burn::tensor::DType::F32))
+                .cast(dtype)
+        };
+        let transpose200_out1 = layernormalization82_out1.permute([0, 2, 1]);
+        let sigmoid55_out1 = burn::tensor::activation::sigmoid(
+            transpose200_out1.clone(),
+        );
+        let mul112_out1 = transpose200_out1.mul(sigmoid55_out1);
+        let conv1d42_out1 = self.conv1d42.forward(mul112_out1);
+        let transpose201_out1 = conv1d42_out1.permute([0, 2, 1]);
+        let add102_out1 = add101_out1.add(transpose201_out1);
+        let layernormalization83_out1 = {
+            let dtype = add102_out1.clone().dtype();
+            self.layernormalization83
+                .forward(add102_out1.clone().cast(burn::tensor::DType::F32))
+                .cast(dtype)
+        };
+        let linear126_out1 = self.linear126.forward(layernormalization83_out1);
+        let sigmoid56_out1 = burn::tensor::activation::sigmoid(linear126_out1.clone());
+        let mul113_out1 = linear126_out1.mul(sigmoid56_out1);
+        let linear127_out1 = self.linear127.forward(mul113_out1);
+        let mul114_out1 = linear127_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add103_out1 = add102_out1.add(mul114_out1);
+        let layernormalization84_out1 = {
+            let dtype = add103_out1.dtype();
+            self.layernormalization84
+                .forward(add103_out1.cast(burn::tensor::DType::F32))
+                .cast(dtype)
+        };
+        let gather29_out1 = {
+            let sliced = cache_last_channel.clone().slice(s![14, .., .., ..]);
+            sliced.squeeze_dim::<3usize>(0)
+        };
+        let gather30_out1 = {
+            let sliced = cache_last_time.clone().slice(s![14, .., .., ..]);
+            sliced.squeeze_dim::<3usize>(0)
+        };
+        let layernormalization85_out1 = {
+            let dtype = layernormalization84_out1.clone().dtype();
+            self.layernormalization85
+                .forward(
+                    layernormalization84_out1.clone().cast(burn::tensor::DType::F32),
+                )
+                .cast(dtype)
+        };
+        let linear128_out1 = self.linear128.forward(layernormalization85_out1);
+        let sigmoid57_out1 = burn::tensor::activation::sigmoid(linear128_out1.clone());
+        let mul115_out1 = linear128_out1.mul(sigmoid57_out1);
+        let linear129_out1 = self.linear129.forward(mul115_out1);
+        let mul116_out1 = linear129_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add104_out1 = layernormalization84_out1.add(mul116_out1);
+        let layernormalization86_out1 = {
+            let dtype = add104_out1.clone().dtype();
+            self.layernormalization86
+                .forward(add104_out1.clone().cast(burn::tensor::DType::F32))
+                .cast(dtype)
+        };
+        let concat58_out1 = burn::tensor::Tensor::cat(
+            [gather29_out1.clone(), layernormalization86_out1.clone()].into(),
+            1,
+        );
+        let transpose202_out1 = gather29_out1.permute([1, 0, 2]);
+        let slice61_out1 = transpose202_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose203_out1 = slice61_out1.permute([1, 0, 2]);
+        let concat59_out1 = burn::tensor::Tensor::cat(
+            [transpose203_out1, layernormalization86_out1.clone()].into(),
+            1,
+        );
+        let linear130_out1 = self.linear130.forward(layernormalization86_out1);
+        let reshape100_out1 = linear130_out1.reshape([1, -1, 8, 64]);
+        let linear131_out1 = self.linear131.forward(concat58_out1.clone());
+        let reshape101_out1 = linear131_out1.reshape([1, -1, 8, 64]);
+        let linear132_out1 = self.linear132.forward(concat58_out1);
+        let reshape102_out1 = linear132_out1.reshape([1, -1, 8, 64]);
+        let transpose204_out1 = reshape101_out1.permute([0, 2, 1, 3]);
+        let transpose205_out1 = reshape102_out1.permute([0, 2, 1, 3]);
+        let linear133_out1 = self.linear133.forward(transpose4_out1.clone());
+        let reshape103_out1 = linear133_out1.reshape([1, -1, 8, 64]);
+        let constant261_out1 = self.constant261.val();
+        let add105_out1 = reshape100_out1
+            .clone()
+            .add((constant261_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let transpose206_out1 = add105_out1.permute([0, 2, 1, 3]);
+        let constant262_out1 = self.constant262.val();
+        let add106_out1 = reshape100_out1
+            .add((constant262_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let transpose207_out1 = add106_out1.permute([0, 2, 1, 3]);
+        let transpose208_out1 = reshape103_out1.permute([0, 2, 3, 1]);
+        let matmul148_out1 = transpose207_out1.matmul(transpose208_out1);
+        let pad29_out1 = matmul148_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let reshape104_out1 = pad29_out1.reshape(concat16_out1);
+        let slice62_out1 = reshape104_out1.slice(s![.., .., 1.., ..]);
+        let reshape105_out1 = slice62_out1.reshape(concat17_out1);
+        let transpose209_out1 = reshape105_out1.permute([3, 0, 1, 2]);
+        let slice63_out1 = transpose209_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose210_out1 = slice63_out1.permute([1, 2, 3, 0]);
+        let mul117_out1 = transpose210_out1
+            .mul((constant496_out1.clone()).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where43_out1 = mul117_out1
+            .mask_fill(unsqueeze28_out1.clone(), constant325_out1);
+        let (attention15_out1,) = {
+            let q = transpose206_out1;
+            let k = transpose204_out1;
+            let v = transpose205_out1;
+            let score_bias = where43_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention15_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention15_out1 = {
+                let dims = attention15_out1.dims();
+                attention15_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention15_out1,)
+        };
+        let where44_out1 = attention15_out1
+            .mask_fill(expand15_out1.clone(), constant328_out1);
+        let transpose211_out1 = where44_out1.permute([0, 2, 1, 3]);
+        let reshape106_out1 = transpose211_out1.reshape([1, -1, 512]);
+        let linear134_out1 = self.linear134.forward(reshape106_out1);
+        let add107_out1 = add104_out1.add(linear134_out1);
+        let layernormalization87_out1 = {
+            let dtype = add107_out1.clone().dtype();
+            self.layernormalization87
+                .forward(add107_out1.clone().cast(burn::tensor::DType::F32))
+                .cast(dtype)
+        };
+        let transpose212_out1 = layernormalization87_out1.permute([0, 2, 1]);
+        let conv1d43_out1 = self.conv1d43.forward(transpose212_out1);
         let split_tensors = conv1d43_out1.split_with_sizes([512, 512].into(), 1);
         let [split15_out1, split15_out2] = split_tensors.try_into().unwrap();
         let sigmoid58_out1 = burn::tensor::activation::sigmoid(split15_out2);
-        let mul132_out1 = split15_out1.mul(sigmoid58_out1);
-        let constant1975_out1 = 0f32;
-        let where63_out1 = mul132_out1
-            .mask_fill(unsqueeze119_out1.clone(), constant1975_out1);
-        let concat207_out1 = burn::tensor::Tensor::cat(
-            [gather169_out1, where63_out1].into(),
+        let mul118_out1 = split15_out1.mul(sigmoid58_out1);
+        let where45_out1 = mul118_out1
+            .mask_fill(unsqueeze30_out1.clone(), constant328_out1);
+        let pad30_out1 = where45_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat60_out1 = burn::tensor::Tensor::cat(
+            [gather30_out1, pad30_out1].into(),
             2,
         );
-        let slice129_out1 = concat207_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d44_out1 = self.conv1d44.forward(concat207_out1);
-        let transpose184_out1 = conv1d44_out1.permute([0, 2, 1]);
+        let slice64_out1 = concat60_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d44_out1 = self.conv1d44.forward(concat60_out1);
+        let transpose213_out1 = conv1d44_out1.permute([0, 2, 1]);
         let layernormalization88_out1 = {
-            let dtype = transpose184_out1.dtype();
+            let dtype = transpose213_out1.dtype();
             self.layernormalization88
-                .forward(transpose184_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose213_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose185_out1 = layernormalization88_out1.permute([0, 2, 1]);
+        let transpose214_out1 = layernormalization88_out1.permute([0, 2, 1]);
         let sigmoid59_out1 = burn::tensor::activation::sigmoid(
-            transpose185_out1.clone(),
+            transpose214_out1.clone(),
         );
-        let mul133_out1 = transpose185_out1.mul(sigmoid59_out1);
-        let conv1d45_out1 = self.conv1d45.forward(mul133_out1);
-        let transpose186_out1 = conv1d45_out1.permute([0, 2, 1]);
-        let add117_out1 = add116_out1.add(transpose186_out1);
+        let mul119_out1 = transpose214_out1.mul(sigmoid59_out1);
+        let conv1d45_out1 = self.conv1d45.forward(mul119_out1);
+        let transpose215_out1 = conv1d45_out1.permute([0, 2, 1]);
+        let add108_out1 = add107_out1.add(transpose215_out1);
         let layernormalization89_out1 = {
-            let dtype = add117_out1.clone().dtype();
+            let dtype = add108_out1.clone().dtype();
             self.layernormalization89
-                .forward(add117_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add108_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear135_out1 = self.linear135.forward(layernormalization89_out1);
         let sigmoid60_out1 = burn::tensor::activation::sigmoid(linear135_out1.clone());
-        let mul134_out1 = linear135_out1.mul(sigmoid60_out1);
-        let linear136_out1 = self.linear136.forward(mul134_out1);
-        let constant1988_out1 = self.constant1988.val();
-        let mul135_out1 = linear136_out1
-            .mul((constant1988_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add118_out1 = add117_out1.add(mul135_out1);
+        let mul120_out1 = linear135_out1.mul(sigmoid60_out1);
+        let linear136_out1 = self.linear136.forward(mul120_out1);
+        let mul121_out1 = linear136_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add109_out1 = add108_out1.add(mul121_out1);
         let layernormalization90_out1 = {
-            let dtype = add118_out1.dtype();
+            let dtype = add109_out1.dtype();
             self.layernormalization90
-                .forward(add118_out1.cast(burn::tensor::DType::F32))
+                .forward(add109_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather177_out1 = {
+        let gather31_out1 = {
             let sliced = cache_last_channel.clone().slice(s![15, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather178_out1 = {
+        let gather32_out1 = {
             let sliced = cache_last_time.clone().slice(s![15, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -8469,259 +5802,162 @@ impl Submodule20 {
         };
         let linear137_out1 = self.linear137.forward(layernormalization91_out1);
         let sigmoid61_out1 = burn::tensor::activation::sigmoid(linear137_out1.clone());
-        let mul136_out1 = linear137_out1.mul(sigmoid61_out1);
-        let linear138_out1 = self.linear138.forward(mul136_out1);
-        let constant1990_out1 = self.constant1990.val();
-        let mul137_out1 = linear138_out1
-            .mul((constant1990_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add119_out1 = layernormalization90_out1.add(mul137_out1);
+        let mul122_out1 = linear137_out1.mul(sigmoid61_out1);
+        let linear138_out1 = self.linear138.forward(mul122_out1);
+        let mul123_out1 = linear138_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add110_out1 = layernormalization90_out1.add(mul123_out1);
         let layernormalization92_out1 = {
-            let dtype = add119_out1.clone().dtype();
+            let dtype = add110_out1.clone().dtype();
             self.layernormalization92
-                .forward(add119_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add110_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat208_out1 = burn::tensor::Tensor::cat(
-            [gather177_out1.clone(), layernormalization92_out1.clone()].into(),
+        let concat61_out1 = burn::tensor::Tensor::cat(
+            [gather31_out1.clone(), layernormalization92_out1.clone()].into(),
             1,
         );
-        let shape181_out1: [i64; 3] = {
-            let axes = &layernormalization92_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather179_out1 = shape181_out1[1] as i64;
-        let unsqueeze316_out1 = [gather179_out1 as i64];
-        let slice130_out1 = gather177_out1
-            .slice(s![.., unsqueeze316_out1[0]..9223372036854775807, ..]);
-        let unsqueeze317_out1 = [gather179_out1 as i64];
-        let slice131_out1 = layernormalization92_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze317_out1[0], ..]);
-        let concat209_out1 = burn::tensor::Tensor::cat(
-            [slice130_out1, slice131_out1].into(),
+        let transpose216_out1 = gather31_out1.permute([1, 0, 2]);
+        let slice65_out1 = transpose216_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose217_out1 = slice65_out1.permute([1, 0, 2]);
+        let concat62_out1 = burn::tensor::Tensor::cat(
+            [transpose217_out1, layernormalization92_out1.clone()].into(),
             1,
         );
-        let gather180_out1 = shape181_out1[0] as i64;
         let linear139_out1 = self.linear139.forward(layernormalization92_out1);
-        let unsqueeze318_out1 = [gather180_out1 as i64];
-        let constant2004_out1: [i64; 1] = [64i64];
-        let constant2002_out1: [i64; 1] = [-1i64];
-        let constant2003_out1: [i64; 1] = [8i64];
-        let concat210_out1: [i64; 4usize] = [
-            &unsqueeze318_out1[..],
-            &constant2002_out1[..],
-            &constant2003_out1[..],
-            &constant2004_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze319_out1 = [gather180_out1 as i64];
-        let constant2008_out1: [i64; 1] = [64i64];
-        let constant2006_out1: [i64; 1] = [-1i64];
-        let constant2007_out1: [i64; 1] = [8i64];
-        let concat211_out1: [i64; 4usize] = [
-            &unsqueeze319_out1[..],
-            &constant2006_out1[..],
-            &constant2007_out1[..],
-            &constant2008_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze320_out1 = [gather180_out1 as i64];
-        let constant2012_out1: [i64; 1] = [64i64];
-        let constant2010_out1: [i64; 1] = [-1i64];
-        let constant2011_out1: [i64; 1] = [8i64];
-        let concat212_out1: [i64; 4usize] = [
-            &unsqueeze320_out1[..],
-            &constant2010_out1[..],
-            &constant2011_out1[..],
-            &constant2012_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape191_out1 = linear139_out1.reshape(concat210_out1);
-        let linear140_out1 = self.linear140.forward(concat208_out1.clone());
-        let reshape192_out1 = linear140_out1.reshape(concat211_out1);
-        let linear141_out1 = self.linear141.forward(concat208_out1);
-        let reshape193_out1 = linear141_out1.reshape(concat212_out1);
-        let transpose187_out1 = reshape193_out1.permute([0, 2, 1, 3]);
-        let linear142_out1 = self.linear142.forward(slice5_out1.clone());
-        let reshape194_out1 = linear142_out1.reshape([1, -1, 8, 64]);
+        let reshape107_out1 = linear139_out1.reshape([1, -1, 8, 64]);
+        let linear140_out1 = self.linear140.forward(concat61_out1.clone());
+        let reshape108_out1 = linear140_out1.reshape([1, -1, 8, 64]);
+        let linear141_out1 = self.linear141.forward(concat61_out1);
+        let reshape109_out1 = linear141_out1.reshape([1, -1, 8, 64]);
+        let transpose218_out1 = reshape108_out1.permute([0, 2, 1, 3]);
+        let transpose219_out1 = reshape109_out1.permute([0, 2, 1, 3]);
+        let linear142_out1 = self.linear142.forward(transpose4_out1.clone());
+        let reshape110_out1 = linear142_out1.reshape([1, -1, 8, 64]);
         let constant278_out1 = self.constant278.val();
-        let add120_out1 = reshape191_out1
+        let add111_out1 = reshape107_out1
             .clone()
             .add((constant278_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose188_out1 = add120_out1.permute([0, 2, 1, 3]);
+        let transpose220_out1 = add111_out1.permute([0, 2, 1, 3]);
         let constant279_out1 = self.constant279.val();
-        let add121_out1 = reshape191_out1
+        let add112_out1 = reshape107_out1
             .add((constant279_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose189_out1 = add121_out1.permute([0, 2, 1, 3]);
-        let transpose190_out1 = reshape194_out1.permute([0, 2, 3, 1]);
-        let matmul188_out1 = transpose189_out1.matmul(transpose190_out1);
-        let shape183_out1: [i64; 4] = {
-            let axes = &matmul188_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather181_out1 = shape183_out1[0] as i64;
-        let gather182_out1 = shape183_out1[1] as i64;
-        let gather183_out1 = shape183_out1[2] as i64;
-        let gather184_out1 = shape183_out1[3] as i64;
-        let pad34_out1 = matmul188_out1
+        let transpose221_out1 = add112_out1.permute([0, 2, 1, 3]);
+        let transpose222_out1 = reshape110_out1.permute([0, 2, 3, 1]);
+        let matmul158_out1 = transpose221_out1.matmul(transpose222_out1);
+        let pad31_out1 = matmul158_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze321_out1 = [gather181_out1 as i64];
-        let unsqueeze322_out1 = [gather182_out1 as i64];
-        let unsqueeze323_out1 = [gather183_out1 as i64];
-        let constant2027_out1: [i64; 1] = [-1i64];
-        let concat214_out1: [i64; 4usize] = [
-            &unsqueeze321_out1[..],
-            &unsqueeze322_out1[..],
-            &constant2027_out1[..],
-            &unsqueeze323_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape197_out1 = pad34_out1.reshape(concat214_out1);
-        let slice133_out1 = reshape197_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze324_out1 = [gather181_out1 as i64];
-        let unsqueeze325_out1 = [gather182_out1 as i64];
-        let unsqueeze326_out1 = [gather183_out1 as i64];
-        let unsqueeze327_out1 = [gather184_out1 as i64];
-        let concat215_out1: [i64; 4usize] = [
-            &unsqueeze324_out1[..],
-            &unsqueeze325_out1[..],
-            &unsqueeze326_out1[..],
-            &unsqueeze327_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape198_out1 = slice133_out1.reshape(concat215_out1);
-        let transpose192_out1 = reshape192_out1.permute([0, 2, 3, 1]);
-        let matmul189_out1 = transpose188_out1.matmul(transpose192_out1);
-        let shape187_out1: [i64; 4] = {
-            let axes = &matmul189_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape111_out1 = pad31_out1.reshape(concat16_out1);
+        let slice66_out1 = reshape111_out1.slice(s![.., .., 1.., ..]);
+        let reshape112_out1 = slice66_out1.reshape(concat17_out1);
+        let transpose223_out1 = reshape112_out1.permute([3, 0, 1, 2]);
+        let slice67_out1 = transpose223_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose224_out1 = slice67_out1.permute([1, 2, 3, 0]);
+        let mul124_out1 = transpose224_out1
+            .mul((constant496_out1.clone()).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where46_out1 = mul124_out1
+            .mask_fill(unsqueeze28_out1.clone(), constant325_out1);
+        let (attention16_out1,) = {
+            let q = transpose220_out1;
+            let k = transpose218_out1;
+            let v = transpose219_out1;
+            let score_bias = where46_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention16_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention16_out1 = {
+                let dims = attention16_out1.dims();
+                attention16_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention16_out1,)
         };
-        let slice134_out1: [i64; 1] = shape187_out1[3..4].try_into().unwrap();
-        let squeeze16_out1 = slice134_out1[0] as i64;
-        let unsqueeze328_out1 = [squeeze16_out1 as i64];
-        let slice135_out1 = reshape198_out1
-            .slice(s![.., .., .., 0..unsqueeze328_out1[0]]);
-        let add122_out1 = matmul189_out1.add(slice135_out1);
-        let constant2045_out1 = self.constant2045.val();
-        let div20_out1 = add122_out1
-            .div((constant2045_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape188_out1: [i64; 4] = {
-            let axes = &transpose187_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather185_out1 = shape188_out1[0] as i64;
-        let constant2047_out1 = -10000f32;
-        let where64_out1 = div20_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant2047_out1);
-        let softmax16_out1 = burn::tensor::activation::softmax(where64_out1, 3);
-        let constant2048_out1 = 0f32;
-        let where65_out1 = softmax16_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant2048_out1);
-        let matmul190_out1 = where65_out1.matmul(transpose187_out1);
-        let transpose193_out1 = matmul190_out1.permute([0, 2, 1, 3]);
-        let unsqueeze329_out1 = [gather185_out1 as i64];
-        let constant2051_out1: [i64; 1] = [512i64];
-        let constant2050_out1: [i64; 1] = [-1i64];
-        let concat216_out1: [i64; 3usize] = [
-            &unsqueeze329_out1[..],
-            &constant2050_out1[..],
-            &constant2051_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape199_out1 = transpose193_out1.reshape(concat216_out1);
-        let linear143_out1 = self.linear143.forward(reshape199_out1);
-        let add123_out1 = add119_out1.add(linear143_out1);
+        let where47_out1 = attention16_out1
+            .mask_fill(expand15_out1.clone(), constant328_out1);
+        let transpose225_out1 = where47_out1.permute([0, 2, 1, 3]);
+        let reshape113_out1 = transpose225_out1.reshape([1, -1, 512]);
+        let linear143_out1 = self.linear143.forward(reshape113_out1);
+        let add113_out1 = add110_out1.add(linear143_out1);
         let layernormalization93_out1 = {
-            let dtype = add123_out1.clone().dtype();
+            let dtype = add113_out1.clone().dtype();
             self.layernormalization93
-                .forward(add123_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add113_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose194_out1 = layernormalization93_out1.permute([0, 2, 1]);
-        let conv1d46_out1 = self.conv1d46.forward(transpose194_out1);
+        let transpose226_out1 = layernormalization93_out1.permute([0, 2, 1]);
+        let conv1d46_out1 = self.conv1d46.forward(transpose226_out1);
         let split_tensors = conv1d46_out1.split_with_sizes([512, 512].into(), 1);
         let [split16_out1, split16_out2] = split_tensors.try_into().unwrap();
         let sigmoid62_out1 = burn::tensor::activation::sigmoid(split16_out2);
-        let mul138_out1 = split16_out1.mul(sigmoid62_out1);
-        let constant2052_out1 = 0f32;
-        let where66_out1 = mul138_out1.mask_fill(unsqueeze119_out1, constant2052_out1);
-        let concat218_out1 = burn::tensor::Tensor::cat(
-            [gather178_out1, where66_out1].into(),
+        let mul125_out1 = split16_out1.mul(sigmoid62_out1);
+        let where48_out1 = mul125_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad32_out1 = where48_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat63_out1 = burn::tensor::Tensor::cat(
+            [gather32_out1, pad32_out1].into(),
             2,
         );
-        let slice137_out1 = concat218_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d47_out1 = self.conv1d47.forward(concat218_out1);
-        let transpose196_out1 = conv1d47_out1.permute([0, 2, 1]);
+        let slice68_out1 = concat63_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d47_out1 = self.conv1d47.forward(concat63_out1);
+        let transpose227_out1 = conv1d47_out1.permute([0, 2, 1]);
         let layernormalization94_out1 = {
-            let dtype = transpose196_out1.dtype();
+            let dtype = transpose227_out1.dtype();
             self.layernormalization94
-                .forward(transpose196_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose227_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose197_out1 = layernormalization94_out1.permute([0, 2, 1]);
+        let transpose228_out1 = layernormalization94_out1.permute([0, 2, 1]);
         let sigmoid63_out1 = burn::tensor::activation::sigmoid(
-            transpose197_out1.clone(),
+            transpose228_out1.clone(),
         );
-        let mul139_out1 = transpose197_out1.mul(sigmoid63_out1);
-        let conv1d48_out1 = self.conv1d48.forward(mul139_out1);
-        let transpose198_out1 = conv1d48_out1.permute([0, 2, 1]);
-        let add124_out1 = add123_out1.add(transpose198_out1);
+        let mul126_out1 = transpose228_out1.mul(sigmoid63_out1);
+        let conv1d48_out1 = self.conv1d48.forward(mul126_out1);
+        let transpose229_out1 = conv1d48_out1.permute([0, 2, 1]);
+        let add114_out1 = add113_out1.add(transpose229_out1);
         let layernormalization95_out1 = {
-            let dtype = add124_out1.clone().dtype();
+            let dtype = add114_out1.clone().dtype();
             self.layernormalization95
-                .forward(add124_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add114_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear144_out1 = self.linear144.forward(layernormalization95_out1);
         let sigmoid64_out1 = burn::tensor::activation::sigmoid(linear144_out1.clone());
-        let mul140_out1 = linear144_out1.mul(sigmoid64_out1);
-        let linear145_out1 = self.linear145.forward(mul140_out1);
-        let constant2065_out1 = self.constant2065.val();
-        let mul141_out1 = linear145_out1
-            .mul((constant2065_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add125_out1 = add124_out1.add(mul141_out1);
+        let mul127_out1 = linear144_out1.mul(sigmoid64_out1);
+        let linear145_out1 = self.linear145.forward(mul127_out1);
+        let mul128_out1 = linear145_out1
+            .mul((constant493_out1.clone()).unsqueeze_dims(&[0isize, 1isize]));
+        let add115_out1 = add114_out1.add(mul128_out1);
         let layernormalization96_out1 = {
-            let dtype = add125_out1.dtype();
+            let dtype = add115_out1.dtype();
             self.layernormalization96
-                .forward(add125_out1.cast(burn::tensor::DType::F32))
+                .forward(add115_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let gather186_out1 = {
+        let gather33_out1 = {
             let sliced = cache_last_channel.slice(s![16, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
-        let gather187_out1 = {
+        let gather34_out1 = {
             let sliced = cache_last_time.slice(s![16, .., .., ..]);
             sliced.squeeze_dim::<3usize>(0)
         };
@@ -8735,211 +5971,111 @@ impl Submodule20 {
         };
         let linear146_out1 = self.linear146.forward(layernormalization97_out1);
         let sigmoid65_out1 = burn::tensor::activation::sigmoid(linear146_out1.clone());
-        let mul142_out1 = linear146_out1.mul(sigmoid65_out1);
-        let linear147_out1 = self.linear147.forward(mul142_out1);
-        let constant2067_out1 = self.constant2067.val();
-        let mul143_out1 = linear147_out1
-            .mul((constant2067_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add126_out1 = layernormalization96_out1.add(mul143_out1);
+        let mul129_out1 = linear146_out1.mul(sigmoid65_out1);
+        let linear147_out1 = self.linear147.forward(mul129_out1);
+        let mul130_out1 = linear147_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add116_out1 = layernormalization96_out1.add(mul130_out1);
         let layernormalization98_out1 = {
-            let dtype = add126_out1.clone().dtype();
+            let dtype = add116_out1.clone().dtype();
             self.layernormalization98
-                .forward(add126_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add116_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let concat219_out1 = burn::tensor::Tensor::cat(
-            [gather186_out1.clone(), layernormalization98_out1.clone()].into(),
+        let concat64_out1 = burn::tensor::Tensor::cat(
+            [gather33_out1.clone(), layernormalization98_out1.clone()].into(),
             1,
         );
-        let shape189_out1: [i64; 3] = {
-            let axes = &layernormalization98_out1.clone().dims()[0..3];
-            let mut output = [0i64; 3];
-            for i in 0..3 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather188_out1 = shape189_out1[1] as i64;
-        let unsqueeze330_out1 = [gather188_out1 as i64];
-        let slice138_out1 = gather186_out1
-            .slice(s![.., unsqueeze330_out1[0]..9223372036854775807, ..]);
-        let unsqueeze331_out1 = [gather188_out1 as i64];
-        let slice139_out1 = layernormalization98_out1
-            .clone()
-            .slice(s![.., 0..unsqueeze331_out1[0], ..]);
-        let concat220_out1 = burn::tensor::Tensor::cat(
-            [slice138_out1, slice139_out1].into(),
+        let transpose230_out1 = gather33_out1.permute([1, 0, 2]);
+        let slice69_out1 = transpose230_out1
+            .slice(s![unsqueeze26_out1[0]..9223372036854775807, .., ..]);
+        let transpose231_out1 = slice69_out1.permute([1, 0, 2]);
+        let concat65_out1 = burn::tensor::Tensor::cat(
+            [transpose231_out1, layernormalization98_out1.clone()].into(),
             1,
         );
-        let gather189_out1 = shape189_out1[0] as i64;
         let linear148_out1 = self.linear148.forward(layernormalization98_out1);
-        let unsqueeze332_out1 = [gather189_out1 as i64];
-        let constant2081_out1: [i64; 1] = [64i64];
-        let constant2079_out1: [i64; 1] = [-1i64];
-        let constant2080_out1: [i64; 1] = [8i64];
-        let concat221_out1: [i64; 4usize] = [
-            &unsqueeze332_out1[..],
-            &constant2079_out1[..],
-            &constant2080_out1[..],
-            &constant2081_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze333_out1 = [gather189_out1 as i64];
-        let constant2085_out1: [i64; 1] = [64i64];
-        let constant2083_out1: [i64; 1] = [-1i64];
-        let constant2084_out1: [i64; 1] = [8i64];
-        let concat222_out1: [i64; 4usize] = [
-            &unsqueeze333_out1[..],
-            &constant2083_out1[..],
-            &constant2084_out1[..],
-            &constant2085_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let unsqueeze334_out1 = [gather189_out1 as i64];
-        let constant2089_out1: [i64; 1] = [64i64];
-        let constant2087_out1: [i64; 1] = [-1i64];
-        let constant2088_out1: [i64; 1] = [8i64];
-        let concat223_out1: [i64; 4usize] = [
-            &unsqueeze334_out1[..],
-            &constant2087_out1[..],
-            &constant2088_out1[..],
-            &constant2089_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape202_out1 = linear148_out1.reshape(concat221_out1);
-        let linear149_out1 = self.linear149.forward(concat219_out1.clone());
-        let reshape203_out1 = linear149_out1.reshape(concat222_out1);
-        let linear150_out1 = self.linear150.forward(concat219_out1);
-        let reshape204_out1 = linear150_out1.reshape(concat223_out1);
-        let transpose199_out1 = reshape204_out1.permute([0, 2, 1, 3]);
-        let linear151_out1 = self.linear151.forward(slice5_out1);
-        let reshape205_out1 = linear151_out1.reshape([1, -1, 8, 64]);
+        let reshape114_out1 = linear148_out1.reshape([1, -1, 8, 64]);
+        let linear149_out1 = self.linear149.forward(concat64_out1.clone());
+        let reshape115_out1 = linear149_out1.reshape([1, -1, 8, 64]);
+        let linear150_out1 = self.linear150.forward(concat64_out1);
+        let reshape116_out1 = linear150_out1.reshape([1, -1, 8, 64]);
+        let transpose232_out1 = reshape115_out1.permute([0, 2, 1, 3]);
+        let transpose233_out1 = reshape116_out1.permute([0, 2, 1, 3]);
+        let linear151_out1 = self.linear151.forward(transpose4_out1);
+        let reshape117_out1 = linear151_out1.reshape([1, -1, 8, 64]);
         let constant295_out1 = self.constant295.val();
-        let add127_out1 = reshape202_out1
+        let add117_out1 = reshape114_out1
             .clone()
             .add((constant295_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose200_out1 = add127_out1.permute([0, 2, 1, 3]);
+        let transpose234_out1 = add117_out1.permute([0, 2, 1, 3]);
         let constant296_out1 = self.constant296.val();
-        let add128_out1 = reshape202_out1
+        let add118_out1 = reshape114_out1
             .add((constant296_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let transpose201_out1 = add128_out1.permute([0, 2, 1, 3]);
-        let transpose202_out1 = reshape205_out1.permute([0, 2, 3, 1]);
-        let matmul200_out1 = transpose201_out1.matmul(transpose202_out1);
-        let shape191_out1: [i64; 4] = {
-            let axes = &matmul200_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather190_out1 = shape191_out1[0] as i64;
-        let gather191_out1 = shape191_out1[1] as i64;
-        let gather192_out1 = shape191_out1[2] as i64;
-        let gather193_out1 = shape191_out1[3] as i64;
-        let pad36_out1 = matmul200_out1
+        let transpose235_out1 = add118_out1.permute([0, 2, 1, 3]);
+        let transpose236_out1 = reshape117_out1.permute([0, 2, 3, 1]);
+        let matmul168_out1 = transpose235_out1.matmul(transpose236_out1);
+        let pad33_out1 = matmul168_out1
             .pad(
                 [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (1usize, 0usize)],
                 burn::tensor::ops::PadMode::Constant(0f32),
             );
-        let unsqueeze335_out1 = [gather190_out1 as i64];
-        let unsqueeze336_out1 = [gather191_out1 as i64];
-        let unsqueeze337_out1 = [gather192_out1 as i64];
-        let constant2104_out1: [i64; 1] = [-1i64];
-        let concat225_out1: [i64; 4usize] = [
-            &unsqueeze335_out1[..],
-            &unsqueeze336_out1[..],
-            &constant2104_out1[..],
-            &unsqueeze337_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape208_out1 = pad36_out1.reshape(concat225_out1);
-        let slice141_out1 = reshape208_out1.slice(s![.., .., 1.., ..]);
-        let unsqueeze338_out1 = [gather190_out1 as i64];
-        let unsqueeze339_out1 = [gather191_out1 as i64];
-        let unsqueeze340_out1 = [gather192_out1 as i64];
-        let unsqueeze341_out1 = [gather193_out1 as i64];
-        let concat226_out1: [i64; 4usize] = [
-            &unsqueeze338_out1[..],
-            &unsqueeze339_out1[..],
-            &unsqueeze340_out1[..],
-            &unsqueeze341_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape209_out1 = slice141_out1.reshape(concat226_out1);
-        let transpose204_out1 = reshape203_out1.permute([0, 2, 3, 1]);
-        let matmul201_out1 = transpose200_out1.matmul(transpose204_out1);
-        let shape195_out1: [i64; 4] = {
-            let axes = &matmul201_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
+        let reshape118_out1 = pad33_out1.reshape(concat16_out1);
+        let slice70_out1 = reshape118_out1.slice(s![.., .., 1.., ..]);
+        let reshape119_out1 = slice70_out1.reshape(concat17_out1);
+        let transpose237_out1 = reshape119_out1.permute([3, 0, 1, 2]);
+        let slice71_out1 = transpose237_out1
+            .slice(s![0..unsqueeze19_out1[0], .., .., ..]);
+        let transpose238_out1 = slice71_out1.permute([1, 2, 3, 0]);
+        let mul131_out1 = transpose238_out1
+            .mul((constant496_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
+        let where49_out1 = mul131_out1.mask_fill(unsqueeze28_out1, constant325_out1);
+        let (attention17_out1,) = {
+            let q = transpose234_out1;
+            let k = transpose232_out1;
+            let v = transpose233_out1;
+            let score_bias = where49_out1;
+            let hidden_rows = score_bias
+                .clone()
+                .max_dim(3)
+                .equal_elem(f32::NEG_INFINITY);
+            let attention17_out1 = burn::tensor::module::attention(
+                q,
+                k,
+                v,
+                None,
+                Some(score_bias),
+                burn::tensor::ops::AttentionModuleOptions {
+                    scale: None,
+                    softcap: None,
+                    is_causal: false,
+                },
+            );
+            let attention17_out1 = {
+                let dims = attention17_out1.dims();
+                attention17_out1.mask_fill(hidden_rows.expand(dims), 0.0)
+            };
+            (attention17_out1,)
         };
-        let slice142_out1: [i64; 1] = shape195_out1[3..4].try_into().unwrap();
-        let squeeze17_out1 = slice142_out1[0] as i64;
-        let unsqueeze342_out1 = [squeeze17_out1 as i64];
-        let slice143_out1 = reshape209_out1
-            .slice(s![.., .., .., 0..unsqueeze342_out1[0]]);
-        let add129_out1 = matmul201_out1.add(slice143_out1);
-        let constant2122_out1 = self.constant2122.val();
-        let div21_out1 = add129_out1
-            .div((constant2122_out1).unsqueeze_dims(&[0isize, 1isize, 2isize]));
-        let shape196_out1: [i64; 4] = {
-            let axes = &transpose199_out1.clone().dims()[0..4];
-            let mut output = [0i64; 4];
-            for i in 0..4 {
-                output[i] = axes[i] as i64;
-            }
-            output
-        };
-        let gather194_out1 = shape196_out1[0] as i64;
-        let constant2124_out1 = -10000f32;
-        let where67_out1 = div21_out1
-            .mask_fill(unsqueeze117_out1.clone(), constant2124_out1);
-        let softmax17_out1 = burn::tensor::activation::softmax(where67_out1, 3);
-        let constant2125_out1 = 0f32;
-        let where68_out1 = softmax17_out1
-            .mask_fill(unsqueeze117_out1, constant2125_out1);
-        let matmul202_out1 = where68_out1.matmul(transpose199_out1);
-        let transpose205_out1 = matmul202_out1.permute([0, 2, 1, 3]);
-        let unsqueeze343_out1 = [gather194_out1 as i64];
-        let constant2128_out1: [i64; 1] = [512i64];
-        let constant2127_out1: [i64; 1] = [-1i64];
-        let concat227_out1: [i64; 3usize] = [
-            &unsqueeze343_out1[..],
-            &constant2127_out1[..],
-            &constant2128_out1[..],
-        ]
-            .concat()
-            .try_into()
-            .unwrap();
-        let reshape210_out1 = transpose205_out1.reshape(concat227_out1);
-        let linear152_out1 = self.linear152.forward(reshape210_out1);
-        let add130_out1 = add126_out1.add(linear152_out1);
+        let where50_out1 = attention17_out1.mask_fill(expand15_out1, constant328_out1);
+        let transpose239_out1 = where50_out1.permute([0, 2, 1, 3]);
+        let reshape120_out1 = transpose239_out1.reshape([1, -1, 512]);
+        let linear152_out1 = self.linear152.forward(reshape120_out1);
+        let add119_out1 = add116_out1.add(linear152_out1);
         (
-            add130_out1,
-            gather187_out1,
-            concat209_out1,
-            concat220_out1,
-            slice129_out1,
-            slice137_out1,
+            add119_out1,
+            gather34_out1,
+            concat59_out1,
+            concat62_out1,
+            concat65_out1,
+            slice60_out1,
+            slice64_out1,
+            slice68_out1,
         )
     }
 }
 #[derive(Module, Debug)]
-pub struct Submodule21 {
+pub struct Submodule18 {
     layernormalization99: LayerNorm,
     conv1d49: Conv1d,
     conv1d50: Conv1d,
@@ -8948,12 +6084,11 @@ pub struct Submodule21 {
     layernormalization101: LayerNorm,
     linear153: Linear,
     linear154: Linear,
-    constant2142: burn::module::Param<Tensor<1>>,
     layernormalization102: LayerNorm,
     #[module(skip)]
     device: Device,
 }
-impl Submodule21 {
+impl Submodule18 {
     #[allow(unused_variables)]
     pub fn new(device: &Device) -> Self {
         let layernormalization99 = LayerNormConfig::new(512)
@@ -8991,18 +6126,6 @@ impl Submodule21 {
             .init(device);
         let linear153 = LinearConfig::new(512, 2048).with_bias(false).init(device);
         let linear154 = LinearConfig::new(2048, 512).with_bias(false).init(device);
-        let constant2142: burn::module::Param<Tensor<1>> = burn::module::Param::uninitialized(
-            burn::module::ParamId::new(),
-            move |device, _require_grad| Tensor::<
-                1,
-            >::from_data(
-                burn::tensor::TensorData::from([0.5f64]),
-                (device, burn::tensor::DType::F32),
-            ),
-            device.clone(),
-            false,
-            [1].into(),
-        );
         let layernormalization102 = LayerNormConfig::new(512)
             .with_epsilon(0.000009999999747378752f64)
             .with_bias(true)
@@ -9016,7 +6139,6 @@ impl Submodule21 {
             layernormalization101,
             linear153,
             linear154,
-            constant2142,
             layernormalization102,
             device: device.clone(),
         }
@@ -9024,188 +6146,193 @@ impl Submodule21 {
     #[allow(clippy::let_and_return, clippy::approx_constant)]
     pub fn forward(
         &self,
-        add130_out1: Tensor<3>,
-        unsqueeze119_out1: Tensor<3, Bool>,
-        gather187_out1: Tensor<3>,
-        concat27_out1: Tensor<3>,
-        concat55_out1: Tensor<3>,
-        concat66_out1: Tensor<3>,
-        concat77_out1: Tensor<3>,
-        concat88_out1: Tensor<3>,
-        concat99_out1: Tensor<3>,
-        concat110_out1: Tensor<3>,
-        concat121_out1: Tensor<3>,
-        concat132_out1: Tensor<3>,
-        concat143_out1: Tensor<3>,
-        concat154_out1: Tensor<3>,
-        concat165_out1: Tensor<3>,
-        concat176_out1: Tensor<3>,
-        concat187_out1: Tensor<3>,
-        concat198_out1: Tensor<3>,
-        concat209_out1: Tensor<3>,
-        concat220_out1: Tensor<3>,
-        slice17_out1: Tensor<3>,
-        slice25_out1: Tensor<3>,
-        slice33_out1: Tensor<3>,
-        slice41_out1: Tensor<3>,
-        slice49_out1: Tensor<3>,
-        slice57_out1: Tensor<3>,
-        slice65_out1: Tensor<3>,
-        slice73_out1: Tensor<3>,
-        slice81_out1: Tensor<3>,
-        slice89_out1: Tensor<3>,
-        slice97_out1: Tensor<3>,
-        slice105_out1: Tensor<3>,
-        slice113_out1: Tensor<3>,
-        slice121_out1: Tensor<3>,
-        slice129_out1: Tensor<3>,
-        slice137_out1: Tensor<3>,
+        add119_out1: Tensor<3>,
+        unsqueeze30_out1: Tensor<3, Bool>,
+        constant328_out1: f32,
+        gather34_out1: Tensor<3>,
+        constant493_out1: Tensor<1>,
+        concat15_out1: Tensor<3>,
+        concat20_out1: Tensor<3>,
+        concat23_out1: Tensor<3>,
+        concat26_out1: Tensor<3>,
+        concat29_out1: Tensor<3>,
+        concat32_out1: Tensor<3>,
+        concat35_out1: Tensor<3>,
+        concat38_out1: Tensor<3>,
+        concat41_out1: Tensor<3>,
+        concat44_out1: Tensor<3>,
+        concat47_out1: Tensor<3>,
+        concat50_out1: Tensor<3>,
+        concat53_out1: Tensor<3>,
+        concat56_out1: Tensor<3>,
+        concat59_out1: Tensor<3>,
+        concat62_out1: Tensor<3>,
+        concat65_out1: Tensor<3>,
+        slice8_out1: Tensor<3>,
+        slice12_out1: Tensor<3>,
+        slice16_out1: Tensor<3>,
+        slice20_out1: Tensor<3>,
+        slice24_out1: Tensor<3>,
+        slice28_out1: Tensor<3>,
+        slice32_out1: Tensor<3>,
+        slice36_out1: Tensor<3>,
+        slice40_out1: Tensor<3>,
+        slice44_out1: Tensor<3>,
+        slice48_out1: Tensor<3>,
+        slice52_out1: Tensor<3>,
+        slice56_out1: Tensor<3>,
+        slice60_out1: Tensor<3>,
+        slice64_out1: Tensor<3>,
+        slice68_out1: Tensor<3>,
         cache_last_channel_len: Tensor<1, Int>,
-        gather39_out1: i64,
+        max2_out1: Tensor<1, Int>,
         clip1_out1: Tensor<1, Int>,
     ) -> (Tensor<3>, Tensor<1, Int>, Tensor<4>, Tensor<4>, Tensor<1, Int>) {
         let layernormalization99_out1 = {
-            let dtype = add130_out1.clone().dtype();
+            let dtype = add119_out1.clone().dtype();
             self.layernormalization99
-                .forward(add130_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add119_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose206_out1 = layernormalization99_out1.permute([0, 2, 1]);
-        let conv1d49_out1 = self.conv1d49.forward(transpose206_out1);
+        let transpose240_out1 = layernormalization99_out1.permute([0, 2, 1]);
+        let conv1d49_out1 = self.conv1d49.forward(transpose240_out1);
         let split_tensors = conv1d49_out1.split_with_sizes([512, 512].into(), 1);
         let [split17_out1, split17_out2] = split_tensors.try_into().unwrap();
         let sigmoid66_out1 = burn::tensor::activation::sigmoid(split17_out2);
-        let mul144_out1 = split17_out1.mul(sigmoid66_out1);
-        let constant2129_out1 = 0f32;
-        let where69_out1 = mul144_out1.mask_fill(unsqueeze119_out1, constant2129_out1);
-        let concat229_out1 = burn::tensor::Tensor::cat(
-            [gather187_out1, where69_out1].into(),
+        let mul132_out1 = split17_out1.mul(sigmoid66_out1);
+        let where51_out1 = mul132_out1.mask_fill(unsqueeze30_out1, constant328_out1);
+        let pad34_out1 = where51_out1
+            .pad(
+                [(0usize, 0usize), (0usize, 0usize), (0usize, 0usize)],
+                burn::tensor::ops::PadMode::Constant(0f32),
+            );
+        let concat66_out1 = burn::tensor::Tensor::cat(
+            [gather34_out1, pad34_out1].into(),
             2,
         );
-        let slice145_out1 = concat229_out1.clone().slice(s![.., .., - 8..]);
-        let conv1d50_out1 = self.conv1d50.forward(concat229_out1);
-        let transpose208_out1 = conv1d50_out1.permute([0, 2, 1]);
+        let slice72_out1 = concat66_out1.clone().slice(s![.., .., - 8..]);
+        let conv1d50_out1 = self.conv1d50.forward(concat66_out1);
+        let transpose241_out1 = conv1d50_out1.permute([0, 2, 1]);
         let layernormalization100_out1 = {
-            let dtype = transpose208_out1.dtype();
+            let dtype = transpose241_out1.dtype();
             self.layernormalization100
-                .forward(transpose208_out1.cast(burn::tensor::DType::F32))
+                .forward(transpose241_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose209_out1 = layernormalization100_out1.permute([0, 2, 1]);
+        let transpose242_out1 = layernormalization100_out1.permute([0, 2, 1]);
         let sigmoid67_out1 = burn::tensor::activation::sigmoid(
-            transpose209_out1.clone(),
+            transpose242_out1.clone(),
         );
-        let mul145_out1 = transpose209_out1.mul(sigmoid67_out1);
-        let conv1d51_out1 = self.conv1d51.forward(mul145_out1);
-        let transpose210_out1 = conv1d51_out1.permute([0, 2, 1]);
-        let add131_out1 = add130_out1.add(transpose210_out1);
+        let mul133_out1 = transpose242_out1.mul(sigmoid67_out1);
+        let conv1d51_out1 = self.conv1d51.forward(mul133_out1);
+        let transpose243_out1 = conv1d51_out1.permute([0, 2, 1]);
+        let add120_out1 = add119_out1.add(transpose243_out1);
         let layernormalization101_out1 = {
-            let dtype = add131_out1.clone().dtype();
+            let dtype = add120_out1.clone().dtype();
             self.layernormalization101
-                .forward(add131_out1.clone().cast(burn::tensor::DType::F32))
+                .forward(add120_out1.clone().cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
         let linear153_out1 = self.linear153.forward(layernormalization101_out1);
         let sigmoid68_out1 = burn::tensor::activation::sigmoid(linear153_out1.clone());
-        let mul146_out1 = linear153_out1.mul(sigmoid68_out1);
-        let linear154_out1 = self.linear154.forward(mul146_out1);
-        let constant2142_out1 = self.constant2142.val();
-        let mul147_out1 = linear154_out1
-            .mul((constant2142_out1).unsqueeze_dims(&[0isize, 1isize]));
-        let add132_out1 = add131_out1.add(mul147_out1);
+        let mul134_out1 = linear153_out1.mul(sigmoid68_out1);
+        let linear154_out1 = self.linear154.forward(mul134_out1);
+        let mul135_out1 = linear154_out1
+            .mul((constant493_out1).unsqueeze_dims(&[0isize, 1isize]));
+        let add121_out1 = add120_out1.add(mul135_out1);
         let layernormalization102_out1 = {
-            let dtype = add132_out1.dtype();
+            let dtype = add121_out1.dtype();
             self.layernormalization102
-                .forward(add132_out1.cast(burn::tensor::DType::F32))
+                .forward(add121_out1.cast(burn::tensor::DType::F32))
                 .cast(dtype)
         };
-        let transpose211_out1 = layernormalization102_out1.permute([0, 2, 1]);
-        let unsqueeze344_out1: Tensor<4> = concat27_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze345_out1: Tensor<4> = concat55_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze346_out1: Tensor<4> = concat66_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze347_out1: Tensor<4> = concat77_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze348_out1: Tensor<4> = concat88_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze349_out1: Tensor<4> = concat99_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze350_out1: Tensor<4> = concat110_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze351_out1: Tensor<4> = concat121_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze352_out1: Tensor<4> = concat132_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze353_out1: Tensor<4> = concat143_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze354_out1: Tensor<4> = concat154_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze355_out1: Tensor<4> = concat165_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze356_out1: Tensor<4> = concat176_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze357_out1: Tensor<4> = concat187_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze358_out1: Tensor<4> = concat198_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze359_out1: Tensor<4> = concat209_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze360_out1: Tensor<4> = concat220_out1.unsqueeze_dims::<4>(&[0]);
-        let concat230_out1 = burn::tensor::Tensor::cat(
+        let transpose244_out1 = layernormalization102_out1.permute([0, 2, 1]);
+        let unsqueeze31_out1: Tensor<4> = concat15_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze32_out1: Tensor<4> = concat20_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze33_out1: Tensor<4> = concat23_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze34_out1: Tensor<4> = concat26_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze35_out1: Tensor<4> = concat29_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze36_out1: Tensor<4> = concat32_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze37_out1: Tensor<4> = concat35_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze38_out1: Tensor<4> = concat38_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze39_out1: Tensor<4> = concat41_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze40_out1: Tensor<4> = concat44_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze41_out1: Tensor<4> = concat47_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze42_out1: Tensor<4> = concat50_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze43_out1: Tensor<4> = concat53_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze44_out1: Tensor<4> = concat56_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze45_out1: Tensor<4> = concat59_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze46_out1: Tensor<4> = concat62_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze47_out1: Tensor<4> = concat65_out1.unsqueeze_dims::<4>(&[0]);
+        let concat67_out1 = burn::tensor::Tensor::cat(
             [
-                unsqueeze344_out1,
-                unsqueeze345_out1,
-                unsqueeze346_out1,
-                unsqueeze347_out1,
-                unsqueeze348_out1,
-                unsqueeze349_out1,
-                unsqueeze350_out1,
-                unsqueeze351_out1,
-                unsqueeze352_out1,
-                unsqueeze353_out1,
-                unsqueeze354_out1,
-                unsqueeze355_out1,
-                unsqueeze356_out1,
-                unsqueeze357_out1,
-                unsqueeze358_out1,
-                unsqueeze359_out1,
-                unsqueeze360_out1,
+                unsqueeze31_out1,
+                unsqueeze32_out1,
+                unsqueeze33_out1,
+                unsqueeze34_out1,
+                unsqueeze35_out1,
+                unsqueeze36_out1,
+                unsqueeze37_out1,
+                unsqueeze38_out1,
+                unsqueeze39_out1,
+                unsqueeze40_out1,
+                unsqueeze41_out1,
+                unsqueeze42_out1,
+                unsqueeze43_out1,
+                unsqueeze44_out1,
+                unsqueeze45_out1,
+                unsqueeze46_out1,
+                unsqueeze47_out1,
             ]
                 .into(),
             0,
         );
-        let unsqueeze361_out1: Tensor<4> = slice17_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze362_out1: Tensor<4> = slice25_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze363_out1: Tensor<4> = slice33_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze364_out1: Tensor<4> = slice41_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze365_out1: Tensor<4> = slice49_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze366_out1: Tensor<4> = slice57_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze367_out1: Tensor<4> = slice65_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze368_out1: Tensor<4> = slice73_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze369_out1: Tensor<4> = slice81_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze370_out1: Tensor<4> = slice89_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze371_out1: Tensor<4> = slice97_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze372_out1: Tensor<4> = slice105_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze373_out1: Tensor<4> = slice113_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze374_out1: Tensor<4> = slice121_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze375_out1: Tensor<4> = slice129_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze376_out1: Tensor<4> = slice137_out1.unsqueeze_dims::<4>(&[0]);
-        let unsqueeze377_out1: Tensor<4> = slice145_out1.unsqueeze_dims::<4>(&[0]);
-        let concat231_out1 = burn::tensor::Tensor::cat(
+        let unsqueeze48_out1: Tensor<4> = slice8_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze49_out1: Tensor<4> = slice12_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze50_out1: Tensor<4> = slice16_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze51_out1: Tensor<4> = slice20_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze52_out1: Tensor<4> = slice24_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze53_out1: Tensor<4> = slice28_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze54_out1: Tensor<4> = slice32_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze55_out1: Tensor<4> = slice36_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze56_out1: Tensor<4> = slice40_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze57_out1: Tensor<4> = slice44_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze58_out1: Tensor<4> = slice48_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze59_out1: Tensor<4> = slice52_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze60_out1: Tensor<4> = slice56_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze61_out1: Tensor<4> = slice60_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze62_out1: Tensor<4> = slice64_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze63_out1: Tensor<4> = slice68_out1.unsqueeze_dims::<4>(&[0]);
+        let unsqueeze64_out1: Tensor<4> = slice72_out1.unsqueeze_dims::<4>(&[0]);
+        let concat68_out1 = burn::tensor::Tensor::cat(
             [
-                unsqueeze361_out1,
-                unsqueeze362_out1,
-                unsqueeze363_out1,
-                unsqueeze364_out1,
-                unsqueeze365_out1,
-                unsqueeze366_out1,
-                unsqueeze367_out1,
-                unsqueeze368_out1,
-                unsqueeze369_out1,
-                unsqueeze370_out1,
-                unsqueeze371_out1,
-                unsqueeze372_out1,
-                unsqueeze373_out1,
-                unsqueeze374_out1,
-                unsqueeze375_out1,
-                unsqueeze376_out1,
-                unsqueeze377_out1,
+                unsqueeze48_out1,
+                unsqueeze49_out1,
+                unsqueeze50_out1,
+                unsqueeze51_out1,
+                unsqueeze52_out1,
+                unsqueeze53_out1,
+                unsqueeze54_out1,
+                unsqueeze55_out1,
+                unsqueeze56_out1,
+                unsqueeze57_out1,
+                unsqueeze58_out1,
+                unsqueeze59_out1,
+                unsqueeze60_out1,
+                unsqueeze61_out1,
+                unsqueeze62_out1,
+                unsqueeze63_out1,
+                unsqueeze64_out1,
             ]
                 .into(),
             0,
         );
-        let add133_out1 = cache_last_channel_len.add_scalar(gather39_out1);
-        let clip2_out1 = add133_out1.clamp_max(70f64);
-        let slice146_out1 = concat230_out1.slice(s![.., .., - 70.., ..]);
-        let slice147_out1 = transpose211_out1.slice(s![.., .., 0..2]);
+        let add122_out1 = cache_last_channel_len.add(max2_out1);
+        let clip2_out1 = add122_out1.clamp_max(70f64);
+        let slice73_out1 = concat67_out1.slice(s![.., .., - 70.., ..]);
+        let slice74_out1 = transpose244_out1.slice(s![.., .., 0..2]);
         let clip3_out1 = clip1_out1.clamp_max(2f64);
-        (slice147_out1, clip3_out1, slice146_out1, concat231_out1, clip2_out1)
+        (slice74_out1, clip3_out1, slice73_out1, concat68_out1, clip2_out1)
     }
 }
 
@@ -9229,9 +6356,6 @@ pub struct Model {
     submodule16: Submodule16,
     submodule17: Submodule17,
     submodule18: Submodule18,
-    submodule19: Submodule19,
-    submodule20: Submodule20,
-    submodule21: Submodule21,
     #[module(skip)]
     device: Device,
 }
@@ -9261,9 +6385,6 @@ impl Model {
         let submodule16 = Submodule16::new(device);
         let submodule17 = Submodule17::new(device);
         let submodule18 = Submodule18::new(device);
-        let submodule19 = Submodule19::new(device);
-        let submodule20 = Submodule20::new(device);
-        let submodule21 = Submodule21::new(device);
         Self {
             submodule1,
             submodule2,
@@ -9283,9 +6404,6 @@ impl Model {
             submodule16,
             submodule17,
             submodule18,
-            submodule19,
-            submodule20,
-            submodule21,
             device: device.clone(),
         }
     }
@@ -9299,250 +6417,399 @@ impl Model {
         cache_last_time: Tensor<4>,
         cache_last_channel_len: Tensor<1, Int>,
     ) -> (Tensor<3>, Tensor<1, Int>, Tensor<4>, Tensor<4>, Tensor<1, Int>) {
-        let (mul17_out1, add3_out1) = self.submodule1.forward(audio_signal, length);
-        let (mul30_out1, add6_out1) = self.submodule2.forward(mul17_out1, add3_out1);
-        let (mul43_out1, cast20_out1) = self.submodule3.forward(mul30_out1, add6_out1);
         let (
-            and5_out1,
-            and3_out1,
+            sub4_out1,
+            max2_out1,
+            constant303_out1,
+            constant310_out1,
+            constant304_out1,
+            slice1_out1,
+            add6_out1,
+        ) = self.submodule1.forward(audio_signal, length);
+        let (
+            mul17_out1,
+            gather1_out1,
+            transpose4_out1,
+            unsqueeze19_out1,
             slice4_out1,
-            slice5_out1,
-            gather39_out1,
+            slice3_out1,
+            gather2_out1,
             clip1_out1,
         ) = self
+            .submodule2
+            .forward(
+                sub4_out1,
+                max2_out1.clone(),
+                cache_last_channel_len.clone(),
+                constant303_out1,
+                constant310_out1.clone(),
+                constant304_out1,
+                cache_last_channel.clone(),
+                cache_last_time.clone(),
+                slice1_out1.clone(),
+            );
+        let (
+            concat18_out1,
+            add23_out1,
+            constant493_out1,
+            unsqueeze26_out1,
+            concat16_out1,
+            concat17_out1,
+            constant496_out1,
+            unsqueeze28_out1,
+            constant325_out1,
+            expand15_out1,
+            constant328_out1,
+            unsqueeze30_out1,
+            concat15_out1,
+        ) = self
+            .submodule3
+            .forward(
+                mul17_out1,
+                slice1_out1,
+                gather1_out1,
+                max2_out1.clone(),
+                transpose4_out1.clone(),
+                constant310_out1,
+                add6_out1,
+                unsqueeze19_out1.clone(),
+                slice4_out1,
+                slice3_out1,
+                gather2_out1,
+            );
+        let (add29_out1, gather4_out1, concat20_out1, slice8_out1) = self
             .submodule4
-            .forward(mul43_out1, cast20_out1, cache_last_channel_len.clone());
-        let (add18_out1, slice8_out1, gather42_out1, unsqueeze117_out1, concat27_out1) = self
+            .forward(
+                concat18_out1,
+                add23_out1,
+                constant493_out1.clone(),
+                cache_last_channel.clone(),
+                cache_last_time.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
+                constant328_out1.clone(),
+            );
+        let (add35_out1, gather6_out1, concat23_out1, slice12_out1) = self
             .submodule5
             .forward(
-                and5_out1,
-                and3_out1,
+                add29_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather4_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice4_out1,
-                slice5_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (
-            add25_out1,
-            unsqueeze119_out1,
-            gather52_out1,
-            concat55_out1,
-            slice17_out1,
-        ) = self
+        let (add41_out1, gather8_out1, concat26_out1, slice16_out1) = self
             .submodule6
             .forward(
-                add18_out1,
-                slice8_out1,
-                gather42_out1,
+                add35_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather6_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add32_out1, gather61_out1, concat66_out1, slice25_out1) = self
+        let (add47_out1, gather10_out1, concat29_out1, slice20_out1) = self
             .submodule7
             .forward(
-                add25_out1,
-                unsqueeze119_out1.clone(),
-                gather52_out1,
+                add41_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather8_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add39_out1, gather70_out1, concat77_out1, slice33_out1) = self
+        let (add53_out1, gather12_out1, concat32_out1, slice24_out1) = self
             .submodule8
             .forward(
-                add32_out1,
-                unsqueeze119_out1.clone(),
-                gather61_out1,
+                add47_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather10_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add46_out1, gather79_out1, concat88_out1, slice41_out1) = self
+        let (add59_out1, gather14_out1, concat35_out1, slice28_out1) = self
             .submodule9
             .forward(
-                add39_out1,
-                unsqueeze119_out1.clone(),
-                gather70_out1,
+                add53_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather12_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add53_out1, gather88_out1, concat99_out1, slice49_out1) = self
+        let (add65_out1, gather16_out1, concat38_out1, slice32_out1) = self
             .submodule10
             .forward(
-                add46_out1,
-                unsqueeze119_out1.clone(),
-                gather79_out1,
+                add59_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather14_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add60_out1, gather97_out1, concat110_out1, slice57_out1) = self
+        let (add71_out1, gather18_out1, concat41_out1, slice36_out1) = self
             .submodule11
             .forward(
-                add53_out1,
-                unsqueeze119_out1.clone(),
-                gather88_out1,
+                add65_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather16_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add67_out1, gather106_out1, concat121_out1, slice65_out1) = self
+        let (add77_out1, gather20_out1, concat44_out1, slice40_out1) = self
             .submodule12
             .forward(
-                add60_out1,
-                unsqueeze119_out1.clone(),
-                gather97_out1,
+                add71_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather18_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add74_out1, gather115_out1, concat132_out1, slice73_out1) = self
+        let (add83_out1, gather22_out1, concat47_out1, slice44_out1) = self
             .submodule13
             .forward(
-                add67_out1,
-                unsqueeze119_out1.clone(),
-                gather106_out1,
+                add77_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather20_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add81_out1, gather124_out1, concat143_out1, slice81_out1) = self
+        let (add89_out1, gather24_out1, concat50_out1, slice48_out1) = self
             .submodule14
             .forward(
-                add74_out1,
-                unsqueeze119_out1.clone(),
-                gather115_out1,
+                add83_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather22_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add88_out1, gather133_out1, concat154_out1, slice89_out1) = self
+        let (add95_out1, gather26_out1, concat53_out1, slice52_out1) = self
             .submodule15
             .forward(
-                add81_out1,
-                unsqueeze119_out1.clone(),
-                gather124_out1,
+                add89_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather24_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
-        let (add95_out1, gather142_out1, concat165_out1, slice97_out1) = self
+        let (add101_out1, gather28_out1, concat56_out1, slice56_out1) = self
             .submodule16
             .forward(
-                add88_out1,
-                unsqueeze119_out1.clone(),
-                gather133_out1,
-                cache_last_channel.clone(),
-                cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
-            );
-        let (add102_out1, gather151_out1, concat176_out1, slice105_out1) = self
-            .submodule17
-            .forward(
                 add95_out1,
-                unsqueeze119_out1.clone(),
-                gather142_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather26_out1,
+                constant493_out1.clone(),
                 cache_last_channel.clone(),
                 cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
-            );
-        let (add109_out1, gather160_out1, concat187_out1, slice113_out1) = self
-            .submodule18
-            .forward(
-                add102_out1,
-                unsqueeze119_out1.clone(),
-                gather151_out1,
-                cache_last_channel.clone(),
-                cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
-            );
-        let (add116_out1, gather169_out1, concat198_out1, slice121_out1) = self
-            .submodule19
-            .forward(
-                add109_out1,
-                unsqueeze119_out1.clone(),
-                gather160_out1,
-                cache_last_channel.clone(),
-                cache_last_time.clone(),
-                slice5_out1.clone(),
-                unsqueeze117_out1.clone(),
+                unsqueeze26_out1.clone(),
+                transpose4_out1.clone(),
+                concat16_out1.clone(),
+                concat17_out1.clone(),
+                unsqueeze19_out1.clone(),
+                constant496_out1.clone(),
+                unsqueeze28_out1.clone(),
+                constant325_out1.clone(),
+                expand15_out1.clone(),
             );
         let (
-            add130_out1,
-            gather187_out1,
-            concat209_out1,
-            concat220_out1,
-            slice129_out1,
-            slice137_out1,
+            add119_out1,
+            gather34_out1,
+            concat59_out1,
+            concat62_out1,
+            concat65_out1,
+            slice60_out1,
+            slice64_out1,
+            slice68_out1,
         ) = self
-            .submodule20
+            .submodule17
             .forward(
-                add116_out1,
-                unsqueeze119_out1.clone(),
-                gather169_out1,
+                add101_out1,
+                unsqueeze30_out1.clone(),
+                constant328_out1.clone(),
+                gather28_out1,
+                constant493_out1.clone(),
                 cache_last_channel,
                 cache_last_time,
-                slice5_out1,
-                unsqueeze117_out1,
+                unsqueeze26_out1,
+                transpose4_out1,
+                concat16_out1,
+                concat17_out1,
+                unsqueeze19_out1,
+                constant496_out1,
+                unsqueeze28_out1,
+                constant325_out1,
+                expand15_out1,
             );
-        let (slice147_out1, clip3_out1, slice146_out1, concat231_out1, clip2_out1) = self
-            .submodule21
+        let (slice74_out1, clip3_out1, slice73_out1, concat68_out1, clip2_out1) = self
+            .submodule18
             .forward(
-                add130_out1,
-                unsqueeze119_out1,
-                gather187_out1,
-                concat27_out1,
-                concat55_out1,
-                concat66_out1,
-                concat77_out1,
-                concat88_out1,
-                concat99_out1,
-                concat110_out1,
-                concat121_out1,
-                concat132_out1,
-                concat143_out1,
-                concat154_out1,
-                concat165_out1,
-                concat176_out1,
-                concat187_out1,
-                concat198_out1,
-                concat209_out1,
-                concat220_out1,
-                slice17_out1,
-                slice25_out1,
-                slice33_out1,
-                slice41_out1,
-                slice49_out1,
-                slice57_out1,
-                slice65_out1,
-                slice73_out1,
-                slice81_out1,
-                slice89_out1,
-                slice97_out1,
-                slice105_out1,
-                slice113_out1,
-                slice121_out1,
-                slice129_out1,
-                slice137_out1,
+                add119_out1,
+                unsqueeze30_out1,
+                constant328_out1,
+                gather34_out1,
+                constant493_out1,
+                concat15_out1,
+                concat20_out1,
+                concat23_out1,
+                concat26_out1,
+                concat29_out1,
+                concat32_out1,
+                concat35_out1,
+                concat38_out1,
+                concat41_out1,
+                concat44_out1,
+                concat47_out1,
+                concat50_out1,
+                concat53_out1,
+                concat56_out1,
+                concat59_out1,
+                concat62_out1,
+                concat65_out1,
+                slice8_out1,
+                slice12_out1,
+                slice16_out1,
+                slice20_out1,
+                slice24_out1,
+                slice28_out1,
+                slice32_out1,
+                slice36_out1,
+                slice40_out1,
+                slice44_out1,
+                slice48_out1,
+                slice52_out1,
+                slice56_out1,
+                slice60_out1,
+                slice64_out1,
+                slice68_out1,
                 cache_last_channel_len,
-                gather39_out1,
+                max2_out1,
                 clip1_out1,
             );
-        (slice147_out1, clip3_out1, slice146_out1, concat231_out1, clip2_out1)
+        (slice74_out1, clip3_out1, slice73_out1, concat68_out1, clip2_out1)
     }
 }

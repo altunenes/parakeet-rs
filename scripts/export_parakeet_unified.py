@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+# Export NVIDIA parakeet-unified-en-0.6b to ONNX for parakeet-rs (offline encoder).
+#
+# The encoder is exported with PyTorch's dynamo exporter (opset 23); onnx_export.py in this
+# folder holds the shared settings, keep it next to this script.
+#
+# Setup:
+#   pip install nemo_toolkit[asr] onnx onnxscript onnxruntime pyyaml
 from __future__ import annotations
 
 import argparse
-import functools
 import logging
 import shutil
 import tarfile
@@ -15,6 +21,8 @@ import yaml
 from onnxruntime.quantization import QuantType, quantize_dynamic
 
 import nemo.collections.asr as nemo_asr
+
+import onnx_export
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -86,28 +94,6 @@ def configure_nemo_logging() -> None:
         pass
 
 
-def patch_torch_onnx_export() -> None:
-    pytorch_version = tuple(
-        int(part) for part in torch.__version__.split("+")[0].split(".")[:2]
-    )
-    patch_marker = "_legacy_onnx_patched"
-    print(f"PyTorch version: {torch.__version__}")
-
-    if pytorch_version < (2, 9) or getattr(torch.onnx.export, patch_marker, False):
-        return
-
-    print("Patching torch.onnx.export for PyTorch 2.9+ (dynamo=False)")
-    original_export = torch.onnx.export
-
-    @functools.wraps(original_export)
-    def patched_export(*pargs, **kwargs):
-        kwargs.setdefault("dynamo", False)
-        return original_export(*pargs, **kwargs)
-
-    setattr(patched_export, patch_marker, True)
-    torch.onnx.export = patched_export
-
-
 def ensure_clean_dir(path: Path) -> None:
     if path.exists():
         shutil.rmtree(path)
@@ -177,15 +163,6 @@ def extract_tokenizer_artifacts(model_path: Path, output_dir: Path) -> None:
             print(f"  Extracted {output_name}")
 
 
-def find_single(path: Path, pattern: str) -> Path:
-    matches = sorted(path.glob(pattern))
-    if len(matches) != 1:
-        raise RuntimeError(
-            f"Expected exactly one match for {pattern!r}, found {len(matches)}: {matches}"
-        )
-    return matches[0]
-
-
 def remove_if_exists(path: Path) -> None:
     if path.exists():
         path.unlink()
@@ -201,16 +178,30 @@ def save_single_file_onnx(src: Path, dest: Path) -> None:
 def save_external_data_onnx(src: Path, dest: Path, data_filename: str) -> None:
     ensure_parent_dir(dest)
     model = onnx.load_model(str(src), load_external_data=True)
-    data_path = dest.with_name(data_filename)
     remove_if_exists(dest)
-    remove_if_exists(data_path)
-    onnx.save_model(
-        model,
+    remove_if_exists(dest.with_name(data_filename))
+    onnx_export.save(model, str(dest), data_filename)
+
+
+class OfflineEncoder(torch.nn.Module):
+    def __init__(self, encoder: torch.nn.Module) -> None:
+        super().__init__()
+        self.encoder = encoder
+
+    def forward(self, audio_signal: torch.Tensor, length: torch.Tensor):
+        return self.encoder(audio_signal=audio_signal, length=length)
+
+
+def export_encoder(model: Any, dest: Path) -> None:
+    audio = torch.randn(1, 16000 * 4) * 0.1
+    features, lengths = model.preprocessor(input_signal=audio, length=torch.tensor([audio.shape[1]]))
+    onnx_export.export(
+        OfflineEncoder(model.encoder),
+        (features, lengths),
         str(dest),
-        save_as_external_data=True,
-        all_tensors_to_one_file=True,
-        location=data_filename,
-        size_threshold=0,
+        input_names=["audio_signal", "length"],
+        output_names=["outputs", "encoded_lengths"],
+        dynamic_axes={"audio_signal": {0: "batch", 2: "time"}, "length": {0: "batch"}},
     )
 
 
@@ -223,6 +214,7 @@ def quantize_to_tmp(src: Path, tmp_dest: Path, weight_type: QuantType) -> Path:
         model_input=str(src),
         model_output=str(tmp_dest),
         weight_type=weight_type,
+        op_types_to_quantize=onnx_export.INT8_OPS,
     )
     return tmp_dest
 
@@ -328,12 +320,15 @@ def export_model(model_path: Path, output_dir: Path, work_dir: Path, quantize_in
     print(f"  Model class : {type(model).__name__}")
     print(f"  Encoder type: {type(model.encoder).__name__}")
 
+    onnx_export.use_sdpa(model.encoder)
+
     print(f"Exporting raw ONNX graphs to: {raw_export_dir}")
     raw_export_dir.mkdir(parents=True, exist_ok=True)
-    model.export(str(raw_export_dir / "model.onnx"))
-
-    raw_encoder = find_single(raw_export_dir, "encoder-*.onnx")
-    raw_decoder_joint = find_single(raw_export_dir, "decoder_joint-*.onnx")
+    raw_encoder = raw_export_dir / "encoder.onnx"
+    raw_decoder_joint = raw_export_dir / "decoder_joint.onnx"
+    with torch.no_grad():
+        export_encoder(model, raw_encoder)
+        onnx_export.export_decoder_joint(model, str(raw_decoder_joint))
 
     print("Normalizing ONNX artifact filenames...")
     save_external_data_onnx(raw_encoder, output_dir / "encoder.onnx", "encoder.onnx.data")
@@ -376,7 +371,6 @@ def main() -> None:
         raise FileNotFoundError(f"Model file does not exist: {model_path}")
 
     configure_nemo_logging()
-    patch_torch_onnx_export()
 
     try:
         export_model(model_path, output_dir, work_dir, args.quantize_int8)
