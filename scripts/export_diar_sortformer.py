@@ -6,7 +6,7 @@
 # About this export:
 #
 # 1. FlexAttention. v3's encoder builds its attention mask with FlexAttention
-#    (create_block_mask/flex_attention), which torch.onnx.export cannot trace. We swap
+#    (create_block_mask/flex_attention), which has no ONNX equivalent. We swap
 #    it for scaled_dot_product_attention during export only. This is exact for this model
 #    (RoPE is applied to q/k directly, attn_mode is full, so the mask is a plain padding
 #    mask). We can drop the shim once NeMo ships an export friendly attention path.
@@ -19,6 +19,9 @@
 # Streaming params are CLI args and are also written to metadata as the runtime's default
 # profile. The graph uses dynamic axes, so one export serves every latency preset in NVIDIA's
 # model card; parakeet-rs switches between them at runtime (StreamingProfile).
+#
+# The graph is exported with PyTorch's dynamo exporter (opset 23); onnx_export.py in this
+# folder holds the shared settings, keep it next to this script.
 #
 
 
@@ -34,16 +37,22 @@ parser.add_argument("--spkcache-update-period", type=int, default=300, help="Fra
 parser.add_argument("--spkcache-len", type=int, default=264, help="Total frames in the speaker cache.")
 args = parser.parse_args()
 
+import os
 import sys
+import tempfile
 import types
+import onnx
 import torch
 import torch.nn.functional as F
 from nemo.collections.asr.models import SortformerEncLabelModel
+
+import onnx_export
 
 print(f"PyTorch version: {torch.__version__}")
 print(f"loading model from: {args.input_path}")
 model = SortformerEncLabelModel.restore_from(restore_path=args.input_path, map_location="cpu", strict=False)
 model.eval()
+onnx_export.use_sdpa(model)
 
 model.sortformer_modules.chunk_len = args.chunk_len
 model.sortformer_modules.chunk_right_context = args.right_context
@@ -67,7 +76,10 @@ def _create_block_mask(mask_mod, B=None, H=None, Q_LEN=None, KV_LEN=None, device
     h = torch.arange(H or 1, device=device).view(1, -1, 1, 1)
     q = torch.arange(Q_LEN, device=device).view(1, 1, -1, 1)
     k = torch.arange(KV_LEN, device=device).view(1, 1, 1, -1)
-    return _DenseMask(mask_mod(b, h, q, k))  # dense boolean mask, no vmap -> traceable
+    # Dense boolean mask, no vmap, so it traces. Expanded to the full [B, H, Q, K] shape: ONNX
+    # Runtime's Attention needs the mask's query dimension to match, it does not broadcast it.
+    dense = mask_mod(b, h, q, k)
+    return _DenseMask(dense.expand(b.shape[0], h.shape[1], q.shape[2], k.shape[3]))
 
 def _flex_attention(query, key, value, score_mod=None, block_mask=None, scale=None, **_):
     assert score_mod is None, "score_mod is unsupported by the SDPA export shim"
@@ -75,10 +87,14 @@ def _flex_attention(query, key, value, score_mod=None, block_mask=None, scale=No
     return F.scaled_dot_product_attention(query, key, value, attn_mask=mask, scale=scale)
 
 for _mod in list(sys.modules.values()):
-    if getattr(_mod, "create_block_mask", None) is _orig_create_block_mask:
-        _mod.create_block_mask = _create_block_mask
-    if getattr(_mod, "flex_attention", None) is _orig_flex_attention:
-        _mod.flex_attention = _flex_attention
+    # Lazy modules (e.g. transformers') import on attribute access; skip those that cannot.
+    try:
+        if getattr(_mod, "create_block_mask", None) is _orig_create_block_mask:
+            _mod.create_block_mask = _create_block_mask
+        if getattr(_mod, "flex_attention", None) is _orig_flex_attention:
+            _mod.flex_attention = _flex_attention
+    except Exception:
+        pass
 flex_mod.create_block_mask = _create_block_mask
 flex_mod.flex_attention = _flex_attention
 
@@ -128,10 +144,12 @@ print(f"  chunk:    {tuple(chunk.shape)}")
 print(f"  spkcache: {tuple(spkcache.shape)}")
 print(f"  fifo:     {tuple(fifo.shape)}")
 
-torch.onnx.export(
+tmp_dir = tempfile.TemporaryDirectory()
+raw_path = os.path.join(tmp_dir.name, "sortformer.onnx")
+onnx_export.export(
     model,
     input_example,
-    args.output_path,
+    raw_path,
     input_names=["chunk", "chunk_lengths", "spkcache", "spkcache_lengths", "fifo", "fifo_lengths"],
     output_names=["preds_diar", "preds_hires", "chunk_pre_encode_embs", "chunk_pre_encode_lengths"],
     dynamic_axes={
@@ -142,15 +160,9 @@ torch.onnx.export(
         "preds_hires": {0: "batch", 1: "time_out_hires"},
         "chunk_pre_encode_embs": {0: "batch", 1: "time_pre_encode"},
     },
-    opset_version=17,
-    dynamo=False,
-    verbose=False,
 )
-print(f"exported to: {args.output_path}")
-
-import onnx
-
-model_onnx = onnx.load(args.output_path)
+model_onnx = onnx.load(raw_path)
+tmp_dir.cleanup()
 print("\nverify input/output shapes:")
 for value in list(model_onnx.graph.input) + list(model_onnx.graph.output):
     dims = [d.dim_param if d.dim_param else d.dim_value for d in value.type.tensor_type.shape.dim]
@@ -185,4 +197,5 @@ if model.sortformer_modules.use_learnable_sil_emb:
     )
 
 print("\nsaving model with metadata:", metadata)
-onnx.save(model_onnx, args.output_path)
+onnx_export.save(model_onnx, args.output_path)
+print(f"exported to: {args.output_path}")
