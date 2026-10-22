@@ -11,12 +11,12 @@ use burn::nn::LstmState;
 #[derive(Module, Debug)]
 pub struct Model {
     constant1: burn::module::Param<Tensor<2>>,
+    constant14: burn::module::Param<Tensor<1, Int>>,
     lstm1: Lstm,
     lstm2: Lstm,
     linear1: Linear,
     linear2: Linear,
     linear3: Linear,
-    constant30: burn::module::Param<Tensor<1, Int>>,
     #[module(skip)]
     device: Device,
 }
@@ -37,18 +37,7 @@ impl Model {
             false,
             [1025, 640].into(),
         );
-        let lstm1 = LstmConfig::new(640, 640, true)
-            .with_batch_first(false)
-            .with_input_forget(false)
-            .init(device);
-        let lstm2 = LstmConfig::new(640, 640, true)
-            .with_batch_first(false)
-            .with_input_forget(false)
-            .init(device);
-        let linear1 = LinearConfig::new(1024, 640).with_bias(true).init(device);
-        let linear2 = LinearConfig::new(640, 640).with_bias(true).init(device);
-        let linear3 = LinearConfig::new(640, 1025).with_bias(true).init(device);
-        let constant30: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
+        let constant14: burn::module::Param<Tensor<1, Int>> = burn::module::Param::uninitialized(
             burn::module::ParamId::new(),
             move |device, _require_grad| Tensor::<
                 1,
@@ -61,14 +50,25 @@ impl Model {
             false,
             [1].into(),
         );
+        let lstm1 = LstmConfig::new(640, 640, true)
+            .with_batch_first(false)
+            .with_input_forget(false)
+            .init(device);
+        let lstm2 = LstmConfig::new(640, 640, true)
+            .with_batch_first(false)
+            .with_input_forget(false)
+            .init(device);
+        let linear1 = LinearConfig::new(1024, 640).with_bias(true).init(device);
+        let linear2 = LinearConfig::new(640, 640).with_bias(true).init(device);
+        let linear3 = LinearConfig::new(640, 1025).with_bias(true).init(device);
         Self {
             constant1,
+            constant14,
             lstm1,
             lstm2,
             linear1,
             linear2,
             linear3,
-            constant30,
             device: device.clone(),
         }
     }
@@ -82,6 +82,7 @@ impl Model {
         input_states_2: Tensor<3>,
     ) -> (Tensor<4>, i64, Tensor<3>, Tensor<3>) {
         let constant1_out1 = self.constant1.val();
+        let constant14_out1 = self.constant14.val();
         let gather1_out1 = {
             let axis_size = constant1_out1.dims()[0] as i64;
             let negative = targets.clone().lower_elem(0i64);
@@ -110,14 +111,15 @@ impl Model {
                 final_state.cell.unsqueeze_dims::<3>(&[0]),
             )
         };
-        let squeeze1_out1 = lstm1_out1.squeeze_dims::<3>(&[1]);
+        let transpose2_out1 = lstm1_out1.permute([0, 2, 1, 3]);
+        let reshape1_out1 = transpose2_out1.reshape([1, 1, 640]);
         let slice3_out1 = input_states_1.slice(s![1..2, .., ..]);
         let slice4_out1 = input_states_2.slice(s![1..2, .., ..]);
         let (lstm2_out1, lstm2_out2, lstm2_out3) = {
             let (output_seq, final_state) = self
                 .lstm2
                 .forward(
-                    squeeze1_out1,
+                    reshape1_out1,
                     Some(
                         LstmState::new(
                             slice4_out1.squeeze_dim(0),
@@ -131,19 +133,19 @@ impl Model {
                 final_state.cell.unsqueeze_dims::<3>(&[0]),
             )
         };
-        let squeeze2_out1 = lstm2_out1.squeeze_dims::<3>(&[1]);
+        let transpose3_out1 = lstm2_out1.permute([0, 2, 1, 3]);
+        let reshape2_out1 = transpose3_out1.reshape([1, 1, 640]);
         let concat1_out1 = burn::tensor::Tensor::cat([lstm1_out2, lstm2_out2].into(), 0);
         let concat2_out1 = burn::tensor::Tensor::cat([lstm1_out3, lstm2_out3].into(), 0);
-        let transpose2_out1 = squeeze2_out1.permute([1, 0, 2]);
+        let transpose4_out1 = reshape2_out1.permute([1, 0, 2]);
         let linear1_out1 = self.linear1.forward(encoder_outputs);
-        let linear2_out1 = self.linear2.forward(transpose2_out1);
+        let linear2_out1 = self.linear2.forward(transpose4_out1);
         let unsqueeze1_out1: Tensor<4> = linear1_out1.unsqueeze_dims::<4>(&[2]);
         let unsqueeze2_out1: Tensor<4> = linear2_out1.unsqueeze_dims::<4>(&[1]);
         let add1_out1 = unsqueeze1_out1.add(unsqueeze2_out1);
         let relu1_out1 = burn::tensor::activation::relu(add1_out1);
         let linear3_out1 = self.linear3.forward(relu1_out1);
-        let constant30_out1 = self.constant30.val();
-        let constant30_out1 = (constant30_out1).into_scalar::<i64>();
-        (linear3_out1, constant30_out1, concat1_out1, concat2_out1)
+        let constant14_out1 = (constant14_out1).into_scalar::<i64>();
+        (linear3_out1, constant14_out1, concat1_out1, concat2_out1)
     }
 }

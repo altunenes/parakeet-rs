@@ -15,7 +15,7 @@ use crate::error::{Error, Result};
 use burn::module::{Module, ModuleMapper, ModuleVisitor, Param};
 #[cfg(feature = "cohere")]
 use burn::tensor::Tensor as BurnTensor;
-use burn::tensor::{Bytes, DType};
+use burn::tensor::{BoolStore, Bytes, DType};
 use burn_store::ModuleSnapshot;
 use burn_store::burn_pack::Tensor as PackTensor;
 #[cfg(feature = "cohere")]
@@ -38,10 +38,12 @@ pub(crate) struct Weight {
 pub(crate) enum Source {
     /// A tensor in the user's ONNX file, found by [`weight_key`], then transformed.
     Param(&'static str, Transform),
-    /// A small graph constant of the reference export.
+    /// A small graph constant of the reference export. No current model has float ones.
+    #[allow(dead_code)]
     ConstF32(&'static [f32]),
     ConstI64(&'static [i64]),
     ConstI32(&'static [i32]),
+    ConstBool(&'static [bool]),
     /// All zeros.
     Zeros,
 }
@@ -51,10 +53,6 @@ pub(crate) enum Source {
 pub(crate) enum Transform {
     /// The tensor as is.
     Copy,
-    /// The centered rows of a `[1, N, D]` table (relative positional encoding). Exports size
-    /// the table from the audio length they were traced with; positions are centered on zero,
-    /// so a longer table holds the reference one in its middle.
-    CenterRows,
     /// Rows `start..end` of a packed `[1, 4H, I]` LSTM weight, transposed to `[I, H]`.
     RowsT(usize, usize),
     /// Sum of two slices of a packed `[1, 8H]` LSTM bias: burn folds the input and recurrent
@@ -179,16 +177,6 @@ fn param(
             )?;
             Elementwise::Transpose
         }
-        Transform::CenterRows => {
-            let [1, rows, cols] = src.dims[..] else {
-                return Err(format!("{}: expected a [1, N, D] table", w.path));
-            };
-            let [1, want, d] = target[..] else {
-                return Err(format!("{}: unexpected reference shape", w.path));
-            };
-            check(cols == d && rows >= want && (rows - want) % 2 == 0)?;
-            Elementwise::Rows((rows - want) / 2 * d..((rows - want) / 2 + want) * d)
-        }
         Transform::RowsT(a, b) => {
             check(
                 src.dims.len() == 3
@@ -236,7 +224,6 @@ fn param(
                         .map(|(r, c)| v[r * cols + c])
                         .collect()
                 }
-                Elementwise::Rows(r) => v[r.clone()].to_vec(),
                 Elementwise::RowsT(a, b, cols) => (0..*cols)
                     .flat_map(|c| (*a..*b).map(move |r| (r, c)))
                     .map(|(r, c)| v[r * cols + c])
@@ -261,8 +248,6 @@ fn param(
 enum Elementwise {
     /// Transpose a 2-D matrix.
     Transpose,
-    /// A contiguous range of the flat data.
-    Rows(Range<usize>),
     /// Rows `a..b` of a `[.., cols]` matrix, transposed.
     RowsT(usize, usize, usize),
     /// Element-wise sum of two ranges.
@@ -622,6 +607,11 @@ impl OnnxFile {
                 Source::ConstI32(values) => {
                     constant(w, DType::I32, Bytes::from_elems(values.to_vec()))?
                 }
+                Source::ConstBool(values) => constant(
+                    w,
+                    DType::Bool(BoolStore::Native),
+                    Bytes::from_elems(values.iter().map(|&b| u8::from(b)).collect()),
+                )?,
                 Source::Zeros => {
                     let numel = shape_of(w)?.iter().product::<usize>();
                     constant(w, DType::F32, Bytes::from_elems(vec![0f32; numel]))?
@@ -1087,21 +1077,6 @@ mod tests {
                 Transform::BiasSum(0, 2, 8, 10)
             ),
             [80., 100.]
-        );
-    }
-
-    #[test]
-    fn longer_positional_tables_are_center_sliced() {
-        let tensors = OnnxFile::open(&test_model()).unwrap().tensors;
-        // [1, 5, 2] -> the middle 3 rows
-        assert_eq!(
-            load_one(
-                &tensors,
-                Some(&[1, 3, 2]),
-                "/pos_enc/Slice#0",
-                Transform::CenterRows
-            ),
-            [2., 3., 4., 5., 6., 7.]
         );
     }
 

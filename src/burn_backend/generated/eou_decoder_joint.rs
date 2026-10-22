@@ -71,6 +71,8 @@ impl Model {
             constant1_out1.take::<2, 3>(0, indices)
         };
         let transpose1_out1 = gather1_out1.permute([1, 0, 2]);
+        let slice1_out1 = input_states_1.slice(s![0..1, .., ..]);
+        let slice2_out1 = input_states_2.slice(s![0..1, .., ..]);
         let (lstm1_out1, lstm1_out2, lstm1_out3) = {
             let (output_seq, final_state) = self
                 .lstm1
@@ -78,8 +80,8 @@ impl Model {
                     transpose1_out1,
                     Some(
                         LstmState::new(
-                            input_states_2.squeeze_dim(0),
-                            input_states_1.squeeze_dim(0),
+                            slice2_out1.squeeze_dim(0),
+                            slice1_out1.squeeze_dim(0),
                         ),
                     ),
                 );
@@ -89,11 +91,12 @@ impl Model {
                 final_state.cell.unsqueeze_dims::<3>(&[0]),
             )
         };
-        let squeeze1_out1 = lstm1_out1.squeeze_dims::<3>(&[1]);
-        let transpose2_out1 = encoder_outputs.permute([0, 2, 1]);
-        let transpose3_out1 = squeeze1_out1.permute([1, 0, 2]);
-        let linear1_out1 = self.linear1.forward(transpose2_out1);
-        let linear2_out1 = self.linear2.forward(transpose3_out1);
+        let transpose2_out1 = lstm1_out1.permute([0, 2, 1, 3]);
+        let reshape1_out1 = transpose2_out1.reshape([1, -1, 640]);
+        let transpose3_out1 = encoder_outputs.permute([0, 2, 1]);
+        let transpose4_out1 = reshape1_out1.permute([1, 0, 2]);
+        let linear1_out1 = self.linear1.forward(transpose3_out1);
+        let linear2_out1 = self.linear2.forward(transpose4_out1);
         let unsqueeze1_out1: Tensor<4> = linear1_out1.unsqueeze_dims::<4>(&[2]);
         let unsqueeze2_out1: Tensor<4> = linear2_out1.unsqueeze_dims::<4>(&[1]);
         let add1_out1 = unsqueeze1_out1.add(unsqueeze2_out1);
