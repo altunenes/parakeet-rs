@@ -130,6 +130,12 @@ impl ParakeetTDT {
     pub fn preprocessor_config(&self) -> &PreprocessorConfig {
         &self.preprocessor_config
     }
+
+    /// Multitalker TDT only: (speaker, everyone else) activity per 80 ms for the next
+    /// transcription. `None` hears everyone, like plain TDT.
+    pub fn set_speaker_targets(&mut self, targets: Option<(Vec<f32>, Vec<f32>)>) {
+        self.model.set_speaker_targets(targets);
+    }
 }
 
 impl Transcriber for ParakeetTDT {

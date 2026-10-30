@@ -26,6 +26,7 @@ pub struct ParakeetTDTModel {
     encoder: Encoder,
     decoder_joint: DecoderJoint,
     config: TDTModelConfig,
+    speaker_targets: Option<(Vec<f32>, Vec<f32>)>,
 }
 
 /// The encoder graph, on whichever backend its execution configuration selects.
@@ -126,7 +127,13 @@ impl ParakeetTDTModel {
             encoder,
             decoder_joint,
             config,
+            speaker_targets: None,
         })
+    }
+
+    /// Multitalker TDT only: (speaker, everyone else) activity, one value per 80 ms.
+    pub fn set_speaker_targets(&mut self, targets: Option<(Vec<f32>, Vec<f32>)>) {
+        self.speaker_targets = targets;
     }
     //file names simply from: https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/main
     /// `int8`: whether int8 exports may be picked (burn runs fp32 exports only).
@@ -211,13 +218,37 @@ impl ParakeetTDTModel {
             Encoder::Ort(session) => {
                 let input_length = Array1::from_vec(vec![time_steps as i64]);
 
-                let input_value = ort::value::Value::from_array(input)?;
-                let length_value = ort::value::Value::from_array(input_length)?;
-
-                let outputs = session.run(ort::inputs!(
-                    "audio_signal" => input_value,
-                    "length" => length_value
-                ))?;
+                let mut inputs: Vec<(String, ort::session::SessionInputValue)> = vec![
+                    (
+                        "audio_signal".into(),
+                        ort::value::Value::from_array(input)?.into(),
+                    ),
+                    (
+                        "length".into(),
+                        ort::value::Value::from_array(input_length)?.into(),
+                    ),
+                ];
+                let multitalker = session.inputs().iter().any(|i| i.name() == "spk_targets");
+                match (&self.speaker_targets, multitalker) {
+                    (Some(_), false) => {
+                        return Err(Error::Config(
+                            "speaker targets need a multitalker TDT encoder (spk_targets input)"
+                                .into(),
+                        ));
+                    }
+                    (targets, true) => {
+                        // No targets: one frame, stretched by the encoder to the whole input.
+                        let (spk, bg) = targets.clone().unwrap_or((vec![1.0], vec![0.0]));
+                        for (name, mask) in [("spk_targets", spk), ("bg_spk_targets", bg)] {
+                            let len = mask.len();
+                            let mask = Array2::from_shape_vec((1, len), mask)
+                                .map_err(|e| Error::Model(format!("{name}: {e}")))?;
+                            inputs.push((name.into(), ort::value::Value::from_array(mask)?.into()));
+                        }
+                    }
+                    (None, false) => {}
+                }
+                let outputs = session.run(inputs)?;
 
                 // TDT encoder outputs [batch, encoder_dim, time] directly
                 let encoder_array =
@@ -230,7 +261,14 @@ impl ParakeetTDTModel {
                 Ok((encoder_array, encoded_len))
             }
             #[cfg(feature = "burn")]
-            Encoder::Burn(encoder) => encoder.run(input),
+            Encoder::Burn(encoder) => {
+                if self.speaker_targets.is_some() {
+                    return Err(Error::Config(
+                        "speaker targets are not supported on the burn backend".into(),
+                    ));
+                }
+                encoder.run(input)
+            }
         }
     }
 
