@@ -261,14 +261,7 @@ impl ParakeetTDTModel {
                 Ok((encoder_array, encoded_len))
             }
             #[cfg(feature = "burn")]
-            Encoder::Burn(encoder) => {
-                if self.speaker_targets.is_some() {
-                    return Err(Error::Config(
-                        "speaker targets are not supported on the burn backend".into(),
-                    ));
-                }
-                encoder.run(input)
-            }
+            Encoder::Burn(encoder) => encoder.run(input, self.speaker_targets.as_ref()),
         }
     }
 
