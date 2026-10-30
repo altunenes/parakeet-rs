@@ -89,6 +89,18 @@ pub fn rebuild_text(tokens: &[TimedToken], mode: TimestampMode) -> String {
     }
 }
 
+// Minimum confidence of an aggregated group of tokens.
+// `None` if the group is empty or any member has no confidence (unknown, not "low").
+fn min_confidence(confidences: impl IntoIterator<Item = Option<f32>>) -> Option<f32> {
+    let mut min = f32::INFINITY;
+    let mut any = false;
+    for c in confidences {
+        min = min.min(c?);
+        any = true;
+    }
+    any.then_some(min)
+}
+
 // Group tokens into words based on word boundary markers
 pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
     let Some(last_token) = tokens.last() else {
@@ -98,6 +110,7 @@ pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
     let mut words = Vec::new();
     let mut current_word_text = String::new();
     let mut current_word_start = 0.0;
+    let mut current_word_conf: Vec<Option<f32>> = Vec::new();
 
     for (i, token) in tokens.iter().enumerate() {
         // Space-only tokens (from SentencePiece ▁ word boundaries) act as word separators
@@ -108,6 +121,7 @@ pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
                     text: current_word_text.clone(),
                     start: current_word_start,
                     end: if i > 0 { tokens[i - 1].end } else { token.end },
+                    confidence: min_confidence(current_word_conf.drain(..)),
                 });
                 current_word_text.clear();
             }
@@ -138,6 +152,7 @@ pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
                 text: current_word_text.clone(),
                 start: current_word_start,
                 end: tokens[i - 1].end,
+                confidence: min_confidence(current_word_conf.drain(..)),
             });
             current_word_text.clear();
         }
@@ -150,6 +165,7 @@ pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
         // Add token text, removing word boundary markers
         let token_text = token.text.trim_start_matches('▁').trim_start_matches(' ');
         current_word_text.push_str(token_text);
+        current_word_conf.push(token.confidence);
     }
 
     // Add final word
@@ -158,6 +174,7 @@ pub(crate) fn group_by_words(tokens: &[TimedToken]) -> Vec<TimedToken> {
             text: current_word_text,
             start: current_word_start,
             end: last_token.end,
+            confidence: min_confidence(current_word_conf.drain(..)),
         });
     }
 
@@ -206,6 +223,7 @@ fn push_sentence(sentences: &mut Vec<TimedToken>, words: &[TimedToken]) {
             text,
             start: first.start,
             end: last.end,
+            confidence: min_confidence(words.iter().map(|w| w.confidence)),
         });
     }
 }
@@ -243,11 +261,13 @@ mod tests {
                 text: "▁Hello".to_string(),
                 start: 0.0,
                 end: 0.5,
+                confidence: None,
             },
             TimedToken {
                 text: "▁world".to_string(),
                 start: 0.5,
                 end: 1.0,
+                confidence: None,
             },
         ];
 
@@ -264,16 +284,19 @@ mod tests {
                 text: "▁twenty".to_string(),
                 start: 0.0,
                 end: 0.3,
+                confidence: None,
             },
             TimedToken {
                 text: "-two".to_string(),
                 start: 0.3,
                 end: 0.6,
+                confidence: None,
             },
             TimedToken {
                 text: "▁apples".to_string(),
                 start: 0.6,
                 end: 1.0,
+                confidence: None,
             },
         ];
 
@@ -294,16 +317,19 @@ mod tests {
                 text: "▁Hello".to_string(),
                 start: 0.0,
                 end: 0.5,
+                confidence: None,
             },
             TimedToken {
                 text: "▁world".to_string(),
                 start: 0.5,
                 end: 1.0,
+                confidence: None,
             },
             TimedToken {
                 text: ".".to_string(),
                 start: 1.0,
                 end: 1.1,
+                confidence: None,
             },
         ];
 
@@ -321,16 +347,19 @@ mod tests {
                 text: "uh".to_string(),
                 start: 0.0,
                 end: 0.5,
+                confidence: None,
             },
             TimedToken {
                 text: "uh".to_string(),
                 start: 0.5,
                 end: 1.0,
+                confidence: None,
             },
             TimedToken {
                 text: "hello".to_string(),
                 start: 1.0,
                 end: 1.5,
+                confidence: None,
             },
         ];
 
@@ -347,6 +376,7 @@ mod tests {
                 text: t.to_string(),
                 start: i as f32,
                 end: i as f32 + 1.0,
+                confidence: None,
             })
             .collect();
         let words = group_by_words(&tokens);
@@ -363,26 +393,31 @@ mod tests {
                 text: " like".to_string(),
                 start: 0.0,
                 end: 0.5,
+                confidence: None,
             },
             TimedToken {
                 text: " ".to_string(), // Space-only token from ▁
                 start: 0.5,
                 end: 0.5,
+                confidence: None,
             },
             TimedToken {
                 text: "1".to_string(),
                 start: 0.5,
                 end: 0.6,
+                confidence: None,
             },
             TimedToken {
                 text: "0".to_string(),
                 start: 0.6,
                 end: 0.7,
+                confidence: None,
             },
             TimedToken {
                 text: "0".to_string(),
                 start: 0.7,
                 end: 0.8,
+                confidence: None,
             },
         ];
 
@@ -394,5 +429,12 @@ mod tests {
         // Also test sentence formatting
         let sentence = format_sentence(&words);
         assert_eq!(sentence, "like 100");
+    }
+
+    #[test]
+    fn test_min_confidence_unknown_member_gives_none() {
+        assert_eq!(min_confidence([Some(0.9), Some(0.2)]), Some(0.2));
+        assert_eq!(min_confidence([Some(0.9), None]), None);
+        assert_eq!(min_confidence([]), None);
     }
 }
