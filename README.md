@@ -237,7 +237,7 @@ If your app also uses `ort` directly, use the same environment for both: ONNX Ru
 
 ### Pure-Rust backend (experimental)
 
-All models can also run on [burn](https://burn.dev), without ONNX Runtime, on the CPU or GPU. Same model files (fp32), matching transcripts. Cohere needs its fp32 export there (about 8.4 GB, held in memory). Multitalker TDT is ONNX Runtime only for now. See details: [v0.4.0 release notes](https://github.com/altunenes/parakeet-rs/releases/tag/v0.4.0)
+All models can also run on [burn](https://burn.dev), without ONNX Runtime, on the CPU or GPU. Same model files (fp32), matching transcripts. Cohere needs its fp32 export there (about 8.4 GB, held in memory). See details: [v0.4.0 release notes](https://github.com/altunenes/parakeet-rs/releases/tag/v0.4.0)
 ```toml
 parakeet-rs = { version = "0.4", default-features = false, features = ["metal"] }  # "wgpu" for other GPUs, "burn" for CPU only
 ```

@@ -65,6 +65,7 @@ check eou            eou         eou            ""          eou/encoder.onnx
 check nemotron       nemotron    nemotron       ""          nemotron/encoder.onnx
 check nemotron-multi nemotron    nemotron_multi ""          nemotron_multi/encoder.onnx
 check multitalker    multitalker multitalker    "$diar"     multitalker/encoder.onnx "$diar"
+check multitalker-tdt multitalker_tdt multitalker_tdt "$diar" multitalker_tdt/encoder-model.onnx "$diar"
 check diar-offline   diar        "$diar"        offline     "$diar"
 check diar-low       diar        "$diar"        low         "$diar"
 check cohere         cohere      cohere         ""          cohere/encoder_model.onnx cohere/decoder_model_merged.onnx
