@@ -6,102 +6,94 @@ Fast speech recognition and diarization with NVIDIA's Parakeet models, on ONNX R
 
 ## Models
 
-ONNX Runtime (the default backend) needs one environment per process, shared by every model. Create it once; the snippets below use this `config`:
+| Model | What it does | Languages | Download | Example |
+|---|---|---|---|---|
+| [CTC](https://huggingface.co/nvidia/parakeet-ctc-0.6b) | Offline, punctuation & capitalization | English | [parakeet-ctc-0.6b](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ctc-0.6b) | `raw` |
+| [TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | Offline, auto language detection | 25 | [parakeet-tdt-0.6b-v3](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-tdt-0.6b-v3) | `raw` |
+| [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) | Moondream's post-trained TDT, more accurate, same API | 25 | [parakeet-ultra](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ultra) | `raw` |
+| [Orukeet](https://huggingface.co/oruk/orukeet) | TDT fine-tune, int8, same API | 25 | [see below](#orukeet) | `orukeet` |
+| [EOU](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1) | Streaming, end-of-utterance detection | English | [realtime_eou_120m-v1-onnx](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx) | `streaming` |
+| [Nemotron](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b) | Cache-aware streaming, verbatim | English | [nemotron-speech-streaming-en-0.6b](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b) | `streaming` |
+| [Nemotron 3.5](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) | Cache-aware streaming, polished output | 40 locales | [nemotron-3.5-asr-streaming-0.6b-onnx](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3.5-asr-streaming-0.6b-onnx) | `streaming` |
+| [Unified](https://huggingface.co/nvidia/parakeet-unified-en-0.6b) | Offline + buffered streaming | English | [parakeet-unified-en-0.6b](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-unified-en-0.6b) | `unified` |
+| [Multitalker](https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1) | Streaming, one transcript per speaker | English | [multitalker-parakeet-streaming-0.6b-v1](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-parakeet-streaming-0.6b-v1) | `multitalker` |
+| **Multitalker TDT** | Offline, one transcript per speaker, overlaps included ([how](https://altunenes.github.io/posts/multitalker/)) | 25 | [multitalker-tdt-0.6b-v3](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-tdt-0.6b-v3) | `multitalker_tdt` |
+| [Cohere Transcribe](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026) | Offline, long-form, punctuation & ITN toggles | 14 | [onnx-community](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX) | `cohere` |
+| [Nemotron-3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization) | Who speaks when, streaming, up to 8 speakers | any | [nemotron-3-diarization](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization) | `diarization` |
+
+Download a whole folder and point `from_pretrained` at it (all files of a model in one directory):
+```bash
+hf download altunenes/parakeet-rs --include "parakeet-tdt-0.6b-v3/*" --local-dir .
+```
+Multitalker and Multitalker TDT also need the diarization model. Some folders have int8 versions too.
+Every model can also be exported yourself from NVIDIA's NeMo checkpoints with `scripts/export_*.py`
+(PyTorch dynamo exporter, ONNX opset 23); Cohere comes from Optimum.
+
+## Usage
+
+ONNX Runtime (the default backend) needs one environment per process, shared by every model:
 ```rust
-use parakeet_rs::ExecutionConfig;
+use parakeet_rs::{ExecutionConfig, ParakeetTDT, TimestampMode, Transcriber};
 
 let env = parakeet_rs::ort::init().build()?;
 let config = ExecutionConfig::new().with_environment(env);
-```
-
-**CTC (English-only)**:
-```rust
-use parakeet_rs::{Parakeet, Transcriber, TimestampMode};
-
-let mut parakeet = Parakeet::from_pretrained(".", Some(config.clone()))?;
-
-// Load and transcribe audio (see examples/raw.rs for full example)
-let result = parakeet.transcribe_samples(audio, 1600, 1, Some(TimestampMode::Words))?;
-println!("{}", result.text);
-
-// Token-level timestamps
-for token in result.tokens {
-    println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
-}
-```
-
-**TDT (Multilingual)**: 25 languages with auto-detection
-```rust
-use parakeet_rs::{ParakeetTDT, Transcriber, TimestampMode};
 
 let mut parakeet = ParakeetTDT::from_pretrained("./tdt", Some(config.clone()))?;
 let result = parakeet.transcribe_samples(audio, 16000, 1, Some(TimestampMode::Sentences))?;
 println!("{}", result.text);
 
-// Token-level timestamps
 for token in result.tokens {
     println!("[{:.3}s - {:.3}s] {}", token.start, token.end, token.text);
 }
 ```
+CTC is the same with `Parakeet` instead of `ParakeetTDT`. Every other model:
 
-**EOU (Streaming)**: Real-time ASR with end-of-utterance detection
+<details>
+<summary><b>EOU</b> (streaming)</summary>
+
 ```rust
 use parakeet_rs::ParakeetEOU;
 
 let mut parakeet = ParakeetEOU::from_pretrained("./eou", Some(config.clone()))?;
 
-// Prepare your audio (Vec<f32>, 16kHz mono, normalized)
-let audio: Vec<f32> = /* your audio samples */;
-
-// Process in 160ms chunks for streaming
-const CHUNK_SIZE: usize = 2560; // 160ms at 16kHz
+// 160 ms chunks, 16kHz mono
+const CHUNK_SIZE: usize = 2560;
 for chunk in audio.chunks(CHUNK_SIZE) {
     let text = parakeet.transcribe(chunk, false)?;
     print!("{}", text);
 }
 ```
+</details>
 
-**Nemotron (Streaming)**: Cache-aware streaming ASR with punctuation. Two variants share the same API — point `from_pretrained` at whatever directory holds the ONNX files and the loader auto-detects which variant it is:
+<details>
+<summary><b>Nemotron</b> (streaming, English or multilingual 3.5)</summary>
 
-- **English-only 0.6B** — verbatim English, preserves disfluencies (`um`, `uh`). Best for transcription where every spoken word matters.
-- **Multilingual 3.5 0.6B** — [40 language-locales](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) across 3 tiers (19 transcription-ready, 13 broad-coverage, 8 that need fine-tuning to reach production quality based on the NVIDIA). Polished output (proper casing/punctuation, drops disfluencies). Same speed and size as the English-only model.
+Both variants share the API; the loader detects which one the folder holds.
+- **English 0.6B**: verbatim, keeps disfluencies (`um`, `uh`).
+- **Multilingual 3.5 0.6B**: [40 language-locales](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) in 3 tiers (19 transcription-ready, 13 broad-coverage, 8 that need fine-tuning, per NVIDIA). Proper casing and punctuation, drops disfluencies. Same speed and size.
 
 ```rust
 use parakeet_rs::{Nemotron, NemotronMode};
 
 let mut model = Nemotron::from_pretrained(path, Some(config.clone()))?;
 
-// Multilingual variant: optionally pick a target language. Defaults to "auto"
-// (the model picks the language itself). Pass a specific code when you know
-// the language it's strictly more accurate. No-op when an English-only model is loaded.
+// Multilingual: "auto" by default; a known language is more accurate. No-op for English.
 if model.mode() == NemotronMode::Multilingual {
     model.set_target_lang("es-ES")?; // also: "ja-JP", "tr-TR", "auto", ...
 }
 
-// Process in 560ms chunks for streaming
-const CHUNK_SIZE: usize = 8960; // 560ms at 16kHz
+// 560 ms chunks
+const CHUNK_SIZE: usize = 8960;
 for chunk in audio.chunks(CHUNK_SIZE) {
     let text = model.transcribe_chunk(chunk)?;
     print!("{}", text);
 }
 ```
+</details>
 
-**Cohere Transcribe (Offline Multilingual)**: 14 languages, punctuation & ITN toggles (yes, "parakeets🦜" talk about more than just NVIDIA right?? :-P)
-```toml
-parakeet-rs = { version = "0.4", features = ["cohere"] }
-```
-```rust
-use parakeet_rs::CohereASR;
+<details>
+<summary><b>Multitalker</b> (streaming, per speaker, English)</summary>
 
-let mut model = CohereASR::from_pretrained("./cohere", Some(config.clone()))?;
-
-// audio: Vec<f32>, 16kHz mono (long-form supported)
-let text = model.transcribe_audio(&audio, "en", true, false)?; // lang, pnc, itn
-println!("{}", text);
-```
-See `examples/cohere.rs` for a runnable demo.
-
-**Multitalker (Streaming Multi-Speaker ASR)**: Speaker-attributed transcription
 ```toml
 parakeet-rs = { version = "0.4", features = ["multitalker"] }
 ```
@@ -121,9 +113,60 @@ for chunk in audio.chunks(17920) {  // ~1.12s at 16kHz
     }
 }
 ```
-See `examples/multitalker.rs` for full usage with latency modes.
+See `examples/multitalker.rs` for latency modes.
+</details>
 
-**Nemotron-3 Diarization (Sortformer v3)**: Streaming diarization, up to 8 speakers
+<details>
+<summary><b>Multitalker TDT</b> (offline, per speaker, 25 languages)</summary>
+
+parakeet-tdt-0.6b-v3 fine-tuned with speaker kernels: one transcript per speaker, even when they
+talk over each other. Any audio length.
+```toml
+parakeet-rs = { version = "0.4", features = ["sortformer"] }
+```
+```rust
+use parakeet_rs::MultitalkerTDT;
+
+let mut model = MultitalkerTDT::from_pretrained(
+    "./multitalker-tdt",         // encoder, decoder_joint, vocab.txt
+    "nemotron3_diar_v3.onnx",    // Nemotron-3 (Sortformer v3) for diarization
+    Some(config.clone()),
+)?;
+
+for u in model.transcribe(&audio, 16000, 1)? {
+    println!("[{:.2} - {:.2}] Speaker {}: {}", u.start, u.end, u.speaker_id, u.text);
+}
+```
+cpWER with 2 overlapping speakers, plain TDT + diarization → Multitalker TDT: English
+([LibriSpeechMix](https://github.com/NaoyukiKanda/LibriSpeechMix)) 36.7% → 4.4%, six other
+languages ([MLS](https://huggingface.co/datasets/facebook/multilingual_librispeech) mixtures)
+39.0% → 10.7%. Single speakers stay as good as plain TDT. Details in the
+[blog post](https://altunenes.github.io/posts/multitalker/).
+</details>
+
+<details>
+<summary><b>Cohere Transcribe</b> (offline, 14 languages)</summary>
+
+Yes, "parakeets🦜" talk about more than just NVIDIA :-P
+```toml
+parakeet-rs = { version = "0.4", features = ["cohere"] }
+```
+```rust
+use parakeet_rs::CohereASR;
+
+let mut model = CohereASR::from_pretrained("./cohere", Some(config.clone()))?;
+
+// 16kHz mono, long-form supported
+let text = model.transcribe_audio(&audio, "en", true, false)?; // lang, pnc, itn
+println!("{}", text);
+```
+Files: `encoder_model.onnx` (+ `.onnx_data*`), `decoder_model_merged.onnx` (+ `.onnx_data`),
+`tokenizer.json` (FP32, FP16, INT8, INT4 variants available).
+</details>
+
+<details>
+<summary><b>Nemotron-3 Diarization</b> (Sortformer v3, up to 8 speakers)</summary>
+
 ```toml
 parakeet-rs = { version = "0.4", features = ["sortformer"] }
 ```
@@ -141,28 +184,22 @@ for seg in segments {
         seg.start as f64 / 16_000.0, seg.end as f64 / 16_000.0);
 }
 
-// Streaming/real-time: diarize_chunk() / feed() preserve state across calls.
+// Streaming/real-time: diarize_chunk() / feed() keep state across calls.
 let segments = diarizer.diarize_chunk(&audio_chunk_16k_mono)?;
 
 // Latency presets from NVIDIA's model card:
 // offline() 30.4s (default), low_latency() 1.04s, very_low_latency() 0.64s, ultra_low_latency() 0.32s
 diarizer.set_profile(StreamingProfile::low_latency())?;
 ```
-See `examples/diarization.rs` for a runnable example (pass `low`, `very-low` or `ultra` to try
-the latency presets) and `examples/streaming_diarization.rs` for real-time `feed`/`flush`.
+`examples/diarization.rs` (pass `low`, `very-low` or `ultra` for the presets),
+`examples/streaming_diarization.rs` for real-time `feed`/`flush`, and
+`scripts/export_diar_sortformer.py` to export with custom streaming parameters.
+</details>
 
-See `scripts/export_diar_sortformer.py` for exporting the ONNX (dual-resolution,
-self-describing metadata) with custom streaming parameters.
+<details id="orukeet">
+<summary><b>Orukeet</b> (TDT fine-tune, int8)</summary>
 
-## Setup
-
-**CTC**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ctc-0.6b): `model.onnx`, `model.onnx_data`, `tokenizer.json`. Or export it yourself with `scripts/export_parakeet_ctc.py`.
-
-**TDT**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-tdt-0.6b-v3): `encoder-model.onnx`, `encoder-model.onnx.data`, `decoder_joint-model.onnx`, `vocab.txt`. Or export it yourself with `scripts/export_parakeet_tdt.py`.
-
-**Parakeet Ultra (optional TDT fine-tune)**: Moondream's post-trained parakeet-tdt-0.6b-v3 with better accuracy. Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ultra): same files as TDT, loads with `ParakeetTDT` (CC-BY-4.0). Or export it yourself with `scripts/export_parakeet_tdt.py --ultra`.
-
-**Orukeet (optional TDT fine-tune)**: the [pinned Hugging Face INT8 export](https://huggingface.co/oruk/orukeet/tree/eac739d754bb171287930e6e63386f5b88f8179e/onnx/combined-v0.1.0-int8) works with `ParakeetTDT`. The downloader verifies a release manifest and all required file hashes, including licenses, then prints the cached model directory:
+The [pinned Hugging Face INT8 export](https://huggingface.co/oruk/orukeet/tree/eac739d754bb171287930e6e63386f5b88f8179e/onnx/combined-v0.1.0-int8) works with `ParakeetTDT`. The downloader verifies a release manifest and all required file hashes, including licenses, then prints the cached model directory:
 
 ```bash
 python3 -m pip install huggingface-hub
@@ -173,30 +210,14 @@ model_dir=$(python3 scripts/download_orukeet.py --offline)
 ```
 
 This uses the existing local TDT runtime; it does not add streaming support or change defaults. The ~672 MB weights are licensed under [CC BY-SA 4.0](https://huggingface.co/oruk/orukeet/blob/eac739d754bb171287930e6e63386f5b88f8179e/onnx/combined-v0.1.0-int8/LICENSE-WEIGHTS), as recorded in the downloaded `LICENSE-WEIGHTS`; `NOTICE.md` preserves the NVIDIA/Parakeet attribution. Model downloads use normal Hugging Face accounting through the required verification manifest. Audio stays local; cached files cause no counting requests. Accuracy numbers on the model card describe its NeMo evaluation, not a benchmark of this Rust runtime.
+</details>
 
-**EOU**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx): `encoder.onnx`, `decoder_joint.onnx`, `tokenizer.json`. Or export it yourself with `scripts/export_realtime_eou_120m.py`.
+## GPU and backends
 
-**Nemotron (English-only)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`. Or export it yourself with `scripts/export_nemotron_streaming.py`. (*[int8](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int8) / [int4](https://huggingface.co/lokkju/nemotron-speech-streaming-en-0.6b-int4)*)
-
-**Nemotron (Multilingual 3.5)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3.5-asr-streaming-0.6b-onnx): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`. Or export it yourself from the [base model](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) with `scripts/export_nemotron_streaming_multilingual.py`.
-
-**Unified**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-unified-en-0.6b): `encoder.onnx`, `encoder.onnx.data`, `decoder_joint.onnx`, `tokenizer.model`. Or export it yourself with `scripts/export_parakeet_unified.py`.
-
-**Multitalker**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-parakeet-streaming-0.6b-v1): `encoder.onnx` + `encoder.onnx.data` and `decoder_joint.onnx` (fp32), or `encoder.int8.onnx` and `decoder_joint.int8.onnx`, plus `tokenizer.model` (also needs the Nemotron-3 diarization ONNX below). Or export it yourself with `scripts/export_multitalker.py`.
-
-**Cohere Transcribe**: Download from [HuggingFace](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX): `encoder_model.onnx` (+ `.onnx_data*`), `decoder_model_merged.onnx` (+ `.onnx_data`), `tokenizer.json` (FP32, FP16, INT8, INT4 variants available)
-
-**Diarization (Nemotron-3 / Sortformer v3)**: Download from [HuggingFace](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization): `nemotron3_diar_v3.onnx`. Or export it yourself from the [base model](https://huggingface.co/nvidia/Nemotron-3-Diarization) with `scripts/export_diar_sortformer.py`.
-
-Quantized versions available (int8). All files must be in the same directory.
-
-The `scripts/export_*.py` scripts export every model above from NVIDIA's NeMo checkpoints (except Cohere, which comes from Optimum), with PyTorch's dynamo exporter at ONNX opset 23.
-
-GPU support (auto-falls back to CPU if fails):
+GPU with ONNX Runtime (falls back to CPU if it fails):
 ```toml
 parakeet-rs = { version = "0.4", features = ["cuda"] }  # or tensorrt, webgpu, directml, migraphx or other ort supported EPs (check cargo features)
 ```
-
 ```rust
 use parakeet_rs::{Parakeet, ExecutionConfig, ExecutionProvider};
 
@@ -216,7 +237,7 @@ If your app also uses `ort` directly, use the same environment for both: ONNX Ru
 
 ### Pure-Rust backend (experimental)
 
-All models can also run on [burn](https://burn.dev), without ONNX Runtime, on the CPU or GPU. Same model files (fp32), matching transcripts. Cohere needs its fp32 export there (about 8.4 GB, held in memory).See details:[v0.4.0 release notes](https://github.com/altunenes/parakeet-rs/releases/tag/v0.4.0)
+All models can also run on [burn](https://burn.dev), without ONNX Runtime, on the CPU or GPU. Same model files (fp32), matching transcripts. Cohere needs its fp32 export there (about 8.4 GB, held in memory). Multitalker TDT is ONNX Runtime only for now. See details: [v0.4.0 release notes](https://github.com/altunenes/parakeet-rs/releases/tag/v0.4.0)
 ```toml
 parakeet-rs = { version = "0.4", default-features = false, features = ["metal"] }  # "wgpu" for other GPUs, "burn" for CPU only
 ```
@@ -228,23 +249,11 @@ let mut parakeet = ParakeetTDT::from_pretrained("./tdt", Some(config))?;
 
 Other GPU features: `vulkan`, `burn-cuda` and `burn-rocm`. For burn on the CPU, `apple-amx` (Apple Silicon) or `x86-v4` (AVX-512) speed up matrix multiplication. See `examples/burn.rs`.
 
-## Features
-
-- [CTC: English with punctuation & capitalization](https://huggingface.co/nvidia/parakeet-ctc-0.6b)
-- [TDT: Multilingual (auto lang detection)](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
-- [Parakeet Ultra: Moondream's post-trained TDT, same API](https://huggingface.co/moondream/parakeet-ultra) ([ONNX](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ultra))
-- [EOU: Streaming ASR with end-of-utterance detection](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1)
-- [Nemotron: Cache aware streaming ASR (600M params,EN only)](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b)
-- [Unified: Offline + buffered streaming RNNT ASR (600M params, EN only)](https://huggingface.co/nvidia/parakeet-unified-en-0.6b)
-- [Multitalker: Streaming multi-speaker ASR with speaker-kernel injection](https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1) ([ONNX](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-parakeet-streaming-0.6b-v1))
-- [Cohere Transcribe: Offline multilingual ASR (14 languages, long-form supported)](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026) ([ONNX](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX))
-- [Nemotron-3 Diarization (Sortformer v3): Streaming speaker diarization (up to 8 speakers)](https://huggingface.co/nvidia/Nemotron-3-Diarization) ([ONNX](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization))
-- Token-level timestamps (CTC, TDT)
-
 ## Notes
 
 - Audio: 16kHz mono WAV (16-bit PCM or 32-bit float)
-- CTC/TDT models have ~4-5 minute audio length limit. For longer files, use streaming models or split into chunks
+- CTC/TDT models have ~4-5 minute audio length limit. For longer files, use streaming models, Multitalker TDT, or split into chunks
+- Token-level timestamps: CTC, TDT
 
 ## License
 

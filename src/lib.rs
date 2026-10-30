@@ -69,6 +69,8 @@ mod parakeet_tdt;
 mod parakeet_unified;
 #[cfg(feature = "sortformer")]
 pub mod sortformer;
+#[cfg(feature = "sortformer")]
+mod multitalker_tdt;
 #[cfg(feature = "multitalker")]
 mod model_multitalker;
 #[cfg(feature = "multitalker")]
@@ -104,6 +106,9 @@ pub use model_unified::{ParakeetUnifiedModel, UnifiedModelConfig};
 pub use nemotron::{Nemotron, NemotronHandle, NemotronMode, SentencePieceVocab, TokenInfo};
 pub use parakeet_eou::{ParakeetEOU, ParakeetEOUHandle};
 pub use parakeet_unified::{ParakeetUnified, ParakeetUnifiedHandle, UnifiedStreamingConfig};
+
+#[cfg(feature = "sortformer")]
+pub use multitalker_tdt::{MultitalkerTDT, MultitalkerTDTConfig, SpeakerUtterance};
 
 #[cfg(feature = "multitalker")]
 pub use multitalker::{LatencyMode, MultitalkerASR, MultitalkerConfig, SpeakerTranscript, WordTimestamp};

@@ -12,3 +12,4 @@ DS_Store
 *.onnx.data
 *.onnx_data_*
 *.model
+__pycache__/
