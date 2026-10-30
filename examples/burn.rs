@@ -11,6 +11,8 @@ They read the same model files as the ONNX Runtime backend:
         English or multilingual
   multitalker  Multitalker folder (fp32 encoder.onnx + .data, decoder_joint.onnx, tokenizer.model);
         5th argument: nemotron3_diar_v3.onnx (needs --features multitalker)
+  multitalker_tdt  Multitalker TDT folder (same files as tdt); 5th argument: nemotron3_diar_v3.onnx
+        (needs --features sortformer)
   diar  nemotron3_diar_v3.onnx (Nemotron-3 Diarization; needs --features sortformer),
         optional 5th argument: latency preset offline (default) | low | very-low | ultra
   cohere  Cohere Transcribe folder (fp32 encoder_model.onnx + .onnx_data*, decoder_model_merged.onnx
@@ -39,7 +41,7 @@ type Run = Box<dyn FnMut() -> Result<Vec<String>, Box<dyn std::error::Error>>>;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let usage = "usage: burn <tdt|ctc|unified|eou|nemotron|multitalker|diar|cohere> <audio.wav> <model path> [cpu|gpu|ort] [diar preset | diar model]";
+    let usage = "usage: burn <tdt|ctc|unified|eou|nemotron|multitalker|multitalker_tdt|diar|cohere> <audio.wav> <model path> [cpu|gpu|ort] [diar preset | diar model]";
     let (Some(kind), Some(audio_path), Some(model_path)) = (args.get(1), args.get(2), args.get(3))
     else {
         return Err(usage.into());
@@ -165,6 +167,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .transcribe_audio_multitalker(&mono)?
                     .iter()
                     .map(|t| format!("[speaker_{}] {}", t.speaker_id, t.text))
+                    .collect())
+            })
+        }
+        #[cfg(feature = "sortformer")]
+        "multitalker_tdt" => {
+            let diar = args
+                .get(5)
+                .ok_or("multitalker_tdt needs the diarization model as 5th argument")?;
+            let mut asr =
+                parakeet_rs::MultitalkerTDT::from_pretrained(model_path, diar, Some(config))?;
+            Box::new(move || {
+                Ok(asr
+                    .transcribe(&audio, rate, channels)?
+                    .iter()
+                    .map(|u| {
+                        format!(
+                            "[{:6.2}s - {:6.2}s] speaker_{}: {}",
+                            u.start, u.end, u.speaker_id, u.text
+                        )
+                    })
                     .collect())
             })
         }
