@@ -7,12 +7,6 @@ Multitalker TDT: one transcript per speaker, even when they talk over each other
 Audio: 16 kHz WAV (stereo is mixed down).
 */
 
-#[cfg(not(feature = "sortformer"))]
-fn main() {
-    eprintln!("This example requires the 'sortformer' feature: --features sortformer");
-}
-
-#[cfg(feature = "sortformer")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use parakeet_rs::{ExecutionConfig, MultitalkerTDT};
     use std::time::Instant;

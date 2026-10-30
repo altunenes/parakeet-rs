@@ -38,7 +38,7 @@ path = "examples/streaming_diarization.rs"
 [[example]]
 name = "multitalker_tdt"
 path = "examples/multitalker_tdt.rs"
-required-features = ["sortformer"]
+required-features = ["ort", "sortformer"]
 
 [[example]]
 name = "shared_model"
