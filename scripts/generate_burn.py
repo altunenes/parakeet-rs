@@ -616,6 +616,20 @@ def sortformer_patches(model):
     return declare_opset_19(shape_scatter_to_concat(default_patches(model)))
 
 
+def multitalker_tdt_patches(model):
+    """Speaker masks come in at the encoder frame rate; parakeet-rs stretches them itself.
+
+    The export stretches them in the graph with a Resize to a size known only at run time,
+    which burn-onnx 0.22 cannot convert.
+    """
+    for resize in [n for n in model.graph.node if n.op_type == "Resize"]:
+        for node in model.graph.node:
+            for k, name in enumerate(node.input):
+                if name == resize.output[0]:
+                    node.input[k] = resize.input[0]
+    return default_patches(prune(model))
+
+
 def inline_if(model, branch):
     """Replace every top-level If with the nodes of one branch ("then_branch" or "else_branch").
 
@@ -826,6 +840,10 @@ MODELS = {
     "tdt": (
         "altunenes/parakeet-rs parakeet-tdt-0.6b-v3 (scripts/export_parakeet_tdt.py)",
         [graph("encoder-model.onnx", "tdt_encoder", simplify=False), graph("decoder_joint-model.onnx", "tdt_decoder_joint", post=tdt_decoder)],
+    ),
+    "multitalker_tdt": (
+        "altunenes/parakeet-rs multitalker-tdt-0.6b-v3 (decoder_joint is plain TDT's)",
+        [graph("encoder-model.onnx", "multitalker_tdt_encoder", patch=multitalker_tdt_patches, simplify=False)],
     ),
     "ctc": (
         "altunenes/parakeet-rs parakeet-ctc-0.6b (scripts/export_parakeet_ctc.py)",

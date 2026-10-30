@@ -48,6 +48,8 @@ mod generated {
         nemotron_multi_encoder, nemotron_multi_encoder_weights,
         nemotron_multi_decoder_joint, nemotron_multi_decoder_joint_weights,
         tdt_encoder, tdt_encoder_weights, tdt_decoder_joint, tdt_decoder_joint_weights,
+        #[cfg(feature = "sortformer")] multitalker_tdt_encoder,
+        #[cfg(feature = "sortformer")] multitalker_tdt_encoder_weights,
         unified_encoder, unified_encoder_weights, unified_decoder_joint, unified_decoder_joint_weights,
         #[cfg(feature = "multitalker")] multitalker_encoder,
         #[cfg(feature = "multitalker")] multitalker_encoder_weights,

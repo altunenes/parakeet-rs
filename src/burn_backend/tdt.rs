@@ -1,5 +1,7 @@
 //! Parakeet TDT encoder and decoder/joint on burn.
 
+#[cfg(feature = "sortformer")]
+use super::generated::{multitalker_tdt_encoder, multitalker_tdt_encoder_weights};
 use super::generated::{
     tdt_decoder_joint, tdt_decoder_joint_weights, tdt_encoder, tdt_encoder_weights,
 };
@@ -10,8 +12,14 @@ use burn::tensor::Device;
 use ndarray::{Array3, ArrayView3};
 use std::path::Path;
 
+enum EncoderModel {
+    Plain(Box<tdt_encoder::Model>),
+    #[cfg(feature = "sortformer")]
+    Multitalker(Box<multitalker_tdt_encoder::Model>),
+}
+
 pub(crate) struct TdtEncoder {
-    model: tdt_encoder::Model,
+    model: EncoderModel,
     device: Device,
 }
 
@@ -19,27 +27,93 @@ impl TdtEncoder {
     pub(crate) fn load(path: &Path, provider: ExecutionProvider) -> Result<Self> {
         let device = super::device(provider)?;
         let file = onnx::OnnxFile::open(path)?;
-        let mut model = guard("allocating the model", || tdt_encoder::Model::new(&device))?;
-        file.load(&mut model, tdt_encoder_weights::WEIGHTS)?;
+        let multitalker = file
+            .info
+            .inputs
+            .iter()
+            .any(|(name, _)| name == "spk_targets");
+        let model = if multitalker {
+            load_multitalker(&file, &device)?
+        } else {
+            let mut model = guard("allocating the model", || tdt_encoder::Model::new(&device))?;
+            file.load(&mut model, tdt_encoder_weights::WEIGHTS)?;
+            EncoderModel::Plain(Box::new(model))
+        };
         Ok(Self { model, device })
     }
 
     /// `features` is `[1, n_mels, time]`; returns the encoder output `[1, dim, frames]` and the
-    /// number of valid frames.
-    pub(crate) fn run(&self, features: Array3<f32>) -> Result<(Array3<f32>, i64)> {
+    /// number of valid frames. `speakers`: (speaker, everyone else) activity, multitalker only.
+    pub(crate) fn run(
+        &self,
+        features: Array3<f32>,
+        speakers: Option<&(Vec<f32>, Vec<f32>)>,
+    ) -> Result<(Array3<f32>, i64)> {
         let time = features.dim().2;
-        let (out, len) = guard("running the encoder", || {
-            let (out, len) = self.model.forward(
-                tensor3(features.view(), &self.device),
-                ints(vec![time as i64], [1], &self.device),
-            );
-            (array3(out), vec_i64(len))
-        })?;
+        let audio = tensor3(features.view(), &self.device);
+        let length = ints(vec![time as i64], [1], &self.device);
+        let (out, len) = match &self.model {
+            EncoderModel::Plain(model) => {
+                if speakers.is_some() {
+                    return Err(Error::Config(
+                        "speaker targets need a multitalker TDT encoder (spk_targets input)".into(),
+                    ));
+                }
+                guard("running the encoder", || {
+                    let (out, len) = model.forward(audio, length);
+                    (array3(out), vec_i64(len))
+                })?
+            }
+            #[cfg(feature = "sortformer")]
+            EncoderModel::Multitalker(model) => {
+                let frames = (time - 1) / 8 + 1;
+                let (spk, bg) = match speakers {
+                    Some((spk, bg)) => (stretch(spk, frames), stretch(bg, frames)),
+                    None => (vec![1.0; frames], vec![0.0; frames]),
+                };
+                let mask = |m: Vec<f32>| {
+                    burn::tensor::Tensor::<2>::from_data(
+                        burn::tensor::TensorData::new(m, [1, frames]),
+                        &self.device,
+                    )
+                };
+                let (spk, bg) = (mask(spk), mask(bg));
+                guard("running the encoder", || {
+                    let (out, len) = model.forward(audio, length, spk, bg);
+                    (array3(out), vec_i64(len))
+                })?
+            }
+        };
         let len = *len?
             .first()
             .ok_or_else(|| Error::Model("empty encoder length".into()))?;
         Ok((out?, len))
     }
+}
+
+#[cfg(feature = "sortformer")]
+fn load_multitalker(file: &onnx::OnnxFile, device: &Device) -> Result<EncoderModel> {
+    let mut model = guard("allocating the model", || {
+        multitalker_tdt_encoder::Model::new(device)
+    })?;
+    file.load(&mut model, multitalker_tdt_encoder_weights::WEIGHTS)?;
+    Ok(EncoderModel::Multitalker(Box::new(model)))
+}
+
+#[cfg(not(feature = "sortformer"))]
+fn load_multitalker(_: &onnx::OnnxFile, _: &Device) -> Result<EncoderModel> {
+    Err(Error::Config(
+        "multitalker TDT on burn needs the `sortformer` feature".into(),
+    ))
+}
+
+/// `mask` stretched to `frames` values, nearest earlier frame (what the ONNX export's Resize does).
+#[cfg(feature = "sortformer")]
+fn stretch(mask: &[f32], frames: usize) -> Vec<f32> {
+    if mask.is_empty() {
+        return vec![0.0; frames];
+    }
+    (0..frames).map(|i| mask[i * mask.len() / frames]).collect()
 }
 
 /// Output of one decoder/joint step.
@@ -120,4 +194,17 @@ fn joint_output_size(file: &onnx::OnnxFile) -> Result<usize> {
         ));
     };
     Ok(file.dims(key)?.iter().product())
+}
+
+#[cfg(all(test, feature = "sortformer"))]
+mod stretch_tests {
+    use super::stretch;
+
+    #[test]
+    fn nearest_earlier_frame() {
+        assert_eq!(stretch(&[1.0, 0.0], 4), [1.0, 1.0, 0.0, 0.0]);
+        assert_eq!(stretch(&[1.0], 3), [1.0, 1.0, 1.0]);
+        assert_eq!(stretch(&[1.0, 0.0, 1.0, 0.0], 2), [1.0, 1.0]);
+        assert_eq!(stretch(&[], 2), [0.0, 0.0]);
+    }
 }
