@@ -3,7 +3,7 @@ use crate::config::PreprocessorConfig;
 use crate::decoder::{TimedToken, TranscriptionResult};
 use crate::error::{Error, Result};
 use crate::execution::ModelConfig as ExecutionConfig;
-use crate::model_unified::{ParakeetUnifiedModel, UnifiedModelConfig};
+use crate::model_unified::{ParakeetUnifiedModel, UnifiedModelConfig, AUTO_PROMPT};
 use crate::nemotron::SentencePieceVocab;
 use crate::timestamps::{process_timestamps, TimestampMode};
 use crate::transcriber::Transcriber;
@@ -21,6 +21,19 @@ const DECODER_LSTM_DIM: usize = 640;
 const DECODER_LSTM_LAYERS: usize = 2;
 const SUBSAMPLING_FACTOR: usize = 8;
 const MAX_SYMBOLS_PER_STEP: usize = 10;
+
+/// Language ids of nemotron-labs-unified-asr-0.6b, from the .nemo prompt_dictionary
+/// (its 25 languages, short and locale codes).
+const PROMPT_DICTIONARY: &[(&str, i64)] = &[
+    ("bg", 30), ("bg-BG", 30), ("cs", 22), ("cs-CZ", 22), ("da", 25), ("da-DK", 25), ("de", 9),
+    ("de-DE", 9), ("el", 21), ("el-GR", 21), ("en", 0), ("en-US", 0), ("es", 3), ("es-ES", 2),
+    ("et", 60), ("et-EE", 60), ("fi", 26), ("fi-FI", 26), ("fr", 8), ("fr-FR", 8), ("hr", 29),
+    ("hr-HR", 29), ("hu", 23), ("hu-HU", 23), ("it", 15), ("it-IT", 15), ("lt", 31),
+    ("lt-LT", 31), ("lv", 61), ("lv-LV", 61), ("mt", 102), ("mt-MT", 102), ("nl", 16),
+    ("nl-NL", 16), ("pl", 17), ("pl-PL", 17), ("pt", 13), ("pt-PT", 13), ("ro", 20),
+    ("ro-RO", 20), ("ru", 11), ("ru-RU", 11), ("sk", 28), ("sk-SK", 28), ("sl", 62),
+    ("sl-SI", 62), ("sv", 24), ("sv-SE", 24), ("uk", 19), ("uk-UA", 19), ("auto", 127),
+];
 
 #[derive(Debug, Clone, Copy)]
 pub struct UnifiedStreamingConfig {
@@ -123,6 +136,7 @@ pub struct ParakeetUnifiedHandle {
     preprocessor_config: Arc<PreprocessorConfig>,
     feature_cache: Arc<crate::audio::FeatureCache>,
     blank_id: usize,
+    has_prompt: bool,
 }
 
 pub struct ParakeetUnified {
@@ -134,6 +148,8 @@ pub struct ParakeetUnified {
     state_2: Array3<f32>,
     last_token: i32,
     blank_id: usize,
+    /// Language id for the multilingual model, `None` for the English one.
+    prompt_index: Option<i64>,
     streaming_config: UnifiedStreamingConfig,
     audio_buffer: Vec<f32>,
     buffer_start_sample: usize,
@@ -182,14 +198,29 @@ impl ParakeetUnifiedHandle {
         };
 
         let feature_cache = Arc::new(crate::audio::FeatureCache::from_config(&preprocessor_config));
+        let has_prompt = model.has_prompt;
 
         Ok(Self {
+            has_prompt,
             model: Arc::new(Mutex::new(model)),
             vocab: Arc::new(vocab),
             preprocessor_config: Arc::new(preprocessor_config),
             feature_cache,
             blank_id,
         })
+    }
+
+    /// True for the multilingual model, which takes a language (see [`ParakeetUnified::set_target_lang`]).
+    pub fn is_multilingual(&self) -> bool {
+        self.has_prompt
+    }
+
+    /// Language codes the multilingual model accepts. Empty for the English model.
+    pub fn available_languages(&self) -> Vec<&'static str> {
+        if !self.has_prompt {
+            return Vec::new();
+        }
+        PROMPT_DICTIONARY.iter().map(|(code, _)| *code).collect()
     }
 
     /// Backwards-compatible alias for [`ParakeetUnifiedHandle::from_pretrained`].
@@ -247,6 +278,7 @@ impl ParakeetUnified {
             state_2: Array3::zeros((DECODER_LSTM_LAYERS, 1, DECODER_LSTM_DIM)),
             last_token: blank_id as i32,
             blank_id,
+            prompt_index: handle.has_prompt.then_some(AUTO_PROMPT),
             streaming_config,
             audio_buffer: Vec::new(),
             buffer_start_sample: 0,
@@ -254,6 +286,24 @@ impl ParakeetUnified {
             accumulated_tokens: Vec::new(),
             accumulated_timed_tokens: Vec::new(),
         })
+    }
+
+    /// Language of the audio for the multilingual model, like `"de"`, `"fr-FR"` or `"auto"`
+    /// (the default). Takes effect from the next encoder call.
+    pub fn set_target_lang(&mut self, lang: &str) -> Result<()> {
+        if self.prompt_index.is_none() {
+            return Err(Error::Config(
+                "set_target_lang needs the multilingual Unified model".into(),
+            ));
+        }
+        let index = PROMPT_DICTIONARY
+            .iter()
+            .find_map(|(code, id)| (*code == lang).then_some(*id))
+            .ok_or_else(|| {
+                Error::Config(format!("unknown language '{lang}', try de, fr, es, en or auto"))
+            })?;
+        self.prompt_index = Some(index);
+        Ok(())
     }
 
     pub fn streaming_config(&self) -> UnifiedStreamingConfig {
@@ -350,7 +400,7 @@ impl ParakeetUnified {
                 let mut model = self.model.lock().map_err(|e| {
                     Error::Model(format!("Failed to acquire model lock: {e}"))
                 })?;
-                model.run_encoder(&features)?
+                model.run_encoder(&features, self.prompt_index)?
             };
 
             let available_frames = (encoded_len as usize).min(encoded.shape()[2]);
@@ -548,7 +598,7 @@ impl ParakeetUnified {
                 .model
                 .lock()
                 .map_err(|e| Error::Model(format!("Failed to acquire model lock: {e}")))?;
-            model.run_encoder(&features)?
+            model.run_encoder(&features, self.prompt_index)?
         };
         let frame_count = (encoded_len as usize).min(encoded.shape()[2]);
         let tokens = self.decode_encoder_frames(&encoded, 0, frame_count, 0)?;

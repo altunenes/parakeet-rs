@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-# Export NVIDIA parakeet-unified-en-0.6b to ONNX for parakeet-rs (offline encoder).
+# Export NVIDIA parakeet-unified-en-0.6b or nemotron-labs-unified-asr-0.6b (25 languages)
+# to ONNX for parakeet-rs (offline encoder).
+#
+# The multilingual model gets a `prompt_index` input on the encoder: the language id from
+# the .nemo prompt_dictionary (auto = 127). The prompt head is folded into the graph.
 #
 # The encoder is exported with PyTorch's dynamo exporter (opset 23); onnx_export.py in this
 # folder holds the shared settings, keep it next to this script.
@@ -192,16 +196,66 @@ class OfflineEncoder(torch.nn.Module):
         return self.encoder(audio_signal=audio_signal, length=length)
 
 
+class PromptEncoder(torch.nn.Module):
+    """Encoder plus the language prompt head, same math as the NeMo forward."""
+
+    def __init__(self, model: Any) -> None:
+        super().__init__()
+        self.encoder = model.encoder
+        self.prompt_kernel = model.prompt_kernel
+        self.num_prompts = model.num_prompts
+
+    def forward(self, audio_signal: torch.Tensor, length: torch.Tensor, prompt_index: torch.Tensor):
+        encoded, encoded_len = self.encoder(audio_signal=audio_signal, length=length)
+        encoded = encoded.transpose(1, 2)
+        batch, time, _ = encoded.shape
+        prompt = torch.zeros(batch, time, self.num_prompts, dtype=encoded.dtype)
+        prompt.scatter_(2, prompt_index.view(batch, 1, 1).expand(-1, time, -1), 1.0)
+        encoded = self.prompt_kernel(torch.cat([encoded, prompt], dim=-1))
+        return encoded.transpose(1, 2), encoded_len
+
+
+def has_prompt(model: Any) -> bool:
+    return hasattr(model, "prompt_kernel") and bool(getattr(model, "concat", False))
+
+
 def export_encoder(model: Any, dest: Path) -> None:
     audio = torch.randn(1, 16000 * 4) * 0.1
     features, lengths = model.preprocessor(input_signal=audio, length=torch.tensor([audio.shape[1]]))
+    if not has_prompt(model):
+        onnx_export.export(
+            OfflineEncoder(model.encoder),
+            (features, lengths),
+            str(dest),
+            input_names=["audio_signal", "length"],
+            output_names=["outputs", "encoded_lengths"],
+            dynamic_axes={"audio_signal": {0: "batch", 2: "time"}, "length": {0: "batch"}},
+        )
+        return
+
+    wrapper = PromptEncoder(model).eval()
+    prompt_index = torch.tensor([model.cfg.model_defaults.prompt_dictionary["de"]])
+    # The wrapper must match NeMo before 2.5 GB goes to disk.
+    ours, _ = wrapper(features, lengths, prompt_index)
+    ref, _ = model.forward(
+        processed_signal=features, processed_signal_length=lengths, prompt_indices=prompt_index
+    )
+    diff = (ours - ref).abs().max().item()
+    print(f"  prompt wrapper vs NeMo max diff: {diff:.2e}")
+    if diff > 1e-4:
+        raise RuntimeError("prompt wrapper does not match NeMo")
+
     onnx_export.export(
-        OfflineEncoder(model.encoder),
-        (features, lengths),
+        wrapper,
+        (features, lengths, prompt_index),
         str(dest),
-        input_names=["audio_signal", "length"],
+        input_names=["audio_signal", "length", "prompt_index"],
         output_names=["outputs", "encoded_lengths"],
-        dynamic_axes={"audio_signal": {0: "batch", 2: "time"}, "length": {0: "batch"}},
+        dynamic_axes={
+            "audio_signal": {0: "batch", 2: "time"},
+            "length": {0: "batch"},
+            "prompt_index": {0: "batch"},
+        },
     )
 
 
@@ -234,8 +288,9 @@ def validate_graph_io(model_path: Path, required_inputs: set[str], required_outp
         )
 
 
-def validate_artifacts(output_dir: Path, quantized: bool) -> None:
+def validate_artifacts(output_dir: Path, quantized: bool, prompted: bool) -> None:
     print("Validating exported artifacts...")
+    encoder_inputs = REQUIRED_ENCODER_INPUTS | ({"prompt_index"} if prompted else set())
 
     encoder_path = output_dir / "encoder.onnx"
     encoder_data_path = output_dir / "encoder.onnx.data"
@@ -246,7 +301,7 @@ def validate_artifacts(output_dir: Path, quantized: bool) -> None:
         if not path.exists():
             raise RuntimeError(f"Missing required export artifact: {path}")
 
-    validate_graph_io(encoder_path, REQUIRED_ENCODER_INPUTS, REQUIRED_ENCODER_OUTPUTS)
+    validate_graph_io(encoder_path, encoder_inputs, REQUIRED_ENCODER_OUTPUTS)
     validate_graph_io(decoder_path, REQUIRED_DECODER_INPUTS, REQUIRED_DECODER_OUTPUTS)
 
     if quantized:
@@ -257,7 +312,7 @@ def validate_artifacts(output_dir: Path, quantized: bool) -> None:
             if not path.exists():
                 raise RuntimeError(f"Missing quantized export artifact: {path}")
 
-        validate_graph_io(quantized_encoder, REQUIRED_ENCODER_INPUTS, REQUIRED_ENCODER_OUTPUTS)
+        validate_graph_io(quantized_encoder, encoder_inputs, REQUIRED_ENCODER_OUTPUTS)
         validate_graph_io(quantized_decoder, REQUIRED_DECODER_INPUTS, REQUIRED_DECODER_OUTPUTS)
 
 
@@ -319,6 +374,10 @@ def export_model(model_path: Path, output_dir: Path, work_dir: Path, quantize_in
 
     print(f"  Model class : {type(model).__name__}")
     print(f"  Encoder type: {type(model.encoder).__name__}")
+    prompted = has_prompt(model)
+    if prompted:
+        prompts = dict(model.cfg.model_defaults.prompt_dictionary)
+        print(f"  Prompts     : {len(prompts)} codes, auto = {prompts.get('auto')}")
 
     onnx_export.use_sdpa(model.encoder)
 
@@ -357,7 +416,7 @@ def export_model(model_path: Path, output_dir: Path, work_dir: Path, quantize_in
         )
 
     extract_tokenizer_artifacts(model_path, output_dir)
-    validate_artifacts(output_dir, quantize_int8)
+    validate_artifacts(output_dir, quantize_int8, prompted)
     print_artifact_summary(output_dir, quantize_int8)
 
 
