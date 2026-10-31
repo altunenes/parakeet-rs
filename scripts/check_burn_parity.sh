@@ -61,6 +61,7 @@ check tdt            tdt         tdt            ""          tdt/encoder-model.on
 check parakeet-ultra tdt         parakeet-ultra ""          parakeet-ultra/encoder-model.onnx
 check ctc            ctc         ctc            ""          ctc/model.onnx ctc/model.onnx_data
 check unified        unified     unified        ""          unified/encoder.onnx unified/encoder.onnx.data
+check unified-multi  unified     unified-multi  ""          unified-multi/encoder.onnx unified-multi/encoder.onnx.data
 check eou            eou         eou            ""          eou/encoder.onnx
 check nemotron       nemotron    nemotron       ""          nemotron/encoder.onnx
 check nemotron-multi nemotron    nemotron_multi ""          nemotron_multi/encoder.onnx
