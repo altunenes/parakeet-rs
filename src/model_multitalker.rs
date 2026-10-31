@@ -71,10 +71,10 @@ enum DecoderJoint {
 fn model_file(dir: &Path, name: &str, allow_int8: bool) -> Result<PathBuf> {
     let int8 = dir.join(format!("{name}.int8.onnx"));
     let fp32 = dir.join(format!("{name}.onnx"));
-    if allow_int8 && int8.exists() {
-        Ok(int8)
-    } else if fp32.exists() {
+    if fp32.exists() {
         Ok(fp32)
+    } else if allow_int8 && int8.exists() {
+        Ok(int8)
     } else if int8.exists() {
         Err(Error::Config(format!(
             "only {name}.int8.onnx in {}; the burn backend needs the fp32 {name}.onnx",
