@@ -9,6 +9,9 @@ use ndarray::{Array1, Array2, Array3};
 use ort::session::Session;
 use std::path::{Path, PathBuf};
 
+/// Language id NeMo uses for `auto` in the multilingual Unified model.
+pub const AUTO_PROMPT: i64 = 127;
+
 #[derive(Debug, Clone, Copy)]
 pub struct UnifiedModelConfig {
     pub vocab_size: usize,
@@ -34,6 +37,8 @@ pub struct ParakeetUnifiedModel {
     encoder: Encoder,
     decoder_joint: DecoderJoint,
     pub config: UnifiedModelConfig,
+    /// The multilingual export takes a language id (`prompt_index`) on the encoder.
+    pub has_prompt: bool,
 }
 
 /// The encoder graph, on whichever backend the execution configuration selects.
@@ -70,8 +75,10 @@ impl ParakeetUnifiedModel {
             let encoder = UnifiedEncoder::load(&encoder_path, provider)?;
             // The decoder/joint runs once per token: keep it off the GPU.
             let provider = provider.per_token_provider();
-            let decoder = UnifiedDecoderJoint::load(&decoder_joint_path, provider)?;
+            let decoder =
+                UnifiedDecoderJoint::load(&decoder_joint_path, provider, encoder.has_prompt())?;
             return Ok(Self {
+                has_prompt: encoder.has_prompt(),
                 encoder: Encoder::Burn(Box::new(encoder)),
                 decoder_joint: DecoderJoint::Burn(Box::new(decoder)),
                 config,
@@ -81,7 +88,9 @@ impl ParakeetUnifiedModel {
         {
             let encoder = exec_config.build_session(&encoder_path)?;
             let decoder_joint = exec_config.build_session(&decoder_joint_path)?;
+            let has_prompt = encoder.inputs().iter().any(|i| i.name() == "prompt_index");
             Ok(Self {
+                has_prompt,
                 encoder: Encoder::Ort(encoder),
                 decoder_joint: DecoderJoint::Ort(decoder_joint),
                 config,
@@ -130,7 +139,12 @@ impl ParakeetUnifiedModel {
         )))
     }
 
-    pub fn run_encoder(&mut self, features: &Array2<f32>) -> Result<(Array3<f32>, i64)> {
+    /// `prompt_index` is the language id, used only by the multilingual export.
+    pub fn run_encoder(
+        &mut self,
+        features: &Array2<f32>,
+        prompt_index: Option<i64>,
+    ) -> Result<(Array3<f32>, i64)> {
         let time_steps = features.shape()[0];
         let feature_size = features.shape()[1];
 
@@ -145,10 +159,18 @@ impl ParakeetUnifiedModel {
             Encoder::Ort(session) => {
                 let input_length = Array1::from_vec(vec![time_steps as i64]);
 
-                let outputs = session.run(ort::inputs!(
+                let mut inputs = ort::inputs!(
                     "audio_signal" => ort::value::Value::from_array(input)?,
                     "length" => ort::value::Value::from_array(input_length)?
-                ))?;
+                );
+                if self.has_prompt {
+                    let index = Array1::from_vec(vec![prompt_index.unwrap_or(AUTO_PROMPT)]);
+                    inputs.push((
+                        "prompt_index".into(),
+                        ort::value::Value::from_array(index)?.into(),
+                    ));
+                }
+                let outputs = session.run(inputs)?;
 
                 let encoder_out = extract_3d_f32(&outputs["outputs"], "encoder output")?;
                 let encoded_len =
@@ -157,7 +179,7 @@ impl ParakeetUnifiedModel {
                 Ok((encoder_out, encoded_len))
             }
             #[cfg(feature = "burn")]
-            Encoder::Burn(encoder) => encoder.run(input.view()),
+            Encoder::Burn(encoder) => encoder.run(input.view(), prompt_index.unwrap_or(AUTO_PROMPT)),
         }
     }
 

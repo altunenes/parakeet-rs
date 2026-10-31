@@ -10,15 +10,16 @@ Fast speech recognition and diarization with NVIDIA's Parakeet models, on ONNX R
 |---|---|---|---|---|
 | [CTC](https://huggingface.co/nvidia/parakeet-ctc-0.6b) | Offline, punctuation & capitalization | English | [parakeet-ctc-0.6b](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ctc-0.6b) | `raw` |
 | [TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | Offline, auto language detection | 25 | [parakeet-tdt-0.6b-v3](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-tdt-0.6b-v3) | `raw` |
-| [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) | Moondream's post-trained TDT, more accurate, same API | 25 | [parakeet-ultra](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ultra) | `raw` |
-| [Orukeet](https://huggingface.co/oruk/orukeet) | TDT fine-tune, int8, same API | 25 | [see below](#orukeet) | `orukeet` |
-| [EOU](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1) | Streaming, end-of-utterance detection | English | [realtime_eou_120m-v1-onnx](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx) | `streaming` |
-| [Nemotron](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b) | Cache-aware streaming, verbatim | English | [nemotron-speech-streaming-en-0.6b](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b) | `streaming` |
-| [Nemotron 3.5](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) | Cache-aware streaming, polished output | 40 locales | [nemotron-3.5-asr-streaming-0.6b-onnx](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3.5-asr-streaming-0.6b-onnx) | `streaming` |
+| [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) | Moondream's post trained TDT, more accurate, same API | 25 | [parakeet-ultra](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-ultra) | `raw` |
+| [Orukeet](https://huggingface.co/oruk/orukeet) | TDT fine tune, int8, same API | 25 | [see below](#orukeet) | `orukeet` |
+| [EOU](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1) | Streaming, end of utterance detection | English | [realtime_eou_120m-v1-onnx](https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx) | `streaming` |
+| [Nemotron](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b) | Cache aware streaming, verbatim | English | [nemotron-speech-streaming-en-0.6b](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b) | `streaming` |
+| [Nemotron 3.5](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) | Cache aware streaming, multilingual | 40 locales | [nemotron-3.5-asr-streaming-0.6b-onnx](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3.5-asr-streaming-0.6b-onnx) | `streaming` |
 | [Unified](https://huggingface.co/nvidia/parakeet-unified-en-0.6b) | Offline + buffered streaming | English | [parakeet-unified-en-0.6b](https://huggingface.co/altunenes/parakeet-rs/tree/main/parakeet-unified-en-0.6b) | `unified` |
+| [Unified multilingual](https://huggingface.co/nvidia/nemotron-labs-unified-asr-0.6b) | Offline + buffered streaming, language prompt | 25 | [nemotron-labs-unified-asr-0.6b](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-labs-unified-asr-0.6b) | `unified` |
 | [Multitalker](https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1) | Streaming, one transcript per speaker | English | [multitalker-parakeet-streaming-0.6b-v1](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-parakeet-streaming-0.6b-v1) | `multitalker` |
 | **Multitalker TDT** | Offline, one transcript per speaker, overlaps included ([how](https://altunenes.github.io/posts/multitalker/)) | 25 | [multitalker-tdt-0.6b-v3](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-tdt-0.6b-v3) | `multitalker_tdt` |
-| [Cohere Transcribe](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026) | Offline, long-form, punctuation & ITN toggles | 14 | [onnx-community](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX) | `cohere` |
+| [Cohere Transcribe](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026) | Offline, long form, punctuation & ITN toggles | 14 | [onnx-community](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX) | `cohere` |
 | [Nemotron-3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization) | Who speaks when, streaming, up to 8 speakers | any | [nemotron-3-diarization](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization) | `diarization` |
 
 Download a whole folder and point `from_pretrained` at it (all files of a model in one directory):
@@ -88,6 +89,29 @@ for chunk in audio.chunks(CHUNK_SIZE) {
     let text = model.transcribe_chunk(chunk)?;
     print!("{}", text);
 }
+```
+</details>
+
+<details>
+<summary><b>Unified</b> (offline + buffered streaming, English or 25 languages)</summary>
+
+One model for both offline and streaming. The multilingual one takes the language of the audio;
+`auto` is the default, a known language is a bit more accurate.
+```rust
+use parakeet_rs::{ParakeetUnified, TimestampMode, Transcriber};
+
+let mut model = ParakeetUnified::from_pretrained("./unified", Some(config.clone()))?;
+model.set_target_lang("de")?; // multilingual only (an error on English): "fr", "pl", "auto", ...
+
+// Offline
+let result = model.transcribe_samples(audio.clone(), 16000, 1, Some(TimestampMode::Words))?;
+
+// Streaming: 560 ms chunks, 5.6 s left context by default
+let chunk = model.streaming_config().chunk_samples();
+for piece in audio.chunks(chunk) {
+    print!("{}", model.transcribe_chunk(piece)?);
+}
+print!("{}", model.flush()?);
 ```
 </details>
 

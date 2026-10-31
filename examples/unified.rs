@@ -7,11 +7,15 @@ cargo run --release --example unified 6_speakers.wav
 Streaming:
 cargo run --release --example unified 6_speakers.wav streaming
 
+Multilingual (nemotron-labs-unified-asr-0.6b), language is optional (default auto):
+cargo run --release --example unified german.wav --model ./unified-multi --lang de
+
 ---
 
-Download model from: https://huggingface.co/bobNight/parakeet-unified-en-0.6b-onnx
 Files: encoder.onnx, encoder.onnx.data, decoder_joint.onnx, tokenizer.model
-Place in: ./unified/
+English: parakeet-unified-en-0.6b, multilingual: nemotron-labs-unified-asr-0.6b
+from https://huggingface.co/altunenes/parakeet-rs
+Default folder: ./unified/
 */
 
 use parakeet_rs::{ExecutionConfig, ParakeetUnified, TimestampMode, Transcriber};
@@ -24,13 +28,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     let args: Vec<String> = env::args().collect();
 
-    let audio_path = if args.len() > 1 {
-        &args[1]
-    } else {
-        "6_speakers.wav"
+    let audio_path = args.get(1).map(String::as_str).unwrap_or("6_speakers.wav");
+    let use_streaming = args.iter().any(|a| a == "streaming");
+    let flag = |name: &str| {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1))
+            .map(String::as_str)
     };
-
-    let use_streaming = args.len() > 2 && args[2] == "streaming";
+    let model_dir = flag("--model").unwrap_or("./unified");
 
     // Load audio
     let mut reader = hound::WavReader::open(audio_path)?;
@@ -61,7 +67,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         duration, spec.sample_rate, spec.channels
     );
 
-    let mut model = ParakeetUnified::from_pretrained("./unified", Some(config))?;
+    let mut model = ParakeetUnified::from_pretrained(model_dir, Some(config))?;
+    if let Some(lang) = flag("--lang") {
+        model.set_target_lang(lang)?;
+    }
     let load_time = start_time.elapsed();
     println!("Model loaded in {:.2}s", load_time.as_secs_f32());
 

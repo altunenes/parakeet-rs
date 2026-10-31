@@ -5,7 +5,8 @@ They read the same model files as the ONNX Runtime backend:
   tdt   TDT folder (encoder-model.onnx + .data, decoder_joint-model.onnx, vocab.txt):
         NVIDIA v3 or Moondream's Parakeet Ultra
   ctc   CTC folder (model.onnx + model.onnx_data, tokenizer.json)
-  unified  Unified folder (fp32 encoder.onnx + .data, decoder_joint.onnx, tokenizer.model)
+  unified  Unified folder (fp32 encoder.onnx + .data, decoder_joint.onnx, tokenizer.model),
+        English or multilingual (language: auto)
   eou   realtime EOU folder (encoder.onnx, decoder_joint.onnx, tokenizer.json)
   nemotron  Nemotron streaming folder (encoder.onnx + .data, decoder_joint.onnx, tokenizer.model),
         English or multilingual

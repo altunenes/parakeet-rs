@@ -51,6 +51,8 @@ mod generated {
         #[cfg(feature = "sortformer")] multitalker_tdt_encoder,
         #[cfg(feature = "sortformer")] multitalker_tdt_encoder_weights,
         unified_encoder, unified_encoder_weights, unified_decoder_joint, unified_decoder_joint_weights,
+        unified_multi_encoder, unified_multi_encoder_weights,
+        unified_multi_decoder_joint, unified_multi_decoder_joint_weights,
         #[cfg(feature = "multitalker")] multitalker_encoder,
         #[cfg(feature = "multitalker")] multitalker_encoder_weights,
         #[cfg(feature = "multitalker")] multitalker_decoder_joint,

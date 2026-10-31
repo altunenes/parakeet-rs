@@ -865,6 +865,10 @@ MODELS = {
         "altunenes/parakeet-rs parakeet-unified-en-0.6b (scripts/export_parakeet_unified.py)",
         [graph("encoder.onnx", "unified_encoder", simplify=False), graph("decoder_joint.onnx", "unified_decoder_joint")],
     ),
+    "unified_multi": (
+        "altunenes/parakeet-rs nemotron-labs-unified-asr-0.6b (scripts/export_parakeet_unified.py)",
+        [graph("encoder.onnx", "unified_multi_encoder", simplify=False), graph("decoder_joint.onnx", "unified_multi_decoder_joint")],
+    ),
     "multitalker": (
         "altunenes/parakeet-rs multitalker-parakeet-streaming-0.6b-v1, fp32 (scripts/export_multitalker.py)",
         [graph("encoder.onnx", "multitalker_encoder", simplify=False), graph("decoder_joint.onnx", "multitalker_decoder_joint")],
