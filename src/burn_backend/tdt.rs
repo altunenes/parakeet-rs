@@ -42,6 +42,11 @@ impl TdtEncoder {
         Ok(Self { model, device })
     }
 
+    /// Every multitalker export burn can load has the speaker gate.
+    pub(crate) fn has_speaker_gate(&self) -> bool {
+        !matches!(self.model, EncoderModel::Plain(_))
+    }
+
     /// `features` is `[1, n_mels, time]`; returns the encoder output `[1, dim, frames]` and the
     /// number of valid frames. `speakers`: (speaker, everyone else) activity, multitalker only.
     pub(crate) fn run(
@@ -78,8 +83,14 @@ impl TdtEncoder {
                     )
                 };
                 let (spk, bg) = (mask(spk), mask(bg));
+                // Gate 0 turns the speaker parts off: no targets runs the plain base model.
+                let on = if speakers.is_some() { 1.0 } else { 0.0 };
+                let gate = burn::tensor::Tensor::<1>::from_data(
+                    burn::tensor::TensorData::new(vec![on], [1]),
+                    &self.device,
+                );
                 guard("running the encoder", || {
-                    let (out, len) = model.forward(audio, length, spk, bg);
+                    let (out, len) = model.forward(audio, length, spk, bg, gate);
                     (array3(out), vec_i64(len))
                 })?
             }
@@ -93,6 +104,16 @@ impl TdtEncoder {
 
 #[cfg(feature = "sortformer")]
 fn load_multitalker(file: &onnx::OnnxFile, device: &Device) -> Result<EncoderModel> {
+    if !file
+        .info
+        .inputs
+        .iter()
+        .any(|(name, _)| name == "speaker_gate")
+    {
+        return Err(Error::Config(
+            "this multitalker TDT export is too old for burn: download it again (it needs the speaker_gate input)".into(),
+        ));
+    }
     let mut model = guard("allocating the model", || {
         multitalker_tdt_encoder::Model::new(device)
     })?;
