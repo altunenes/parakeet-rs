@@ -114,6 +114,7 @@ impl MultitalkerTDT {
         let chunk = (self.config.chunk_seconds * SAMPLE_RATE as f32) as usize;
         let min_frames = self.config.min_speech_seconds * SAMPLE_RATE as f32 / FRAME_SAMPLES as f32;
         let edges = chunk_edges(audio.len(), segments, chunk);
+        let gate = self.model.has_speaker_gate();
         let mut utterances = Vec::new();
         for pair in edges.windows(2) {
             let (start, end) = (pair[0], pair[1]);
@@ -124,18 +125,26 @@ impl MultitalkerTDT {
                 .iter()
                 .map(|&speaker| activity(segments, speaker, start, end))
                 .collect();
-            for (i, &speaker) in speakers.iter().enumerate() {
-                if masks[i].iter().sum::<f32>() < min_frames {
-                    continue;
-                }
-                let others = (0..masks[i].len())
-                    .map(|f| {
-                        let other = masks.iter().enumerate().filter(|(j, _)| *j != i);
-                        other.map(|(_, m)| m[f]).fold(0.0, f32::max)
-                    })
-                    .collect();
-                self.model
-                    .set_speaker_targets(Some((masks[i].clone(), others)));
+            let active: Vec<usize> = (0..speakers.len())
+                .filter(|&i| masks[i].iter().sum::<f32>() >= min_frames)
+                .collect();
+            // One speaker: exports with a speaker gate run as the plain base model there,
+            // which is a bit better on single speaker speech.
+            let single = active.len() == 1 && gate;
+            for &i in &active {
+                let speaker = speakers[i];
+                let targets = if single {
+                    None
+                } else {
+                    let others = (0..masks[i].len())
+                        .map(|f| {
+                            let other = masks.iter().enumerate().filter(|(j, _)| *j != i);
+                            other.map(|(_, m)| m[f]).fold(0.0, f32::max)
+                        })
+                        .collect();
+                    Some((masks[i].clone(), others))
+                };
+                self.model.set_speaker_targets(targets);
                 let result = self.model.transcribe_samples(
                     audio[start..end].to_vec(),
                     SAMPLE_RATE as u32,

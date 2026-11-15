@@ -66,6 +66,16 @@ impl Encoder {
             )))
         }
     }
+
+    /// Whether the export has the `speaker_gate` input
+    fn has_speaker_gate(&self) -> bool {
+        match self {
+            #[cfg(feature = "ort")]
+            Self::Ort(session) => session.inputs().iter().any(|i| i.name() == "speaker_gate"),
+            #[cfg(feature = "burn")]
+            Self::Burn(encoder) => encoder.has_speaker_gate(),
+        }
+    }
 }
 
 impl DecoderJoint {
@@ -134,6 +144,11 @@ impl ParakeetTDTModel {
     /// Multitalker TDT only: (speaker, everyone else) activity, one value per 80 ms.
     pub fn set_speaker_targets(&mut self, targets: Option<(Vec<f32>, Vec<f32>)>) {
         self.speaker_targets = targets;
+    }
+
+    /// Multitalker TDT: whether no targets runs the plain base model.
+    pub fn has_speaker_gate(&self) -> bool {
+        self.encoder.has_speaker_gate()
     }
     //file names simply from: https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/main
     /// `int8`: whether int8 exports may be picked (burn runs fp32 exports only).
@@ -244,6 +259,15 @@ impl ParakeetTDTModel {
                             let mask = Array2::from_shape_vec((1, len), mask)
                                 .map_err(|e| Error::Model(format!("{name}: {e}")))?;
                             inputs.push((name.into(), ort::value::Value::from_array(mask)?.into()));
+                        }
+                        //  so no targets gives exactly the base model.
+                        if session.inputs().iter().any(|i| i.name() == "speaker_gate") {
+                            let on = if targets.is_some() { 1.0f32 } else { 0.0 };
+                            let gate = Array1::from_vec(vec![on]);
+                            inputs.push((
+                                "speaker_gate".into(),
+                                ort::value::Value::from_array(gate)?.into(),
+                            ));
                         }
                     }
                     (None, false) => {}
