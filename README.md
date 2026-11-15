@@ -19,6 +19,7 @@ Fast speech recognition and diarization with NVIDIA's Parakeet models, on ONNX R
 | [Unified](https://huggingface.co/nvidia/nemotron-labs-unified-asr-0.6b) | Offline + streaming | 25 | [nemotron-labs-unified-asr-0.6b](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-labs-unified-asr-0.6b) | `unified` |
 | [Multitalker](https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1) | Streaming, per speaker | eng | [multitalker-parakeet-streaming-0.6b-v1](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-parakeet-streaming-0.6b-v1) | `multitalker` |
 | **Multitalker TDT** | Offline, per speaker, overlaps ([how](https://altunenes.github.io/posts/multitalker/)) | 25 | [multitalker-tdt-0.6b-v3](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-tdt-0.6b-v3) | `multitalker_tdt` |
+| **Multitalker Ultra** | Offline, per speaker, overlaps, on Parakeet Ultra | 25 | [multitalker-parakeet-ultra](https://huggingface.co/altunenes/parakeet-rs/tree/main/multitalker-parakeet-ultra) | `multitalker_tdt` |
 | [Cohere Transcribe](https://huggingface.co/CohereLabs/cohere-transcribe-03-2026) | Offline, long form | 14 | [onnx-community](https://huggingface.co/onnx-community/cohere-transcribe-03-2026-ONNX) | `cohere` |
 | [Nemotron-3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization) | Who speaks when, up to 8 | any | [nemotron-3-diarization](https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-3-diarization) | `diarization` |
 
@@ -142,8 +143,8 @@ See `examples/multitalker.rs` for latency modes.
 <details>
 <summary><b>Multitalker TDT</b> (offline, per speaker, 25)</summary>
 
-parakeet-tdt-0.6b-v3 fine tuned with speaker kernels: one transcript per speaker, even when they
-talk over each other. Any audio length.
+parakeet-tdt-0.6b-v3 or Parakeet Ultra with speaker kernels: one transcript per speaker, even when
+they talk over each other. Any audio length. Both folders work with the same code.
 ```toml
 parakeet-rs = { version = "0.4", features = ["sortformer"] }
 ```
@@ -163,7 +164,11 @@ for u in model.transcribe(&audio, 16000, 1)? {
 cpWER with 2 overlapping speakers, plain TDT + diarization → Multitalker TDT: English
 ([LibriSpeechMix](https://github.com/NaoyukiKanda/LibriSpeechMix)) 36.7% → 4.4%, six other
 languages ([MLS](https://huggingface.co/datasets/facebook/multilingual_librispeech) mixtures)
-39.0% → 10.7%. Single speakers stay as good as plain TDT. Details in the
+39.0% → 10.7%. The Ultra version, 1 to 3 speakers: AMI meetings 23.2% → 15.6%, MLS mixtures
+34.5% → 12.5%.
+
+Where only one person speaks, the speaker parts are switched off and the model runs exactly as
+plain TDT or Ultra, so single speaker audio loses nothing. Details in the
 [blog post](https://altunenes.github.io/posts/multitalker/).
 </details>
 
