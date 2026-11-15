@@ -132,9 +132,15 @@ impl ParakeetTDT {
     }
 
     /// Multitalker TDT only: (speaker, everyone else) activity per 80 ms for the next
-    /// transcription. `None` hears everyone, like plain TDT.
+    /// transcription. `None` hears everyone; exports with a `speaker_gate` input then run
+    /// exactly as the base model.
     pub fn set_speaker_targets(&mut self, targets: Option<(Vec<f32>, Vec<f32>)>) {
         self.model.set_speaker_targets(targets);
+    }
+
+    /// Multitalker TDT: whether `set_speaker_targets(None)` runs exactly the base model.
+    pub fn has_speaker_gate(&self) -> bool {
+        self.model.has_speaker_gate()
     }
 }
 
