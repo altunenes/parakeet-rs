@@ -15,12 +15,15 @@ impl ParakeetTDTDecoder {
     }
 
     /// Decode tokens with timestamps
-    /// For TDT models, greedy decoding is done in the model, here we just convert to text
+    /// For TDT models, greedy decoding is done in the model, here we just convert to text.
+    /// `probs[i]` is the softmax probability of `tokens[i]` and becomes
+    /// `TimedToken::confidence` (`None` if `probs` is shorter than `tokens`).
     pub fn decode_with_timestamps(
         &self,
         tokens: &[usize],
         frame_indices: &[usize],
         durations: &[usize],
+        probs: &[f32],
         hop_length: usize,
         sample_rate: usize,
     ) -> Result<TranscriptionResult> {
@@ -69,6 +72,7 @@ impl ParakeetTDTDecoder {
                         text: display_text,
                         start,
                         end,
+                        confidence: probs.get(i).copied(),
                     });
                 }
             }
@@ -98,7 +102,7 @@ mod tests {
         let vocab = make_vocab(&["▁like", "1", "0", "0"]);
         let decoder = ParakeetTDTDecoder::from_vocab(vocab);
         let result = decoder
-            .decode_with_timestamps(&[0, 1, 2, 3], &[0, 1, 2, 3], &[1, 1, 1, 1], 160, 16000)
+            .decode_with_timestamps(&[0, 1, 2, 3], &[0, 1, 2, 3], &[1, 1, 1, 1], &[], 160, 16000)
             .unwrap();
         assert_eq!(result.text, "like 100");
     }
@@ -109,7 +113,7 @@ mod tests {
         let vocab = make_vocab(&["▁a", "2", "4"]);
         let decoder = ParakeetTDTDecoder::from_vocab(vocab);
         let result = decoder
-            .decode_with_timestamps(&[0, 1, 2], &[0, 1, 2], &[1, 1, 1], 160, 16000)
+            .decode_with_timestamps(&[0, 1, 2], &[0, 1, 2], &[1, 1, 1], &[], 160, 16000)
             .unwrap();
         assert_eq!(result.text, "a 24");
     }
@@ -120,7 +124,7 @@ mod tests {
         let vocab = make_vocab(&["▁A", "4"]);
         let decoder = ParakeetTDTDecoder::from_vocab(vocab);
         let result = decoder
-            .decode_with_timestamps(&[0, 1], &[0, 1], &[1, 1], 160, 16000)
+            .decode_with_timestamps(&[0, 1], &[0, 1], &[1, 1], &[], 160, 16000)
             .unwrap();
         assert_eq!(result.text, "A4");
     }
@@ -131,7 +135,7 @@ mod tests {
         let vocab = make_vocab(&["$", "1", "0", "0"]);
         let decoder = ParakeetTDTDecoder::from_vocab(vocab);
         let result = decoder
-            .decode_with_timestamps(&[0, 1, 2, 3], &[0, 1, 2, 3], &[1, 1, 1, 1], 160, 16000)
+            .decode_with_timestamps(&[0, 1, 2, 3], &[0, 1, 2, 3], &[1, 1, 1, 1], &[], 160, 16000)
             .unwrap();
         assert_eq!(result.text, "$100");
     }
@@ -146,6 +150,7 @@ mod tests {
                 &[0, 1, 2, 3, 4],
                 &[0, 1, 2, 3, 4],
                 &[1, 1, 1, 1, 1],
+                &[],
                 160,
                 16000,
             )
@@ -159,7 +164,7 @@ mod tests {
         let vocab = make_vocab(&["▁like", "1", "0", "0"]);
         let decoder = ParakeetTDTDecoder::from_vocab(vocab);
         let result = decoder
-            .decode_with_timestamps(&[0, 1, 2, 3], &[0, 1, 2, 3], &[1, 1, 1, 1], 160, 16000)
+            .decode_with_timestamps(&[0, 1, 2, 3], &[0, 1, 2, 3], &[1, 1, 1, 1], &[], 160, 16000)
             .unwrap();
 
         // Check token texts - first digit should have space prepended
@@ -180,6 +185,7 @@ mod tests {
                 &[0, 1, 2, 3, 4],
                 &[0, 1, 2, 3, 4],
                 &[1, 1, 1, 1, 1],
+                &[],
                 160,
                 16000,
             )
@@ -197,5 +203,49 @@ mod tests {
         // Test Tokens mode
         let tokens_text: String = result.tokens.iter().map(|t| t.text.as_str()).collect();
         assert_eq!(tokens_text.trim(), "like 100 bucks");
+    }
+
+    #[test]
+    fn test_probs_become_token_confidence() {
+        // "<s>" is a special token and is skipped; the remaining tokens keep their own probs
+        let vocab = make_vocab(&["▁hello", "<s>", "▁world"]);
+        let decoder = ParakeetTDTDecoder::from_vocab(vocab);
+        let probs = [0.9_f32, 0.1, 0.42];
+        let result = decoder
+            .decode_with_timestamps(&[0, 1, 2], &[0, 1, 2], &[1, 1, 1], &probs, 160, 16000)
+            .unwrap();
+        let got: Vec<Option<f32>> = result.tokens.iter().map(|t| t.confidence).collect();
+        assert_eq!(got, vec![Some(0.9), Some(0.42)]);
+    }
+
+    #[test]
+    fn test_missing_probs_give_none_confidence() {
+        let vocab = make_vocab(&["▁hello"]);
+        let decoder = ParakeetTDTDecoder::from_vocab(vocab);
+        let result = decoder
+            .decode_with_timestamps(&[0], &[0], &[1], &[], 160, 16000)
+            .unwrap();
+        assert_eq!(result.tokens[0].confidence, None);
+    }
+
+    #[test]
+    fn test_word_confidence_is_minimum_of_tokens() {
+        use crate::timestamps::{process_timestamps, TimestampMode};
+
+        let vocab = make_vocab(&["▁hel", "lo", "▁world"]);
+        let decoder = ParakeetTDTDecoder::from_vocab(vocab);
+        let result = decoder
+            .decode_with_timestamps(
+                &[0, 1, 2],
+                &[0, 1, 2],
+                &[1, 1, 1],
+                &[0.9, 0.3, 0.8],
+                160,
+                16000,
+            )
+            .unwrap();
+        let words = process_timestamps(&result.tokens, TimestampMode::Words);
+        let got: Vec<Option<f32>> = words.iter().map(|w| w.confidence).collect();
+        assert_eq!(got, vec![Some(0.3), Some(0.8)]);
     }
 }
